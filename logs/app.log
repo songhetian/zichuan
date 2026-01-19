@@ -148,3 +148,4 @@ Traceback (most recent call last):
   File "F:\code\python\tools\zichuan\src\ui\pages\component_inventory_page.py", line 116, in init_stock_tab
     self.stock_table.AdjustToContentsOnFirstShow
 AttributeError: 'PySide6.QtWidgets.QTableView' object has no attribute 'AdjustToContentsOnFirstShow'
+2026-01-20 01:22:39,634 - INFO - logger.py:36 - 日志系统初始化完成
