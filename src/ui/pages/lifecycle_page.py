@@ -58,19 +58,30 @@ class LifecyclePage(QWidget):
         self.t.setModel(self.m); l.addWidget(self.t); return w
 
     def refresh_data(self):
+        # 记录当前选中的项，以便刷新后恢复（可选，目前简单清空）
+        
+        # 阻断信号，防止 clear() 触发 currentIndexChanged 导致的连锁反应
+        self.co_a.blockSignals(True); self.co_e.blockSignals(True); self.rt_a.blockSignals(True)
+        
         self.co_a.clear(); [self.co_a.addItem(f"{n}({no})", i) for i,n,no,_ in self.db.get_assets_by_status("闲置")]
-        # 获取全部在职员工用于下拉框
         self.co_e.clear(); [self.co_e.addItem(f"{r[2]}({r[3]})", r[0]) for r in self.db.get_all_employees(status="在职", limit=None)]
         self.rt_a.clear(); [self.rt_a.addItem(f"{n}({no})", i) for i,n,no,_ in self.db.get_assets_by_status("在用")]
-        self.m.removeRows(0, self.m.rowCount())
+        
+        self.co_a.blockSignals(False); self.co_e.blockSignals(False); self.rt_a.blockSignals(False)
+
+        # 刷新审计表格
+        self.m.removeRows(0, self.model.rowCount() if hasattr(self, 'model') else self.m.rowCount())
         conn = self.db.get_connection(); c = conn.cursor()
-        c.execute("SELECT l.op_date, l.op_type, l.operator, e.name, l.remark FROM lifecycle_logs l LEFT JOIN employees e ON l.target_user_id=e.id ORDER BY l.op_date DESC")
+        c.execute("SELECT l.op_date, l.op_type, l.operator, e.name, l.remark FROM lifecycle_logs l LEFT JOIN employees e ON l.target_user_id=e.id ORDER BY l.op_date DESC LIMIT 50")
         for r in c.fetchall(): self.m.appendRow([QStandardItem(str(x)) for x in r])
         conn.close()
 
     def do_co(self):
-        if self.db.checkout_asset(self.co_a.currentData(), self.co_e.currentData(), "Admin", self.co_r.toPlainText()):
+        success, msg = self.db.checkout_asset(self.co_a.currentData(), self.co_e.currentData(), "Admin", self.co_r.toPlainText())
+        if success:
             QMessageBox.information(self, "成功", "已完成领用登记"); self.refresh_data()
+        else:
+            QMessageBox.warning(self, "领用失败", msg)
 
     def do_rt(self):
         if self.db.return_asset(self.rt_a.currentData(), "Admin", self.rt_r.toPlainText()):

@@ -4,3 +4,4 @@ openpyxl
 pypinyin
 qrcode
 pillow
+matplotlib

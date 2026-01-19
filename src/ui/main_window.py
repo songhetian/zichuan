@@ -14,6 +14,7 @@ from src.ui.pages.settings_page import SettingsPage
 from src.ui.pages.system_log_page import SystemLogPage
 from src.ui.pages.asset_stats_page import AssetStatsPage
 from src.ui.pages.component_inventory_page import ComponentInventoryPage
+from src.ui.pages.category_management_page import CategoryManagementPage
 from src.config import APP_TITLE
 
 class MainWindow(QMainWindow):
@@ -47,8 +48,9 @@ class MainWindow(QMainWindow):
         self.sidebar.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self.sidebar.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.menu_items = [
             ("仪表盘", "📊", "dashboard"), ("资产统计", "📈", "statistics"), ("资产档案中心", "💻", "assets"), 
-            ("配件库存管理", "🛠️", "comp_inv"), ("资产流转", "🔄", "circulation"), ("员工管理", "👥", "employee"), 
-            ("配置审计", "📋", "report"), ("库存对账", "📦", "stock"), ("系统日志", "🛡️", "logs"), ("系统设置", "⚙️", "settings")
+            ("分类管理", "📚", "category_mgmt"), ("配件库存管理", "🛠️", "comp_inv"), ("资产流转", "🔄", "circulation"), 
+            ("员工管理", "👥", "employee"), ("配置审计", "📋", "report"), ("库存对账", "📦", "stock"), 
+            ("系统日志", "🛡️", "logs"), ("系统设置", "⚙️", "settings")
         ]
         for title, icon, _ in self.menu_items:
             item = QListWidgetItem(f"   {icon}   {title}"); item.setSizeHint(QSize(0, 60)); self.sidebar.addItem(item)
@@ -70,6 +72,7 @@ class MainWindow(QMainWindow):
             if key == "dashboard":
                 dash = DashboardPage(); dash.view_all_logs.connect(lambda: self.switch_page_by_key("logs")); self.content_stack.addWidget(dash)
             elif key == "assets": self.content_stack.addWidget(AssetPage())
+            elif key == "category_mgmt": self.content_stack.addWidget(CategoryManagementPage())
             elif key == "comp_inv": self.content_stack.addWidget(ComponentInventoryPage())
             elif key == "employee": self.content_stack.addWidget(EmployeePage())
             elif key == "circulation": self.content_stack.addWidget(LifecyclePage())
@@ -101,14 +104,20 @@ class MainWindow(QMainWindow):
         self.switch_page_by_key(target_key)
         QApplication.processEvents()
         page = self.content_stack.currentWidget()
-        if hasattr(page, "s"): # 资产页的搜索框变量名是 s
-            page.s.setText(filter_text)
-            if hasattr(page, "load_data"): page.load_data()
+        
+        # 增强的过滤器逻辑
+        if target_key == "assets" and hasattr(page, "st_cb"):
+            statuses = ["闲置", "在用", "维修", "报废"]
+            if filter_text in statuses:
+                page.st_cb.setCurrentText(filter_text)
+            elif hasattr(page, "s"): # 如果不是状态，则认为是关键词
+                page.s.setText(filter_text)
+        
+        if hasattr(page, "load_data"): page.load_data()
 
     def auto_refresh_current_page(self):
         try:
-            from src.database.db_manager import DBManager
-            db = DBManager(); conn = db.get_connection(); cursor = conn.cursor()
+            conn = self.db.get_connection(); cursor = conn.cursor()
             cursor.execute("SELECT id FROM users WHERE username=?", (getattr(self, 'current_username', ''),))
             exists = cursor.fetchone(); conn.close()
             if not exists: self.refresh_timer.stop(); QMessageBox.critical(self, "安全警报", "账号已失效！"); self.close(); return

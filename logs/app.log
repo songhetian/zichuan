@@ -1,0 +1,150 @@
+2026-01-19 19:16:53,139 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 19:19:15,327 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 19:24:07,920 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 19:38:39,339 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 20:44:57,852 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 20:54:51,611 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 20:59:57,367 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 21:08:22,618 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 21:56:30,379 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 22:09:19,081 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 22:15:51,244 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 22:21:21,125 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 22:35:18,035 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 22:45:44,834 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 22:52:46,969 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:27:44,825 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:27:46,776 - ERROR - main.py:37 - Failed to show main window: 'CategoryManagementPage' object has no attribute 'set_dirty'
+Traceback (most recent call last):
+  File "F:\code\python\tools\zichuan\src\main.py", line 31, in show_main_window
+    window = MainWindow()
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 27, in __init__
+    self.init_content_area()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 75, in init_content_area
+    elif key == "category_mgmt": self.content_stack.addWidget(CategoryManagementPage())
+                                                              ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 121, in __init__
+    self.init_ui()
+    ~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 205, in init_ui
+    self.model.itemChanged.connect(self.set_dirty)
+                                   ^^^^^^^^^^^^^^
+AttributeError: 'CategoryManagementPage' object has no attribute 'set_dirty'. Did you mean: 'is_dirty'?
+2026-01-19 23:27:57,635 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:27:59,778 - ERROR - main.py:37 - Failed to show main window: 'CategoryManagementPage' object has no attribute 'set_dirty'
+Traceback (most recent call last):
+  File "F:\code\python\tools\zichuan\src\main.py", line 31, in show_main_window
+    window = MainWindow()
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 27, in __init__
+    self.init_content_area()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 75, in init_content_area
+    elif key == "category_mgmt": self.content_stack.addWidget(CategoryManagementPage())
+                                                              ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 121, in __init__
+    self.init_ui()
+    ~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 205, in init_ui
+    self.model.itemChanged.connect(self.set_dirty)
+                                   ^^^^^^^^^^^^^^
+AttributeError: 'CategoryManagementPage' object has no attribute 'set_dirty'. Did you mean: 'is_dirty'?
+2026-01-19 23:41:15,493 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:41:17,773 - ERROR - main.py:37 - Failed to show main window: Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): 'PySide6.QtCore.QChildEvent' object has no attribute 'Resize'
+Traceback (most recent call last):
+  File "F:\code\python\tools\zichuan\src\main.py", line 31, in show_main_window
+    window = MainWindow()
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 27, in __init__
+    self.init_content_area()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 75, in init_content_area
+    elif key == "category_mgmt": self.content_stack.addWidget(CategoryManagementPage())
+                                                              ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 122, in __init__
+    self.init_ui()
+    ~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 176, in init_ui
+    card_layout.addLayout(top_bar)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "F:\code\python\tools\zichuan\src\ui\widgets\loading_overlay.py", line 48, in eventFilter
+    if obj == self.parent() and event.type() == event.Resize:
+              ~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\widgets\loading_overlay.py", line 48, in eventFilter
+    if obj == self.parent() and event.type() == event.Resize:
+              ~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\widgets\loading_overlay.py", line 48, in eventFilter
+    if obj == self.parent() and event.type() == event.Resize:
+              ~~~~~~~~~~~^^
+  [Previous line repeated 3 more times]
+AttributeError: Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): Error calling Python override of QWidget::eventFilter(): 'PySide6.QtCore.QChildEvent' object has no attribute 'Resize'
+2026-01-19 23:43:47,472 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:43:48,992 - ERROR - main.py:37 - Failed to show main window: 'CategoryManagementPage' object has no attribute 'set_dirty'
+Traceback (most recent call last):
+  File "F:\code\python\tools\zichuan\src\main.py", line 31, in show_main_window
+    window = MainWindow()
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 27, in __init__
+    self.init_content_area()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 75, in init_content_area
+    elif key == "category_mgmt": self.content_stack.addWidget(CategoryManagementPage())
+                                                              ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 122, in __init__
+    self.init_ui()
+    ~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 209, in init_ui
+    self.model.itemChanged.connect(self.set_dirty)
+                                   ^^^^^^^^^^^^^^
+AttributeError: 'CategoryManagementPage' object has no attribute 'set_dirty'. Did you mean: 'is_dirty'?
+2026-01-19 23:45:06,541 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:49:42,425 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:49:52,013 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:51:24,767 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:55:05,527 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:56:09,743 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-19 23:57:12,004 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:04:07,564 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:06:48,112 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:29:28,709 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:29:31,162 - ERROR - main.py:37 - Failed to show main window: name 'top_bar' is not defined
+Traceback (most recent call last):
+  File "F:\code\python\tools\zichuan\src\main.py", line 31, in show_main_window
+    window = MainWindow()
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 27, in __init__
+    self.init_content_area()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 75, in init_content_area
+    elif key == "category_mgmt": self.content_stack.addWidget(CategoryManagementPage())
+                                                              ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 132, in __init__
+    self.init_ui()
+    ~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\category_management_page.py", line 267, in init_ui
+    top_bar.addWidget(self.cat_cb)
+    ^^^^^^^
+NameError: name 'top_bar' is not defined
+2026-01-20 00:29:54,527 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:37:53,256 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:46:23,601 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 00:53:07,833 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 01:09:14,691 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 01:15:51,346 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 01:20:07,330 - INFO - logger.py:36 - 日志系统初始化完成
+2026-01-20 01:20:09,189 - ERROR - main.py:37 - Failed to show main window: 'PySide6.QtWidgets.QTableView' object has no attribute 'AdjustToContentsOnFirstShow'
+Traceback (most recent call last):
+  File "F:\code\python\tools\zichuan\src\main.py", line 31, in show_main_window
+    window = MainWindow()
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 27, in __init__
+    self.init_content_area()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\main_window.py", line 76, in init_content_area
+    elif key == "comp_inv": self.content_stack.addWidget(ComponentInventoryPage())
+                                                         ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\component_inventory_page.py", line 29, in __init__
+    self.init_ui()
+    ~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\component_inventory_page.py", line 46, in init_ui
+    self.init_stock_tab()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "F:\code\python\tools\zichuan\src\ui\pages\component_inventory_page.py", line 116, in init_stock_tab
+    self.stock_table.AdjustToContentsOnFirstShow
+AttributeError: 'PySide6.QtWidgets.QTableView' object has no attribute 'AdjustToContentsOnFirstShow'
