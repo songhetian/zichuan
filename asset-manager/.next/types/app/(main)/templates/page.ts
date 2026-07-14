@@ -1,4 +1,4 @@
-// File: /Users/song/Projects/zichuan/asset-manager/src/app/(main)/templates/page.tsx
+// File: E:\System\zichuan\asset-manager\src\app\(main)\templates\page.tsx
 import * as entry from '../../../../../src/app/(main)/templates/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

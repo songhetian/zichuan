@@ -12,7 +12,7 @@ export default defineConfig({
     testTimeout: 10000,
     fileParallelism: false,
     env: {
-      DATABASE_URL: "mysql://root:root123@localhost:3306/asset_manager_test",
+      DATABASE_URL: "mysql://root:root@localhost:3306/asset_manager_test",
     },
   },
   resolve: {
