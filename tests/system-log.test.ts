@@ -1,9 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import { createSystemLog, getSystemLogs } from "@/actions/system-log.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 describe("系统日志", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createSystemLog", () => {
     it("可以记录系统日志", async () => {
       const result = await createSystemLog({

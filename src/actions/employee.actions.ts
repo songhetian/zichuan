@@ -1,7 +1,10 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
+import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 const createSchema = z.object({
   employeeNo: z.string().min(1, "工号不能为空"),
@@ -24,10 +27,6 @@ const querySchema = z.object({
   keyword: z.string().optional(),
 });
 
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
-
 type EmployeeWithDept = {
   id: number;
   employeeNo: string;
@@ -39,7 +38,18 @@ type EmployeeWithDept = {
   assetCount: number;
 };
 
-function formatEmployee(emp: any): EmployeeWithDept {
+type PrismaEmployee = {
+  id: number;
+  employeeNo: string;
+  name: string;
+  departmentId: number;
+  department: { name: string } | null;
+  phone: string | null;
+  email: string | null;
+  _count?: { assets: number };
+};
+
+function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
   return {
     id: emp.id,
     employeeNo: emp.employeeNo,
@@ -55,6 +65,8 @@ function formatEmployee(emp: any): EmployeeWithDept {
 export async function createEmployee(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<EmployeeWithDept>> {
+  requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -81,10 +93,7 @@ export async function createEmployee(
     });
     return { success: true, data: formatEmployee(emp) };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "工号已存在" };
-    }
-    return { success: false, error: "创建失败" };
+    return handleUniqueViolation(e, { employeeNo: "工号已存在" }, "创建失败");
   }
 }
 
@@ -98,7 +107,7 @@ export async function getEmployees(
 
   const { departmentId, keyword } = validated.data;
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (departmentId != null) {
     where.departmentId = departmentId;
   }
@@ -138,6 +147,8 @@ export async function updateEmployee(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<EmployeeWithDept>> {
+  requireAuth();
+
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -166,10 +177,7 @@ export async function updateEmployee(
     });
     return { success: true, data: formatEmployee(emp) };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "工号已存在" };
-    }
-    return { success: false, error: "更新失败" };
+    return handleUniqueViolation(e, { employeeNo: "工号已存在" }, "更新失败");
   }
 }
 
@@ -213,6 +221,8 @@ export async function getEmployeeAssets(
 export async function deleteEmployee(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
+
   const existing = await prisma.employee.findUnique({ where: { id } });
   if (!existing) {
     return { success: false, error: "员工不存在" };

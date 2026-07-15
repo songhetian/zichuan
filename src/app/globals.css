@@ -4,26 +4,43 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* 暖色系背景 - 不用纯白，用暖米白 */
+    --background: 40 5% 98%;
+    --foreground: 20 14% 12%;
+
+    /* 卡片用纯白，从暖背景中跳出来 */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 20 14% 12%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 20 14% 12%;
+
+    /* 主色调：深青色 teal - 有辨识度的品牌色 */
+    --primary: 173 80% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    /* 暖灰色系 */
+    --secondary: 30 10% 95%;
+    --secondary-foreground: 20 14% 12%;
+    --muted: 30 10% 95%;
+    --muted-foreground: 25 5% 45%;
+    --accent: 173 30% 94%;
+    --accent-foreground: 173 80% 30%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* 暖色边框 */
+    --border: 30 8% 90%;
+    --input: 30 8% 90%;
+    --ring: 173 80% 40%;
     --radius: 0.5rem;
+
+    /* 侧边栏深色主题 */
+    --sidebar-bg: 200 15% 14%;
+    --sidebar-fg: 200 10% 80%;
+    --sidebar-active: 173 80% 40%;
+    --sidebar-active-fg: 0 0% 100%;
   }
 
   * {
@@ -31,6 +48,21 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  /* 弱化侧边栏非激活态导航图标，让文字成为主导，去除AI生成的图标感 */
+  .sidebar-nav button:not([class*="bg-primary"]) > svg:first-of-type,
+  .sidebar-nav a:not([class*="bg-primary"]) > svg:first-of-type {
+    opacity: 0.4;
+    transition: opacity 0.15s ease;
+  }
+  .sidebar-nav button:hover > svg:first-of-type,
+  .sidebar-nav a:hover > svg:first-of-type {
+    opacity: 0.8;
   }
 }

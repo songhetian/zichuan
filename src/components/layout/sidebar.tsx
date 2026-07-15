@@ -123,26 +123,26 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
       {/* Desktop sidebar */}
       <div
         className={cn(
-          "hidden md:flex h-full flex-col border-r bg-card transition-all duration-300",
+          "hidden md:flex h-full flex-col border-r border-border bg-card transition-all duration-300",
           collapsed ? "w-14" : "w-56"
         )}
       >
         {/* Header */}
         <div
           className={cn(
-            "flex h-14 items-center border-b",
+            "flex h-14 items-center border-b border-border",
             collapsed ? "justify-center px-2" : "px-4"
           )}
         >
-          <Package className="h-6 w-6 shrink-0 text-primary" />
+          <Package className="h-5 w-5 shrink-0 text-primary" />
           {!collapsed && (
-            <span className="ml-2 text-lg font-semibold whitespace-nowrap">资产管理系统</span>
+            <span className="ml-2 text-base font-semibold whitespace-nowrap text-foreground">资产管理系统</span>
           )}
         </div>
 
         {/* Navigation */}
         <ScrollArea className="flex-1 px-3 py-2">
-          <nav className="flex flex-col gap-1">
+          <nav className="sidebar-nav flex flex-col gap-1">
             {navItems.map((item) => {
               const isParentActive = isActiveParent(item)
 
@@ -156,7 +156,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                             "flex w-full items-center justify-center rounded-md p-2 text-sm transition-colors",
                             isParentActive
                               ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                           )}
                         >
                           <item.icon className="h-4 w-4 shrink-0" />
@@ -176,8 +176,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                                 className={cn(
                                   "rounded-md px-3 py-2 text-sm transition-colors",
                                   isChildActive
-                                    ? "bg-primary/10 text-primary font-medium"
-                                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                    ? "text-primary font-medium bg-accent"
+                                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                                 )}
                               >
                                 {child.label}
@@ -200,7 +200,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                         "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                         isParentActive
                           ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -244,14 +244,14 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                   <Tooltip key={item.href}>
                     <TooltipTrigger asChild>
                       <Link
-                        href={item.href}
-                        className={cn(
-                          "flex w-full items-center justify-center rounded-md p-2 text-sm transition-colors",
-                          active
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        )}
-                      >
+                    href={item.href}
+                    className={cn(
+                      "flex w-full items-center justify-center rounded-md p-2 text-sm transition-colors",
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    )}
+                  >
                         <item.icon className="h-4 w-4 shrink-0" />
                       </Link>
                     </TooltipTrigger>
@@ -270,7 +270,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                     "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                     active
                       ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                   )}
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
@@ -282,7 +282,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
         </ScrollArea>
 
         {/* Toggle button */}
-        <div className="border-t p-2">
+        <div className="border-t border-border p-2">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -290,7 +290,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                 size="sm"
                 onClick={toggleCollapsed}
                 className={cn(
-                  "w-full",
+                  "w-full text-muted-foreground hover:bg-secondary hover:text-foreground",
                   collapsed ? "justify-center px-2" : "justify-start px-3"
                 )}
               >
@@ -314,19 +314,19 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
       {/* Mobile sidebar */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r shadow-xl transition-transform duration-300 md:hidden",
+          "fixed inset-y-0 left-0 z-50 w-64 bg-card text-card-foreground shadow-xl transition-transform duration-300 md:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Header */}
-        <div className="flex h-14 items-center border-b px-4">
+        <div className="flex h-14 items-center border-b border-border px-4">
           <Package className="h-6 w-6 shrink-0 text-primary" />
-          <span className="ml-2 text-lg font-semibold whitespace-nowrap">资产管理系统</span>
+          <span className="ml-2 text-base font-semibold whitespace-nowrap text-foreground">资产管理系统</span>
         </div>
 
         {/* Navigation */}
         <ScrollArea className="flex-1 px-3 py-2">
-          <nav className="flex flex-col gap-1">
+          <nav className="sidebar-nav flex flex-col gap-1">
             {navItems.map((item) => {
               const isParentActive = isActiveParent(item)
 
@@ -341,7 +341,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                         "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                         isParentActive
                           ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />

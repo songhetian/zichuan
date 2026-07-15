@@ -1,8 +1,10 @@
 "use server";
 
 import { ActionResult } from "@/lib/types";
+import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 function generateCodeFromName(name: string): string {
   const chars = name.split("");
@@ -52,6 +54,7 @@ export async function moveAssetCategory(
   id: number,
   input: z.infer<typeof moveSchema>
 ): Promise<ActionResult<{ id: number; parentId: number | null }>> {
+  requireAuth();
   const validated = moveSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -92,6 +95,7 @@ export async function moveAssetCategory(
 export async function createAssetCategory(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string; code: string; parentId: number | null }>> {
+  requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -115,12 +119,7 @@ export async function createAssetCategory(
     });
     return { success: true, data: cat };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      const target = (e as any).meta?.target as string[];
-      if (target?.includes("name")) return { success: false, error: "分类名称已存在" };
-      if (target?.includes("code")) return { success: false, error: "分类编码已存在" };
-    }
-    return { success: false, error: "创建失败" };
+    return handleUniqueViolation(e, { name: "分类名称已存在", code: "分类编码已存在" }, "创建失败");
   }
 }
 
@@ -149,6 +148,7 @@ export async function updateAssetCategory(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<{ id: number; name: string; code: string; parentId: number | null }>> {
+  requireAuth();
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -165,18 +165,14 @@ export async function updateAssetCategory(
     });
     return { success: true, data: cat };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      const target = (e as any).meta?.target as string[];
-      if (target?.includes("name")) return { success: false, error: "分类名称已存在" };
-      if (target?.includes("code")) return { success: false, error: "分类编码已存在" };
-    }
-    return { success: false, error: "更新失败" };
+    return handleUniqueViolation(e, { name: "分类名称已存在", code: "分类编码已存在" }, "更新失败");
   }
 }
 
 export async function deleteAssetCategory(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
   const existing = await prisma.assetCategory.findUnique({ where: { id } });
   if (!existing) return { success: false, error: "设备分类不存在" };
 

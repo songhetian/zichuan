@@ -2,16 +2,13 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { ActionResult } from "@/lib/types";
 
 const querySchema = z.object({
   action: z.string().optional(),
   operator: z.string().optional(),
   keyword: z.string().optional(),
 });
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
 
 export async function getLifecycleLogs(
   input: z.infer<typeof querySchema> = {}
@@ -32,7 +29,7 @@ export async function getLifecycleLogs(
 
   const { action, operator, keyword } = validated.data;
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (action) where.action = action;
   if (operator) where.operator = operator;
 

@@ -47,19 +47,20 @@ interface TreeTableProps<T extends TreeNode> {
 }
 
 function buildTree<T extends TreeNode>(flat: T[]): T[] {
-  const map = new Map<number, T>()
-  const roots: T[] = []
+  type AugmentedNode = T & { children: T[] }
+  const map = new Map<number, AugmentedNode>()
+  const roots: AugmentedNode[] = []
 
   for (const item of flat) {
-    map.set(item.id, { ...item, children: [] } as any)
+    const node = { ...item, children: [] as T[] } as AugmentedNode
+    map.set(item.id, node)
   }
 
   for (const item of flat) {
     const node = map.get(item.id)!
     if (item.parentId != null && map.has(item.parentId)) {
       const parent = map.get(item.parentId)!
-      if (!parent.children) parent.children = [] as any
-      parent.children!.push(node)
+      parent.children.push(node)
     } else {
       roots.push(node)
     }
@@ -71,7 +72,7 @@ function buildTree<T extends TreeNode>(flat: T[]): T[] {
 function flattenTree<T extends TreeNode>(tree: T[], depth: number = 0): (T & { _depth: number })[] {
   const result: (T & { _depth: number })[] = []
   for (const node of tree) {
-    result.push({ ...node, _depth: depth } as any)
+    result.push({ ...node, _depth: depth } as T & { _depth: number })
     if (node.children && node.children.length > 0) {
       result.push(...flattenTree(node.children as T[], depth + 1))
     }
@@ -257,7 +258,7 @@ export function TreeTable<T extends TreeNode>({
                           )}
                           {col.render
                             ? col.render(row)
-                            : (row as any)[col.key]}
+                            : row[col.key]}
                         </span>
                       </TableCell>
                     ))}

@@ -3,6 +3,7 @@
 import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 // ============================================================
 // Schema 校验
@@ -66,7 +67,57 @@ type AssetDetail = {
   }[];
 };
 
-function formatAsset(asset: any): AssetDetail {
+type PrismaAsset = {
+  id: number;
+  assetNo: string;
+  name: string;
+  templateId: number;
+  template: { name: string; categoryId: number; category: { name: string } | null } | null;
+  status: string;
+  employeeId: number | null;
+  employee?: { name: string } | null;
+  location: string | null;
+  purchaseDate: Date | null;
+  warrantyMonths: number | null;
+  notes: string | null;
+  components: {
+    id: number;
+    modelId: number;
+    model: { name: string; brand: string | null } | null;
+    quantity: number;
+  }[];
+  lifecycleLogs?: {
+    id: number;
+    action: string;
+    fromStatus: string | null;
+    toStatus: string | null;
+    operator: string;
+    remark: string | null;
+    createdAt: Date;
+  }[];
+};
+
+function formatAsset(asset: PrismaAsset | null): AssetDetail {
+  if (!asset) {
+    return {
+      id: 0,
+      assetNo: "",
+      name: "",
+      templateId: 0,
+      templateName: "",
+      categoryId: 0,
+      categoryName: "",
+      status: "",
+      employeeId: null,
+      employeeName: null,
+      location: null,
+      purchaseDate: null,
+      warrantyMonths: null,
+      notes: null,
+      components: [],
+      lifecycleLogs: [],
+    };
+  }
   return {
     id: asset.id,
     assetNo: asset.assetNo,
@@ -82,14 +133,14 @@ function formatAsset(asset: any): AssetDetail {
     purchaseDate: asset.purchaseDate ?? null,
     warrantyMonths: asset.warrantyMonths ?? null,
     notes: asset.notes ?? null,
-    components: (asset.components ?? []).map((c: any) => ({
+    components: asset.components.map((c) => ({
       id: c.id,
       modelId: c.modelId,
       modelName: c.model?.name ?? "",
       modelBrand: c.model?.brand ?? null,
       quantity: c.quantity,
     })),
-    lifecycleLogs: (asset.lifecycleLogs ?? []).map((l: any) => ({
+    lifecycleLogs: (asset.lifecycleLogs ?? []).map((l) => ({
       id: l.id,
       action: l.action,
       fromStatus: l.fromStatus,
@@ -137,6 +188,8 @@ async function generateAssetNo(categoryId: number): Promise<string> {
 export async function createAsset(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<AssetDetail>> {
+  requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -155,17 +208,6 @@ export async function createAsset(
   });
   if (!template) {
     return { success: false, error: "设备模板不存在" };
-  }
-
-  // 检查库存是否充足
-  for (const bom of template.components) {
-    const stock = await prisma.componentStock.findUnique({
-      where: { modelId: bom.modelId },
-    });
-    const available = stock?.quantity ?? 0;
-    if (available < bom.quantity) {
-      return { success: false, error: `库存不足：配件型号 ID ${bom.modelId}` };
-    }
   }
 
   try {
@@ -198,12 +240,19 @@ export async function createAsset(
         });
       }
 
-      // 扣减库存
+      // 原子性扣减库存（使用 updateMany + gte 条件防止超卖）
       for (const bom of template.components) {
-        await tx.componentStock.update({
-          where: { modelId: bom.modelId },
+        const updateResult = await tx.componentStock.updateMany({
+          where: {
+            modelId: bom.modelId,
+            quantity: { gte: bom.quantity },
+          },
           data: { quantity: { decrement: bom.quantity } },
         });
+
+        if (updateResult.count === 0) {
+          throw new Error(`STOCK_INSUFFICIENT:${bom.modelId}`);
+        }
 
         // 记录库存流水
         await tx.componentStockLog.create({
@@ -246,6 +295,10 @@ export async function createAsset(
     return { success: true, data: formatAsset(asset) };
   } catch (e) {
     if (e instanceof Error) {
+      if (e.message.startsWith("STOCK_INSUFFICIENT:")) {
+        const modelId = e.message.split(":")[1];
+        return { success: false, error: `库存不足：配件型号 ID ${modelId}` };
+      }
       if (e.message.includes("Unique constraint")) {
         return { success: false, error: "设备编号已存在，请重试" };
       }
@@ -268,7 +321,7 @@ export async function getAssets(
 
   const { status, categoryId, employeeId, keyword } = validated.data;
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (status) where.status = status;
   if (employeeId != null) where.employeeId = employeeId;
   if (keyword) {
@@ -345,6 +398,8 @@ export async function updateAsset(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<AssetDetail>> {
+  requireAuth();
+
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -355,21 +410,21 @@ export async function updateAsset(
     return { success: false, error: "设备不存在" };
   }
 
-  const data: any = {};
-  if (validated.data.name != null) data.name = validated.data.name;
-  if (validated.data.location !== undefined) data.location = validated.data.location;
+  const updateData: Record<string, unknown> = {};
+  if (validated.data.name != null) updateData.name = validated.data.name;
+  if (validated.data.location !== undefined) updateData.location = validated.data.location;
   if (validated.data.purchaseDate !== undefined) {
-    data.purchaseDate = validated.data.purchaseDate ? new Date(validated.data.purchaseDate) : null;
+    updateData.purchaseDate = validated.data.purchaseDate ? new Date(validated.data.purchaseDate) : null;
   }
   if (validated.data.warrantyMonths !== undefined) {
-    data.warrantyMonths = validated.data.warrantyMonths;
+    updateData.warrantyMonths = validated.data.warrantyMonths;
   }
-  if (validated.data.notes !== undefined) data.notes = validated.data.notes;
+  if (validated.data.notes !== undefined) updateData.notes = validated.data.notes;
 
   try {
     const asset = await prisma.asset.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         template: {
           select: {
@@ -401,6 +456,8 @@ export async function updateAsset(
 export async function deleteAsset(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
+
   const existing = await prisma.asset.findUnique({ where: { id } });
   if (!existing) {
     return { success: false, error: "设备不存在" };

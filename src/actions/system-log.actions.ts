@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
+import { requireAuth } from "@/lib/auth";
 
 const createSchema = z.object({
   module: z.string().min(1),
@@ -20,6 +21,7 @@ const querySchema = z.object({
 export async function createSystemLog(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };
@@ -51,7 +53,7 @@ export async function getSystemLogs(
 
   const { module, operator, keyword } = validated.data;
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (module) where.module = module;
   if (operator) where.operator = operator;
   if (keyword) {

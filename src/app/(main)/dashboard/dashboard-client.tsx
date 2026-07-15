@@ -5,7 +5,8 @@ import ReactECharts from "echarts-for-react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Monitor, Package, Wrench, Trash2, Users, Clock, AlertCircle, ChevronRight } from "lucide-react";
+import { Clock, AlertCircle, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -43,10 +44,19 @@ const STATUS_LABEL_MAP: Record<string, string> = {
 };
 
 const STATUS_COLOR_MAP: Record<string, string> = {
-  IDLE: "#94a3b8",
-  IN_USE: "#22c55e",
-  IN_MAINTENANCE: "#eab308",
-  SCRAPPED: "#ef4444",
+  IDLE: "#78716c",
+  IN_USE: "#0d9488",
+  IN_MAINTENANCE: "#d97706",
+  SCRAPPED: "#dc2626",
+};
+
+// 卡片左侧竖条颜色（Tailwind 类名）
+const CARD_BAR_CLASS: Record<string, string> = {
+  all: "bg-foreground",
+  IDLE: "bg-muted-foreground",
+  IN_USE: "bg-primary",
+  IN_MAINTENANCE: "bg-amber-500",
+  SCRAPPED: "bg-red-500",
 };
 
 const ACTION_LABEL_MAP: Record<string, string> = {
@@ -81,30 +91,48 @@ function PieChart({ data }: { data: DashboardData }) {
     tooltip: {
       trigger: "item",
       formatter: "{b}: {c} ({d}%)",
+      backgroundColor: "rgba(255, 255, 255, 0.95)",
+      borderColor: "#e5e7eb",
+      borderWidth: 1,
+      textStyle: { color: "#1f2937" },
+      padding: [12, 16],
+      borderRadius: 8,
     },
     legend: {
       bottom: "0%",
       left: "center",
+      itemWidth: 12,
+      itemHeight: 12,
+      itemGap: 16,
+      textStyle: { color: "#6b7280", fontSize: 12 },
     },
     series: [
       {
         type: "pie",
-        radius: ["40%", "70%"],
+        radius: ["45%", "75%"],
         avoidLabelOverlap: false,
         itemStyle: {
-          borderRadius: 8,
+          borderRadius: 12,
           borderColor: "#fff",
-          borderWidth: 2,
+          borderWidth: 3,
         },
         label: {
           show: true,
           formatter: "{b}\n{c} ({d}%)",
+          fontSize: 12,
+          color: "#4b5563",
         },
         emphasis: {
           label: {
             show: true,
             fontSize: 14,
             fontWeight: "bold",
+            color: "#1f2937",
+          },
+          itemStyle: {
+            shadowBlur: 20,
+            shadowOffsetX: 0,
+            shadowColor: "rgba(0, 0, 0, 0.2)",
           },
         },
         data: chartData,
@@ -128,11 +156,18 @@ function BarChart({ data }: { data: DashboardData }) {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
+      backgroundColor: "rgba(255, 255, 255, 0.95)",
+      borderColor: "#e5e7eb",
+      borderWidth: 1,
+      textStyle: { color: "#1f2937" },
+      padding: [12, 16],
+      borderRadius: 8,
     },
     grid: {
       left: "3%",
       right: "4%",
       bottom: "3%",
+      top: "10%",
       containLabel: true,
     },
     xAxis: {
@@ -141,16 +176,28 @@ function BarChart({ data }: { data: DashboardData }) {
       axisLabel: {
         interval: 0,
         rotate: data.byCategory.length > 5 ? 30 : 0,
+        color: "#6b7280",
+        fontSize: 11,
       },
+      axisLine: { lineStyle: { color: "#e5e7eb" } },
+      axisTick: { show: false },
     },
     yAxis: {
       type: "value",
+      axisLabel: { color: "#6b7280", fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
     },
     series: [
       {
         type: "bar",
         data: data.byCategory.map((c) => c.count),
-        itemStyle: { color: "#3b82f6", borderRadius: [4, 4, 0, 0] },
+        itemStyle: {
+          color: "#0d9488",
+          borderRadius: [4, 4, 0, 0],
+        },
+        barWidth: "45%",
       },
     ],
   };
@@ -168,28 +215,86 @@ function TrendLineChart({ trendData }: { trendData: DashboardData["trendData"] }
   }
 
   const option = {
-    tooltip: { trigger: "axis" },
+    tooltip: { 
+      trigger: "axis",
+      backgroundColor: "rgba(255, 255, 255, 0.95)",
+      borderColor: "#e5e7eb",
+      borderWidth: 1,
+      textStyle: { color: "#1f2937" },
+      padding: [12, 16],
+      borderRadius: 8,
+    },
     legend: {
       data: ["分配", "归还", "调拨", "报废"],
       bottom: "0%",
+      itemWidth: 12,
+      itemHeight: 6,
+      itemGap: 16,
+      textStyle: { color: "#6b7280", fontSize: 11 },
     },
     grid: {
       left: "3%",
       right: "4%",
       bottom: "15%",
+      top: "10%",
       containLabel: true,
     },
     xAxis: {
       type: "category",
       boundaryGap: false,
       data: trendData.map((d) => d.month),
+      axisLabel: { color: "#6b7280", fontSize: 11 },
+      axisLine: { lineStyle: { color: "#e5e7eb" } },
+      axisTick: { show: false },
     },
-    yAxis: { type: "value" },
+    yAxis: { 
+      type: "value",
+      axisLabel: { color: "#6b7280", fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
+    },
     series: [
-      { name: "分配", type: "line", smooth: true, data: trendData.map((d) => d.allocated), itemStyle: { color: "#3b82f6" } },
-      { name: "归还", type: "line", smooth: true, data: trendData.map((d) => d.returned), itemStyle: { color: "#22c55e" } },
-      { name: "调拨", type: "line", smooth: true, data: trendData.map((d) => d.transferred), itemStyle: { color: "#f59e0b" } },
-      { name: "报废", type: "line", smooth: true, data: trendData.map((d) => d.scrapped), itemStyle: { color: "#ef4444" } },
+      { 
+        name: "分配", 
+        type: "line", 
+        smooth: true, 
+        data: trendData.map((d) => d.allocated), 
+        itemStyle: { color: "#0d9488" },
+        lineStyle: { width: 2 },
+        symbol: "circle",
+        symbolSize: 5,
+      },
+      { 
+        name: "归还", 
+        type: "line", 
+        smooth: true, 
+        data: trendData.map((d) => d.returned), 
+        itemStyle: { color: "#78716c" },
+        lineStyle: { width: 2 },
+        symbol: "circle",
+        symbolSize: 5,
+      },
+      { 
+        name: "调拨", 
+        type: "line", 
+        smooth: true, 
+        data: trendData.map((d) => d.transferred), 
+        itemStyle: { color: "#d97706" },
+        lineStyle: { width: 2 },
+        symbol: "circle",
+        symbolSize: 5,
+      },
+      { 
+        name: "报废", 
+        type: "line", 
+        smooth: true, 
+        data: trendData.map((d) => d.scrapped), 
+        itemStyle: { color: "#dc2626" },
+        lineStyle: { width: 2 },
+        symbol: "circle",
+        symbolSize: 5,
+      },
     ],
   };
 
@@ -208,19 +313,40 @@ function StockBarChart({ stockStats }: { stockStats: DashboardData["stockStats"]
   const sorted = [...stockStats].sort((a, b) => b.quantity - a.quantity).slice(0, 10);
 
   const option = {
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { left: "3%", right: "4%", bottom: "3%", containLabel: true },
-    xAxis: { type: "value" },
+    tooltip: { 
+      trigger: "axis", 
+      axisPointer: { type: "shadow" },
+      backgroundColor: "rgba(255, 255, 255, 0.95)",
+      borderColor: "#e5e7eb",
+      borderWidth: 1,
+      textStyle: { color: "#1f2937" },
+      padding: [12, 16],
+      borderRadius: 8,
+    },
+    grid: { left: "3%", right: "4%", bottom: "3%", top: "10%", containLabel: true },
+    xAxis: { 
+      type: "value",
+      axisLabel: { color: "#6b7280", fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
+    },
     yAxis: {
       type: "category",
       data: sorted.map((s) => s.modelName).reverse(),
-      axisLabel: { interval: 0 },
+      axisLabel: { interval: 0, color: "#6b7280", fontSize: 11 },
+      axisLine: { lineStyle: { color: "#e5e7eb" } },
+      axisTick: { show: false },
     },
     series: [
       {
         type: "bar",
         data: sorted.map((s) => s.quantity).reverse(),
-        itemStyle: { color: "#3b82f6", borderRadius: [0, 4, 4, 0] },
+        itemStyle: {
+          color: "#0d9488",
+          borderRadius: [0, 4, 4, 0],
+        },
+        barWidth: "45%",
       },
     ],
   };
@@ -257,11 +383,11 @@ export function DashboardClient({ data }: DashboardClientProps) {
   }, []);
 
   const statusCards = [
-    { label: "总设备数", value: data.total, icon: Monitor, color: "text-blue-600 bg-blue-100", status: "all" as const },
-    { label: "闲置", value: data.byStatus["IDLE"] ?? 0, icon: Package, color: "text-slate-600 bg-slate-100", status: "IDLE" as const },
-    { label: "在用", value: data.byStatus["IN_USE"] ?? 0, icon: Users, color: "text-green-600 bg-green-100", status: "IN_USE" as const },
-    { label: "维修中", value: data.byStatus["IN_MAINTENANCE"] ?? 0, icon: Wrench, color: "text-yellow-600 bg-yellow-100", status: "IN_MAINTENANCE" as const },
-    { label: "报废", value: data.byStatus["SCRAPPED"] ?? 0, icon: Trash2, color: "text-red-600 bg-red-100", status: "SCRAPPED" as const },
+    { label: "总设备数", value: data.total, status: "all" as const },
+    { label: "闲置", value: data.byStatus["IDLE"] ?? 0, status: "IDLE" as const },
+    { label: "在用", value: data.byStatus["IN_USE"] ?? 0, status: "IN_USE" as const },
+    { label: "维修中", value: data.byStatus["IN_MAINTENANCE"] ?? 0, status: "IN_MAINTENANCE" as const },
+    { label: "报废", value: data.byStatus["SCRAPPED"] ?? 0, status: "SCRAPPED" as const },
   ];
 
   const handleCardClick = (status: string) => {
@@ -300,22 +426,22 @@ export function DashboardClient({ data }: DashboardClientProps) {
         {statusCards.map((card, idx) => (
           <Card
             key={card.label}
-            className="cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 border-slate-100"
+            className="cursor-pointer hover:shadow-md transition-all duration-200 border-border/60 overflow-hidden"
             onClick={() => handleCardClick(card.status)}
             style={{
               opacity: visible ? 1 : 0,
-              transform: visible ? "translateY(0)" : "translateY(20px)",
-              transition: `opacity 0.5s ease-out ${idx * 0.1}s, transform 0.5s ease-out ${idx * 0.1}s`,
+              transform: visible ? "translateY(0)" : "translateY(12px)",
+              transition: `opacity 0.4s ease-out ${idx * 0.08}s, transform 0.4s ease-out ${idx * 0.08}s`,
             }}
           >
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className={`rounded-xl p-3 ${card.color} transition-transform duration-300 hover:scale-110`}>
-                  <card.icon className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold tracking-tight">{animatedValues[card.label] ?? card.value}</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">{card.label}</p>
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-stretch gap-4">
+                <div className={cn("w-1 rounded-full shrink-0", CARD_BAR_CLASS[card.status])} />
+                <div className="flex flex-col justify-center">
+                  <p className="text-3xl font-semibold tracking-tight tabular-nums leading-none">
+                    {animatedValues[card.label] ?? card.value}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">{card.label}</p>
                 </div>
               </div>
             </CardContent>

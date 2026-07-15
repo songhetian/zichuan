@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   allocateAssets,
@@ -12,6 +12,7 @@ import { purchaseStockIn } from "@/actions/component-stock.actions";
 import { createEmployee } from "@/actions/employee.actions";
 import { createDepartment } from "@/actions/department.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupFullData() {
   const dept = await prisma.department.create({ data: { name: "技术部" } });
@@ -78,6 +79,14 @@ async function createIdleAsset(template: any, name: string) {
 }
 
 describe("分配", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("allocateAssets — 从设备池分配闲置设备", () => {
     it("可以将闲置设备分配给员工", async () => {
       const { emp, template } = await setupFullData();
@@ -223,6 +232,14 @@ describe("分配", () => {
 });
 
 describe("归还", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("returnAssets — 批量归还设备", () => {
     it("可以将员工的在用设备批量归还", async () => {
       const { emp, template } = await setupFullData();
@@ -301,6 +318,14 @@ describe("归还", () => {
 });
 
 describe("调拨", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("transferAssets — 批量调拨设备", () => {
     it("可以将设备从一个员工调拨给另一个员工", async () => {
       const { emp, template } = await setupFullData();
@@ -401,6 +426,14 @@ describe("调拨", () => {
 });
 
 describe("升级", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("upgradeAssetComponent — 更换设备配件", () => {
     it("可以更换设备配件并更新库存", async () => {
       const { emp, template, cpu, ram } = await setupFullData();
@@ -512,6 +545,14 @@ describe("升级", () => {
 });
 
 describe("报废", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("scrapAssets — 批量报废设备", () => {
     it("可以将在用设备报废", async () => {
       const { emp, template } = await setupFullData();

@@ -2,16 +2,13 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { ActionResult } from "@/lib/types";
 
 const querySchema = z.object({
   assetIds: z.array(z.number()).optional(),
   employeeId: z.number().optional(),
   departmentName: z.string().optional(),
 });
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
 
 type LabelData = {
   assetNo: string;
@@ -34,7 +31,7 @@ export async function generateLabelData(
     return { success: false, error: "参数错误" };
   }
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (validated.data.assetIds != null && validated.data.assetIds.length > 0) {
     where.id = { in: validated.data.assetIds };
   }

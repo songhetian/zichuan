@@ -11,23 +11,21 @@ export default async function LabelsPage() {
     getDepartments(),
   ]);
 
-  // 补全 departmentName
-  let assets = assetsResult.success ? assetsResult.data : [];
-  if (assets.length > 0) {
-    const employeeIds = [...new Set(assets.filter((a) => a.employeeId).map((a) => a.employeeId!))];
-    const empMap = new Map<number, { departmentName: string }>();
-    if (employeeIds.length > 0) {
-      const emps = await prisma.employee.findMany({
-        where: { id: { in: employeeIds } },
-        select: { id: true, department: { select: { name: true } } },
-      });
-      emps.forEach((e) => empMap.set(e.id, { departmentName: e.department.name }));
-    }
-    assets = assets.map((a) => ({
-      ...a,
-      departmentName: a.employeeId ? empMap.get(a.employeeId)?.departmentName ?? "" : "",
-    }));
+  // 补全 departmentName —— 立即映射出带 departmentName 字段的类型，避免后续 as any
+  const baseAssets = assetsResult.success ? assetsResult.data : [];
+  const employeeIds = [...new Set(baseAssets.filter((a) => a.employeeId).map((a) => a.employeeId!))];
+  const empDeptMap = new Map<number, string>();
+  if (employeeIds.length > 0) {
+    const emps = await prisma.employee.findMany({
+      where: { id: { in: employeeIds } },
+      select: { id: true, department: { select: { name: true } } },
+    });
+    emps.forEach((e) => empDeptMap.set(e.id, e.department.name));
   }
+  const assets = baseAssets.map((a) => ({
+    ...a,
+    departmentName: a.employeeId ? empDeptMap.get(a.employeeId) ?? "" : "",
+  }));
 
   const assetItems = assets.map((a) => ({
     id: a.id,
@@ -35,7 +33,7 @@ export default async function LabelsPage() {
     name: a.name,
     status: a.status,
     employeeName: a.employeeName ?? "",
-    departmentName: (a as any).departmentName ?? "",
+    departmentName: a.departmentName,
   }));
 
   const employees = employeesResult.success

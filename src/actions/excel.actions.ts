@@ -2,10 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+import { ActionResult } from "@/lib/types";
+import { requireAuth } from "@/lib/auth";
 
 export async function exportAssetsToExcel(
   selectedFields?: string[]
@@ -168,6 +166,7 @@ function formatDate(): string {
 export async function importEmployeesFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
+  requireAuth();
   try {
     const wb = XLSX.read(input.buffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -228,6 +227,7 @@ export async function importEmployeesFromExcel(
 export async function importAssetsFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
+  requireAuth();
   try {
     const wb = XLSX.read(input.buffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -343,6 +343,7 @@ export async function importAssetsFromExcel(
 export async function importComponentModelsFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
+  requireAuth();
   try {
     const wb = XLSX.read(input.buffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
