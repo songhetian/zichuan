@@ -1,26 +1,21 @@
-import { defineConfig } from "vitest/config";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
-  test: {
-    globals: true,
-    environment: "node",
-    setupFiles: ["./tests/setup.ts"],
-    testTimeout: 10000,
-    fileParallelism: false,
-    env: {
-      DATABASE_URL: "mysql://root:root@localhost:3306/asset_manager_test",
-    },
-  },
+  plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      '@': path.resolve(__dirname, './src'),
     },
   },
-  esbuild: {
-    jsx: "automatic",
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    globals: true,
+    include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    coverage: {
+      reporter: ['text', 'json', 'html'],
+    },
   },
-});
+})
