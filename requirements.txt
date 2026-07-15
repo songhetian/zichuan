@@ -1,6 +1,0 @@
-PySide6
-pandas
-openpyxl
-pypinyin
-qrcode
-pillow

@@ -1,0 +1,227 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./test.db"
+}
+
+model ComponentCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  parentId  Int?
+  parent    ComponentCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  ComponentCategory[] @relation("CategoryTree")
+  models    ComponentModel[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ComponentModel {
+  id          Int      @id @default(autoincrement())
+  name        String
+  brand       String?
+  categoryId  Int
+  category    ComponentCategory @relation(fields: [categoryId], references: [id])
+  stock       ComponentStock?
+  stockLogs   ComponentStockLog[]
+  templateComponents TemplateComponent[]
+  assetComponents    AssetComponent[]
+  @@unique([categoryId, name])
+}
+
+model ComponentStock {
+  id        Int    @id @default(autoincrement())
+  modelId   Int    @unique
+  model     ComponentModel @relation(fields: [modelId], references: [id])
+  quantity  Int    @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model ComponentStockLog {
+  id         Int      @id @default(autoincrement())
+  modelId    Int
+  model      ComponentModel @relation(fields: [modelId], references: [id])
+  type       StockLogType
+  quantity   Int
+  operator   String
+  remark     String?
+  createdAt  DateTime @default(now())
+}
+
+enum StockLogType {
+  PURCHASE_IN
+  UPGRADE_RETURN
+  ASSET_BUILD
+  UPGRADE_USE
+}
+
+model AssetCategory {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  code        String   @unique
+  parentId    Int?
+  parent      AssetCategory?  @relation("AssetCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    AssetCategory[] @relation("AssetCategoryTree")
+  templates   DeviceTemplate[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DeviceTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String
+  categoryId  Int
+  category    AssetCategory @relation(fields: [categoryId], references: [id])
+  components  TemplateComponent[]
+  assets      Asset[]
+  unique      Boolean  @default(false) @map("is_unique")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([categoryId, name])
+}
+
+model TemplateComponent {
+  id          Int      @id @default(autoincrement())
+  templateId  Int
+  template    DeviceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  modelId     Int
+  model       ComponentModel @relation(fields: [modelId], references: [id])
+  quantity    Int      @default(1)
+  @@unique([templateId, modelId])
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  employees Employee[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Employee {
+  id          Int      @id @default(autoincrement())
+  employeeNo  String   @unique
+  name        String
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id])
+  phone       String?
+  email       String?
+  assets      Asset[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Asset {
+  id              Int      @id @default(autoincrement())
+  assetNo         String   @unique
+  name            String
+  templateId      Int
+  template        DeviceTemplate @relation(fields: [templateId], references: [id])
+  status          AssetStatus @default(IDLE)
+  employeeId      Int?
+  employee        Employee? @relation(fields: [employeeId], references: [id])
+  location        String?
+  purchaseDate    DateTime?
+  warrantyMonths  Int?
+  notes           String?
+  components      AssetComponent[]
+  lifecycleLogs   LifecycleLog[]
+  stocktakeRecords StocktakeRecord[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AssetComponent {
+  id        Int    @id @default(autoincrement())
+  assetId   Int
+  asset     Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  modelId   Int
+  model     ComponentModel @relation(fields: [modelId], references: [id])
+  quantity  Int    @default(1)
+  @@unique([assetId, modelId])
+}
+
+model LifecycleLog {
+  id         Int      @id @default(autoincrement())
+  assetId    Int
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  action     LifecycleAction
+  fromStatus AssetStatus?
+  toStatus   AssetStatus?
+  employeeId Int?
+  fromEmployeeId Int?
+  operator   String
+  remark     String?
+  createdAt  DateTime @default(now())
+}
+
+enum AssetStatus {
+  IDLE
+  IN_USE
+  IN_MAINTENANCE
+  SCRAPPED
+}
+
+enum LifecycleAction {
+  CREATED
+  ALLOCATED
+  RETURNED
+  TRANSFERRED
+  UPGRADED
+  MAINTENANCE_START
+  MAINTENANCE_DONE
+  SCRAPPED
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SystemLog {
+  id         Int      @id @default(autoincrement())
+  module     String
+  action     String
+  detail     String
+  operator   String
+  createdAt  DateTime @default(now())
+}
+
+model StocktakeSession {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  status      StocktakeStatus @default(OPEN)
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  records     StocktakeRecord[]
+}
+
+enum StocktakeStatus {
+  OPEN
+  COMPLETED
+}
+
+model StocktakeRecord {
+  id             Int      @id @default(autoincrement())
+  sessionId      Int
+  session        StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  asset          Asset    @relation(fields: [assetId], references: [id])
+  assetId        Int
+  expectedStatus AssetStatus
+  actualStatus   StocktakeResult
+  remark         String?
+  @@unique([sessionId, assetId])
+}
+
+enum StocktakeResult {
+  NORMAL
+  MISSING
+  EXTRA
+}

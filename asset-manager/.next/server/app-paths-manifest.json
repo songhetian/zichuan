@@ -1,7 +1,0 @@
-{
-  "/(main)/templates/page": "app/(main)/templates/page.js",
-  "/(main)/assets/page": "app/(main)/assets/page.js",
-  "/(main)/settings/asset-categories/page": "app/(main)/settings/asset-categories/page.js",
-  "/(main)/stats/page": "app/(main)/stats/page.js",
-  "/(main)/settings/component-categories/page": "app/(main)/settings/component-categories/page.js"
-}
