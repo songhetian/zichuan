@@ -1,8 +1,8 @@
 {
-  "/page": "app/page.js",
-  "/login/page": "app/login/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/(main)/templates/page": "app/(main)/templates/page.js",
+  "/(main)/settings/asset-categories/page": "app/(main)/settings/asset-categories/page.js",
+  "/(main)/settings/component-categories/page": "app/(main)/settings/component-categories/page.js",
   "/(main)/assets/page": "app/(main)/assets/page.js",
-  "/(main)/components/models/page": "app/(main)/components/models/page.js",
-  "/(main)/components/stock/page": "app/(main)/components/stock/page.js"
+  "/(main)/stats/page": "app/(main)/stats/page.js"
 }
