@@ -3,11 +3,68 @@ import { DashboardClient } from "./dashboard-client";
 import { getStockStats, getLifecycleTrend } from "@/actions/stats.actions";
 
 export default async function DashboardPage() {
-  // 获取设备统计数据
-  const statusGroups = await prisma.asset.groupBy({
-    by: ["status"],
-    _count: { id: true },
-  });
+  // 并行执行所有独立查询，避免串行等待
+  const thirtyDaysFromNow = new Date();
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+  const [
+    statusGroups,
+    assetsWithCategory,
+    lowStockItems,
+    recentLogs,
+    allAssetsWithWarranty,
+    stockResult,
+    trendResult,
+  ] = await Promise.all([
+    // 获取设备统计数据
+    prisma.asset.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    }),
+    // 获取分类分布
+    prisma.asset.findMany({
+      include: {
+        template: {
+          select: {
+            categoryId: true,
+            category: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    // 获取低库存配件（库存 < 5）
+    prisma.componentStock.findMany({
+      where: { quantity: { lt: 5 } },
+      include: {
+        model: { select: { name: true } },
+      },
+      take: 5,
+    }),
+    // 获取最近操作记录
+    prisma.lifecycleLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        asset: { select: { assetNo: true } },
+      },
+    }),
+    // 保修即将到期设备（30天内）
+    prisma.asset.findMany({
+      where: {
+        purchaseDate: { not: null },
+        warrantyMonths: { not: null },
+        status: { in: ["IDLE", "IN_USE"] },
+      },
+      select: {
+        purchaseDate: true,
+        warrantyMonths: true,
+      },
+    }),
+    // 配件库存统计
+    getStockStats(),
+    // 生命周期趋势
+    getLifecycleTrend({ months: 6 }),
+  ]);
 
   const byStatus: Record<string, number> = {
     IDLE: 0,
@@ -19,18 +76,6 @@ export default async function DashboardPage() {
     byStatus[g.status] = g._count.id;
   }
   const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
-
-  // 获取分类分布
-  const assetsWithCategory = await prisma.asset.findMany({
-    include: {
-      template: {
-        select: {
-          categoryId: true,
-          category: { select: { name: true } },
-        },
-      },
-    },
-  });
 
   const catMap = new Map<number, { name: string; count: number }>();
   for (const a of assetsWithCategory) {
@@ -48,24 +93,6 @@ export default async function DashboardPage() {
     count: v.count,
   }));
 
-  // 获取低库存配件（库存 < 5）
-  const lowStockItems = await prisma.componentStock.findMany({
-    where: { quantity: { lt: 5 } },
-    include: {
-      model: { select: { name: true } },
-    },
-    take: 5,
-  });
-
-  // 获取最近操作记录
-  const recentLogs = await prisma.lifecycleLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 10,
-    include: {
-      asset: { select: { assetNo: true } },
-    },
-  });
-
   // 构建待办任务
   const pendingTasks: {
     type: "allocate" | "maintenance" | "low_stock" | "warranty";
@@ -74,7 +101,6 @@ export default async function DashboardPage() {
     count?: number;
   }[] = [];
 
-  // 待分配设备
   if (byStatus.IDLE > 0) {
     pendingTasks.push({
       type: "allocate",
@@ -84,7 +110,6 @@ export default async function DashboardPage() {
     });
   }
 
-  // 维修中设备
   if (byStatus.IN_MAINTENANCE > 0) {
     pendingTasks.push({
       type: "maintenance",
@@ -94,7 +119,6 @@ export default async function DashboardPage() {
     });
   }
 
-  // 库存不足配件
   if (lowStockItems.length > 0) {
     pendingTasks.push({
       type: "low_stock",
@@ -103,21 +127,6 @@ export default async function DashboardPage() {
       count: lowStockItems.length,
     });
   }
-
-  // 保修即将到期设备（30天内）
-  const thirtyDaysFromNow = new Date();
-  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-  const allAssetsWithWarranty = await prisma.asset.findMany({
-    where: {
-      purchaseDate: { not: null },
-      warrantyMonths: { not: null },
-      status: { in: ["IDLE", "IN_USE"] },
-    },
-    select: {
-      purchaseDate: true,
-      warrantyMonths: true,
-    },
-  });
 
   let expiringSoonCount = 0;
   for (const asset of allAssetsWithWarranty) {
@@ -138,12 +147,6 @@ export default async function DashboardPage() {
       count: expiringSoonCount,
     });
   }
-
-  // 获取配件库存和生命周期趋势（来自统计报表）
-  const [stockResult, trendResult] = await Promise.all([
-    getStockStats(),
-    getLifecycleTrend({ months: 6 }),
-  ]);
 
   return (
     <DashboardClient

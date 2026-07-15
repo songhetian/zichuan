@@ -2,22 +2,19 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { ActionResult } from "@/lib/types";
 
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+type AssetStatsResult = {
+  total: number;
+  byStatus: Record<string, number>;
+  byCategory?: { categoryId: number; categoryName: string; count: number }[];
+  byDepartment?: { departmentId: number; departmentName: string; count: number }[];
+  byEmployee?: { employeeId: number; employeeName: string; departmentName: string; count: number }[];
+};
 
 export async function getAssetStats(
   input: { groupBy?: "category" | "department" | "employee" } = {}
-): Promise<
-  ActionResult<{
-    total: number;
-    byStatus: Record<string, number>;
-    byCategory?: { categoryId: number; categoryName: string; count: number }[];
-    byDepartment?: { departmentId: number; departmentName: string; count: number }[];
-    byEmployee?: { employeeId: number; employeeName: string; departmentName: string; count: number }[];
-  }>
-> {
+): Promise<ActionResult<AssetStatsResult>> {
   const statusGroups = await prisma.asset.groupBy({
     by: ["status"],
     _count: { id: true },
@@ -35,7 +32,7 @@ export async function getAssetStats(
 
   const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
 
-  const result: any = { total, byStatus };
+  const result: AssetStatsResult = { total, byStatus };
 
   if (input.groupBy === "category") {
     const catGroups = await prisma.asset.findMany({

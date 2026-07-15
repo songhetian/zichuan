@@ -4,6 +4,7 @@ import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { createSession, destroySession, requireAuth } from "@/lib/auth";
 
 const loginSchema = z.object({
   username: z.string().min(1, "用户名不能为空"),
@@ -48,15 +49,24 @@ export async function login(
       return { success: false, error: "用户名或密码错误" };
     }
 
+    await createSession(admin.id, admin.username);
+
     return { success: true, data: { username: admin.username } };
   } catch (e) {
     return { success: false, error: "登录失败，请稍后重试" };
   }
 }
 
+export async function logout(): Promise<ActionResult<{ success: true }>> {
+  requireAuth();
+  destroySession();
+  return { success: true, data: { success: true } };
+}
+
 export async function changePassword(
   input: z.infer<typeof changePasswordSchema>
 ): Promise<ActionResult<{ success: true }>> {
+  requireAuth();
   const validated = changePasswordSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };

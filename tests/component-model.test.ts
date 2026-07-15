@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   createComponentModel,
@@ -9,6 +9,7 @@ import {
 } from "@/actions/component-model.actions";
 import { createComponentCategory } from "@/actions/component-category.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function createTestCategory(name = "CPU") {
   const result = await createComponentCategory({ name, parentId: null });
@@ -16,6 +17,14 @@ async function createTestCategory(name = "CPU") {
 }
 
 describe("配件型号 CRUD", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createComponentModel", () => {
     it("可以创建配件型号并自动初始化库存为 0", async () => {
       const cat = await createTestCategory();

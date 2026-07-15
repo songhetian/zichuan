@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   createStocktakeSession,
@@ -8,6 +8,7 @@ import {
   completeStocktakeSession,
 } from "@/actions/stocktake.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupAssetData() {
   const assetCat = await prisma.assetCategory.create({
@@ -31,6 +32,14 @@ async function setupAssetData() {
 }
 
 describe("库存盘点", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createStocktakeSession", () => {
     it("可以创建盘点任务并自动生成盘点明细", async () => {
       const { assets } = await setupAssetData();

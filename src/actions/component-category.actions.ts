@@ -1,8 +1,10 @@
 "use server";
 
 import { ActionResult } from "@/lib/types";
+import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 // ============================================================
 // Schema 校验
@@ -25,6 +27,7 @@ const updateSchema = z.object({
 export async function createComponentCategory(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
+  requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -52,16 +55,14 @@ export async function createComponentCategory(
     });
     return { success: true, data: category };
   } catch (e) {
-    // 唯一约束冲突
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "分类名称已存在" };
-    }
-    return { success: false, error: "创建失败" };
+    return handleUniqueViolation(e, { name: "分类名称已存在" }, "创建失败");
   }
 }
 
+type ComponentCategoryTree = { id: number; name: string; parentId: number | null; children?: ComponentCategoryTree[] };
+
 export async function getComponentCategories(): Promise<
-  ActionResult<{ id: number; name: string; parentId: number | null; children?: any[] }[]>
+  ActionResult<ComponentCategoryTree[]>
 > {
   const categories = await prisma.componentCategory.findMany({
     orderBy: { id: "asc" },
@@ -87,6 +88,7 @@ export async function updateComponentCategory(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
+  requireAuth();
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -111,16 +113,14 @@ export async function updateComponentCategory(
     });
     return { success: true, data: category };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "分类名称已存在" };
-    }
-    return { success: false, error: "更新失败" };
+    return handleUniqueViolation(e, { name: "分类名称已存在" }, "更新失败");
   }
 }
 
 export async function deleteComponentCategory(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
   // 检查分类是否存在
   const existing = await prisma.componentCategory.findUnique({ where: { id } });
   if (!existing) {

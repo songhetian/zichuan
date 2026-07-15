@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   createDeviceTemplate,
@@ -8,6 +8,7 @@ import {
   deleteDeviceTemplate,
 } from "@/actions/device-template.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupTestData() {
   const assetCat = await prisma.assetCategory.create({
@@ -26,6 +27,14 @@ async function setupTestData() {
 }
 
 describe("设备模板 CRUD", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createDeviceTemplate", () => {
     it("可以创建带有 BOM 配件清单的设备模板", async () => {
       const { assetCat, cpu, ram } = await setupTestData();

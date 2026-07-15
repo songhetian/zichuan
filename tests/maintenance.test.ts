@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   maintenanceStart,
   maintenanceComplete,
 } from "@/actions/lifecycle.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 // ============================================================
 // 测试 seam：lifecycle actions — 送修 / 维修完成
@@ -32,6 +33,14 @@ async function setupIdleAsset() {
 }
 
 describe("送修", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("maintenanceStart — 送修设备", () => {
     it("闲置设备可以送修", async () => {
       const { asset } = await setupIdleAsset();
@@ -146,6 +155,14 @@ describe("送修", () => {
 });
 
 describe("维修完成", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("maintenanceComplete — 维修完成", () => {
     it("维修中的设备可以标记完成", async () => {
       const { asset } = await setupIdleAsset();

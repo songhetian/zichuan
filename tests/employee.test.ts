@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   createDepartment,
@@ -15,8 +15,17 @@ import {
   deleteEmployee,
 } from "@/actions/employee.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 describe("部门 CRUD", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createDepartment", () => {
     it("可以创建部门", async () => {
       const result = await createDepartment({ name: "技术部" });
@@ -113,6 +122,14 @@ describe("部门 CRUD", () => {
 });
 
 describe("员工 CRUD", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   async function setupDept(name = "技术部") {
     const result = await createDepartment({ name });
     return unwrap(result);

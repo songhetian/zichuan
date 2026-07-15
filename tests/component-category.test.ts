@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   createComponentCategory,
@@ -8,8 +8,17 @@ import {
   deleteComponentCategory,
 } from "@/actions/component-category.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 describe("配件分类 CRUD", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createComponentCategory", () => {
     it("可以创建一级分类", async () => {
       const result = await createComponentCategory({

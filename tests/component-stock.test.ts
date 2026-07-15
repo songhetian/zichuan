@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   purchaseStockIn,
@@ -11,6 +11,7 @@ import {
 import { createComponentCategory } from "@/actions/component-category.actions";
 import { createComponentModel } from "@/actions/component-model.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupTestModel() {
   const cat = await createComponentCategory({ name: "CPU", parentId: null });
@@ -23,6 +24,14 @@ async function setupTestModel() {
 }
 
 describe("配件库存出入库", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("purchaseStockIn（采购入库）", () => {
     it("采购入库增加库存数量并记录流水", async () => {
       const model = await setupTestModel();

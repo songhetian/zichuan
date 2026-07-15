@@ -1,8 +1,10 @@
 "use server";
 
 import { ActionResult } from "@/lib/types";
+import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 // ============================================================
 // Schema 校验
@@ -33,11 +35,15 @@ type ComponentModelWithStock = {
   stock: number;
 };
 
-// ============================================================
-// Helpers
-// ============================================================
+type PrismaComponentModel = {
+  id: number;
+  name: string;
+  brand: string | null;
+  categoryId: number;
+  stock: { quantity: number } | null;
+};
 
-function formatModel(model: any): ComponentModelWithStock {
+function formatModel(model: PrismaComponentModel): ComponentModelWithStock {
   return {
     id: model.id,
     name: model.name,
@@ -54,6 +60,7 @@ function formatModel(model: any): ComponentModelWithStock {
 export async function createComponentModel(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<ComponentModelWithStock>> {
+  requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -83,10 +90,7 @@ export async function createComponentModel(
     });
     return { success: true, data: formatModel(model) };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "该分类下已存在相同名称的型号" };
-    }
-    return { success: false, error: "创建失败" };
+    return handleUniqueViolation(e, { name: "该分类下已存在相同名称的型号" }, "创建失败");
   }
 }
 
@@ -100,7 +104,7 @@ export async function getComponentModels(
 
   const { categoryId, keyword } = validated.data;
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (categoryId != null) {
     where.categoryId = categoryId;
   }
@@ -137,6 +141,7 @@ export async function updateComponentModel(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<ComponentModelWithStock>> {
+  requireAuth();
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -166,16 +171,14 @@ export async function updateComponentModel(
     });
     return { success: true, data: formatModel(model) };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "该分类下已存在相同名称的型号" };
-    }
-    return { success: false, error: "更新失败" };
+    return handleUniqueViolation(e, { name: "该分类下已存在相同名称的型号" }, "更新失败");
   }
 }
 
 export async function deleteComponentModel(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
   // 检查型号是否存在
   const existing = await prisma.componentModel.findUnique({ where: { id } });
   if (!existing) {

@@ -103,7 +103,7 @@ const columns: ColumnDef<Employee & { _departments: { id: number; name: string }
       const emp = row.original;
       return (
         <div className="flex items-center gap-1 justify-center">
-          <EmployeeActionButtons employee={emp} departments={(emp as any)._departments} />
+          <EmployeeActionButtons employee={emp} departments={emp._departments} />
         </div>
       );
     },

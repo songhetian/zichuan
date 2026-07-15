@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   allocateAssets,
@@ -12,6 +12,7 @@ import { createAsset } from "@/actions/asset.actions";
 import { createEmployee } from "@/actions/employee.actions";
 import { getSystemLogs } from "@/actions/system-log.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 // ============================================================
 // 测试 seam：lifecycle / stock actions 的公开接口
@@ -68,6 +69,14 @@ async function createIdleAsset(template: any, name: string) {
 }
 
 describe("系统日志自动记录", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("分配操作自动记录系统日志", () => {
     it("分配设备后自动生成系统日志", async () => {
       const { emp, template } = await setupFullData();

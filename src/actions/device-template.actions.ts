@@ -1,7 +1,10 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
+import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 // ============================================================
 // Schema 校验
@@ -34,10 +37,6 @@ const querySchema = z.object({
 // 统一返回类型
 // ============================================================
 
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
-
 type TemplateWithComponents = {
   id: number;
   name: string;
@@ -52,13 +51,29 @@ type TemplateWithComponents = {
   }[];
 };
 
-function formatTemplate(template: any): TemplateWithComponents {
+type PrismaTemplate = {
+  id: number;
+  name: string;
+  categoryId: number;
+  unique: boolean;
+  components: {
+    id: number;
+    modelId: number;
+    quantity: number;
+    model: { name: string; brand: string | null } | null;
+  }[];
+};
+
+function formatTemplate(template: PrismaTemplate | null): TemplateWithComponents {
+  if (!template) {
+    return { id: 0, name: "", categoryId: 0, unique: false, components: [] };
+  }
   return {
     id: template.id,
     name: template.name,
     categoryId: template.categoryId,
     unique: template.unique ?? false,
-    components: (template.components ?? []).map((c: any) => ({
+    components: template.components.map((c) => ({
       id: c.id,
       modelId: c.modelId,
       quantity: c.quantity,
@@ -94,6 +109,7 @@ async function validateComponents(components: { modelId: number }[]): Promise<st
 export async function createDeviceTemplate(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<TemplateWithComponents>> {
+  requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -141,10 +157,7 @@ export async function createDeviceTemplate(
 
     return { success: true, data: formatTemplate(template) };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "该分类下已存在相同名称的模板" };
-    }
-    return { success: false, error: "创建失败" };
+    return handleUniqueViolation(e, { name: "该分类下已存在相同名称的模板" }, "创建失败");
   }
 }
 
@@ -156,7 +169,7 @@ export async function getDeviceTemplates(
     return { success: false, error: "参数错误" };
   }
 
-  const where: any = {};
+  const where: Record<string, unknown> = {};
   if (validated.data.categoryId != null) {
     where.categoryId = validated.data.categoryId;
   }
@@ -197,6 +210,7 @@ export async function updateDeviceTemplate(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<TemplateWithComponents>> {
+  requireAuth();
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -226,14 +240,13 @@ export async function updateDeviceTemplate(
 
   try {
     const template = await prisma.$transaction(async (tx) => {
-      // 更新基本字段
-      const data: any = {};
-      if (validated.data.name != null) data.name = validated.data.name;
-      if (validated.data.categoryId != null) data.categoryId = validated.data.categoryId;
-      if (validated.data.unique != null) data.unique = validated.data.unique;
+      const updateData: Partial<Pick<typeof validated.data, 'name' | 'categoryId' | 'unique'>> = {};
+      if (validated.data.name != null) updateData.name = validated.data.name;
+      if (validated.data.categoryId != null) updateData.categoryId = validated.data.categoryId;
+      if (validated.data.unique != null) updateData.unique = validated.data.unique;
 
-      if (Object.keys(data).length > 0) {
-        await tx.deviceTemplate.update({ where: { id }, data });
+      if (Object.keys(updateData).length > 0) {
+        await tx.deviceTemplate.update({ where: { id }, data: updateData });
       }
 
       // 如果提供了 components，替换 BOM
@@ -262,16 +275,14 @@ export async function updateDeviceTemplate(
 
     return { success: true, data: formatTemplate(template) };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "该分类下已存在相同名称的模板" };
-    }
-    return { success: false, error: "更新失败" };
+    return handleUniqueViolation(e, { name: "该分类下已存在相同名称的模板" }, "更新失败");
   }
 }
 
 export async function deleteDeviceTemplate(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
   // 检查模板是否存在
   const existing = await prisma.deviceTemplate.findUnique({ where: { id } });
   if (!existing) {

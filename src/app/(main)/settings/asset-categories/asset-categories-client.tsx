@@ -5,24 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { TreeTable, type TreeNode } from "@/components/features/tree-table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ConfirmDialog } from "@/components/features/confirm-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   createAssetCategory,
@@ -30,139 +13,11 @@ import {
   updateAssetCategory,
   moveAssetCategory,
 } from "@/actions/asset-category.actions";
+import { ActionButtons } from "@/components/features/action-buttons";
+import { SimpleCrudDialog, type FieldConfig } from "@/components/features/simple-crud-dialog";
 
 interface Category extends TreeNode {
   code: string;
-}
-
-function AssetActionButtons({
-  category,
-  onRefresh,
-}: {
-  category: Category;
-  onRefresh: () => void;
-}) {
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editCode, setEditCode] = useState("");
-  const [editLoading, setEditLoading] = useState(false);
-  const { toast } = useToast();
-
-  const handleDelete = async () => {
-    const result = await deleteAssetCategory(category.id);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      onRefresh();
-    } else {
-      toast({
-        title: "删除失败",
-        description: result.error,
-        variant: "destructive",
-      });
-    }
-    setDeleteOpen(false);
-  };
-
-  const handleEditOpen = (v: boolean) => {
-    if (v) {
-      setEditName(category.name);
-      setEditCode(category.code);
-    }
-    setEditOpen(v);
-  };
-
-  const handleEdit = async () => {
-    if (!editName.trim()) return;
-    setEditLoading(true);
-    const result = await updateAssetCategory(category.id, {
-      name: editName.trim(),
-      code: editCode.trim() || undefined,
-    });
-    setEditLoading(false);
-    if (result.success) {
-      toast({ title: "更新成功" });
-      setEditOpen(false);
-      onRefresh();
-    } else {
-      toast({
-        title: "更新失败",
-        description: result.error,
-        variant: "destructive",
-      });
-    }
-  };
-
-  return (
-    <>
-      <div className="flex items-center gap-1 justify-center">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          title="编辑"
-          onClick={() => handleEditOpen(true)}
-        >
-          <Pencil className="h-4 w-4 text-primary" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          title="删除"
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      </div>
-      <ConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="确认删除"
-        description={`确定要删除分类「${category.name}」吗？`}
-        confirmText="删除"
-        variant="destructive"
-        onConfirm={handleDelete}
-      />
-      <Dialog open={editOpen} onOpenChange={handleEditOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>编辑分类</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>分类名称</Label>
-              <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="分类名称"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>分类编码</Label>
-              <Input
-                value={editCode}
-                onChange={(e) => setEditCode(e.target.value)}
-                placeholder="自动生成的编码"
-              />
-              <p className="text-xs text-muted-foreground">留空则保持原编码</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>
-              取消
-            </Button>
-            <Button
-              onClick={handleEdit}
-              disabled={editLoading || !editName.trim()}
-            >
-              {editLoading ? "保存中..." : "确认"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
 }
 
 export function AssetCategoriesClient({
@@ -172,9 +27,6 @@ export function AssetCategoriesClient({
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
-  const [catName, setCatName] = useState("");
-  const [parentId, setParentId] = useState("");
-  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const handleRefresh = () => router.refresh();
@@ -200,41 +52,58 @@ export function AssetCategoriesClient({
     }
   };
 
-  const handleCreate = async () => {
-    if (!catName.trim()) return;
-    setLoading(true);
+  const topLevelCategories = initialCategories.filter((c) => c.parentId == null);
+  const parentOptions = [
+    { value: "", label: "无父分类" },
+    ...topLevelCategories.map((cat) => ({ value: cat.id.toString(), label: cat.name })),
+  ];
+
+  const createFields: FieldConfig[] = [
+    { key: "parentId", label: "父分类", type: "select", options: parentOptions, optional: true, placeholder: "无父分类（顶级分类）" },
+    { key: "name", label: "分类名称", type: "text", placeholder: "如：笔记本电脑" },
+  ];
+
+  const editFields: FieldConfig[] = [
+    { key: "name", label: "分类名称", type: "text", placeholder: "分类名称" },
+    { key: "code", label: "分类编码", type: "text", placeholder: "自动生成的编码", optional: true, hint: "留空则保持原编码" },
+  ];
+
+  const handleCreate = async (values: Record<string, string>) => {
     const result = await createAssetCategory({
-      name: catName.trim(),
-      parentId: parentId ? Number(parentId) : undefined,
+      name: values.name,
+      parentId: values.parentId ? Number(values.parentId) : undefined,
     });
-    setLoading(false);
     if (result.success) {
-      toast({ title: "创建成功" });
-      setCreateOpen(false);
-      setCatName("");
-      setParentId("");
       router.refresh();
-    } else {
-      toast({
-        title: "创建失败",
-        description: result.error,
-        variant: "destructive",
-      });
     }
+    return result;
   };
 
-  const topLevelCategories = initialCategories.filter(
-    (c) => c.parentId == null
-  );
+  const handleEdit = async (category: Category, values: Record<string, string>) => {
+    const result = await updateAssetCategory(category.id, {
+      name: values.name,
+      code: values.code || undefined,
+    });
+    if (result.success) {
+      router.refresh();
+    }
+    return result;
+  };
+
+  const handleDelete = async (category: Category) => {
+    const result = await deleteAssetCategory(category.id);
+    if (result.success) {
+      router.refresh();
+    }
+    return result;
+  };
 
   const columns = [
     { key: "name", header: "分类名称" },
     {
       key: "code",
       header: "编码",
-      render: (node: Category) => (
-        <span className="font-mono text-sm">{node.code}</span>
-      ),
+      render: (node: Category) => <span className="font-mono text-sm">{node.code}</span>,
     },
   ];
 
@@ -244,16 +113,8 @@ export function AssetCategoriesClient({
         title="设备分类"
         description="管理设备分类信息"
         action={
-          <Button
-            size="sm"
-            onClick={() => {
-              setCatName("");
-              setParentId("");
-              setCreateOpen(true);
-            }}
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            新建
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 h-4 w-4" />新建
           </Button>
         }
       />
@@ -261,60 +122,29 @@ export function AssetCategoriesClient({
         data={initialCategories}
         columns={columns}
         actions={(node) => (
-          <AssetActionButtons category={node} onRefresh={handleRefresh} />
+          <ActionButtons
+            id={node.id}
+            name={node.name}
+            onEdit={(values) => handleEdit(node as Category, values)}
+            onDelete={() => handleDelete(node as Category)}
+            editTitle="编辑分类"
+            editFields={editFields}
+            initialValues={{ name: (node as Category).name, code: (node as Category).code }}
+          />
         )}
         emptyText="暂无分类数据"
         draggable
         onDragEnd={handleDragEnd}
       />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>新建设备分类</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>父分类（可选）</Label>
-              <Select value={parentId} onValueChange={setParentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="无父分类（顶级分类）" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">无父分类</SelectItem>
-                  {topLevelCategories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id.toString()}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>分类名称</Label>
-              <Input
-                value={catName}
-                onChange={(e) => setCatName(e.target.value)}
-                placeholder="如：笔记本电脑"
-              />
-              <p className="text-xs text-muted-foreground">
-                编码将根据名称自动生成
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              取消
-            </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={loading || !catName.trim()}
-            >
-              {loading ? "创建中..." : "确认"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SimpleCrudDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        mode="create"
+        title="新建设备分类"
+        fields={createFields}
+        onSubmit={handleCreate}
+      />
     </div>
   );
 }

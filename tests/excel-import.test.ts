@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   importEmployeesFromExcel,
@@ -6,6 +6,7 @@ import {
 } from "@/actions/excel.actions";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 // ============================================================
 // 测试 seam：excel actions — 导入
@@ -20,6 +21,14 @@ function createExcelBuffer(rows: Record<string, unknown>[]): Buffer {
 }
 
 describe("Excel 导入", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("importEmployeesFromExcel — 导入员工", () => {
     it("可以从 Excel 导入员工数据", async () => {
       // 先创建部门

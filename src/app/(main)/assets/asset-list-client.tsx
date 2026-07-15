@@ -59,6 +59,24 @@ import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.acti
 // Types
 // ============================================================
 
+interface AssetComponent {
+  id: number;
+  modelId: number;
+  modelName: string;
+  modelBrand: string | null;
+  quantity: number;
+}
+
+interface AssetLifecycleLog {
+  id: number;
+  action: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  operator: string;
+  remark: string | null;
+  createdAt: Date;
+}
+
 interface AssetItem {
   id: number;
   assetNo: string;
@@ -75,8 +93,8 @@ interface AssetItem {
   warrantyMonths: number | null;
   location: string | null;
   notes: string | null;
-  components: any[];
-  lifecycleLogs: any[];
+  components: AssetComponent[];
+  lifecycleLogs: AssetLifecycleLog[];
 }
 
 interface AssetListClientProps {
@@ -489,7 +507,7 @@ export function AssetListClient({
       !keyword ||
       asset.assetNo.toLowerCase().includes(keyword.toLowerCase()) ||
       asset.name.toLowerCase().includes(keyword.toLowerCase()) ||
-      (asset.components ?? []).some((c: any) =>
+      asset.components.some((c) =>
         (c.modelName ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
         (c.modelBrand ?? "").toLowerCase().includes(keyword.toLowerCase())
       );

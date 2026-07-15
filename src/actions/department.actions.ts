@@ -1,7 +1,10 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
+import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 const createSchema = z.object({
   name: z.string().min(1, "部门名称不能为空"),
@@ -11,13 +14,10 @@ const updateSchema = z.object({
   name: z.string().min(1, "部门名称不能为空").optional(),
 });
 
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
-
 export async function createDepartment(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string }>> {
+  requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -30,10 +30,7 @@ export async function createDepartment(
     });
     return { success: true, data: dept };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "部门名称已存在" };
-    }
-    return { success: false, error: "创建失败" };
+    return handleUniqueViolation(e, { name: "部门名称已存在" }, "创建失败");
   }
 }
 
@@ -64,6 +61,7 @@ export async function updateDepartment(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<{ id: number; name: string }>> {
+  requireAuth();
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -82,16 +80,14 @@ export async function updateDepartment(
     });
     return { success: true, data: dept };
   } catch (e) {
-    if (e instanceof Error && "code" in (e as any) && (e as any).code === "P2002") {
-      return { success: false, error: "部门名称已存在" };
-    }
-    return { success: false, error: "更新失败" };
+    return handleUniqueViolation(e, { name: "部门名称已存在" }, "更新失败");
   }
 }
 
 export async function deleteDepartment(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
+  requireAuth();
   const existing = await prisma.department.findUnique({ where: { id } });
   if (!existing) {
     return { success: false, error: "部门不存在" };

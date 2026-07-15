@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { LogOut, Menu } from "lucide-react"
 import { CommandPalette } from "@/components/features/command-palette"
+import { logout } from "@/actions/auth.actions"
 
 export function Header({ mobileMenuOpen, onMobileMenuToggle }: { mobileMenuOpen?: boolean; onMobileMenuToggle?: () => void }) {
-  const { username, logout } = useAuthStore()
+  const { username } = useAuthStore()
   const router = useRouter()
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     router.push("/login")
   }
 

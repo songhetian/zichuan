@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   createAsset,
@@ -9,6 +9,7 @@ import {
 } from "@/actions/asset.actions";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupTestData() {
   const assetCat = await prisma.assetCategory.create({
@@ -42,6 +43,14 @@ async function setupTestData() {
 }
 
 describe("设备实体 CRUD", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("createAsset", () => {
     it("可以按模板生成设备并自动分配编号", async () => {
       const { template, cpu, ram } = await setupTestData();

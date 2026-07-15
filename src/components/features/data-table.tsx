@@ -110,7 +110,7 @@ export function DataTable<TData, TValue>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="bg-muted/50 hover:bg-muted/50">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="text-center h-11 font-medium">
+                  <TableHead key={header.id} className="text-center font-medium min-w-[80px]">
                     {header.isPlaceholder
                       ? null
                       : header.column.getCanSort() ? (
@@ -118,12 +118,8 @@ export function DataTable<TData, TValue>({
                             onClick={header.column.getToggleSortingHandler()}
                             className="flex items-center justify-center gap-1 w-full h-full text-muted-foreground hover:text-foreground transition-colors"
                           >
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getIsSorted() ? (
-                              <ArrowUpDown className={`h-4 w-4 ${header.column.getIsSorted() === 'asc' ? 'rotate-0' : 'rotate-180'}`} />
-                            ) : (
-                              <ArrowUpDown className="h-4 w-4 opacity-0 hover:opacity-50 transition-opacity" />
-                            )}
+                            <span className="whitespace-nowrap">{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                            <ArrowUpDown className={`h-4 w-4 shrink-0 ${header.column.getIsSorted() === 'asc' ? 'rotate-0' : header.column.getIsSorted() === 'desc' ? 'rotate-180' : 'opacity-0 hover:opacity-50'}`} />
                           </button>
                         ) : (
                           flexRender(header.column.columnDef.header, header.getContext())
@@ -140,7 +136,7 @@ export function DataTable<TData, TValue>({
                   <TableRow
                     key={`row-${row.id}`}
                     data-state={row.getIsSelected() && "selected"}
-                    className={`group hover:bg-accent/60 transition-all duration-150 ${renderExpandedRow ? 'cursor-pointer' : ''}`}
+                    className={`group hover:bg-accent/80 transition-all duration-200 ${renderExpandedRow ? 'cursor-pointer' : ''} ${row.getIsSelected() ? 'bg-primary/10 border-l-2 border-l-primary' : ''}`}
                     onClick={renderExpandedRow ? () => row.toggleExpanded() : undefined}
                   >
                     {row.getVisibleCells().map((cell) => (
