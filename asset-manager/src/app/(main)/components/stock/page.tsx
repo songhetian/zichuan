@@ -17,5 +17,13 @@ export default async function StockLogPage() {
       }))
     : [];
 
-  return <StockLogClient logs={logs} />;
+  const componentModels = modelsResult.success
+    ? modelsResult.data.map((m) => ({
+        id: m.id,
+        name: m.name,
+        brand: m.brand,
+      }))
+    : [];
+
+  return <StockLogClient logs={logs} componentModels={componentModels} />;
 }

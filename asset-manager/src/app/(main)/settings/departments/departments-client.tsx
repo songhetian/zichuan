@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,41 +35,59 @@ import {
   deleteDepartment,
 } from "@/actions/department.actions";
 
+const departmentSchema = z.object({
+  name: z.string().min(1, "部门名称不能为空"),
+});
+
+type DepartmentFormValues = z.infer<typeof departmentSchema>;
+
 export function DepartmentsClient({ initialDepartments }: { initialDepartments: { id: number; name: string }[] }) {
   const [departments, setDepartments] = useState(initialDepartments);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
+  const createForm = useForm<DepartmentFormValues>({
+    resolver: zodResolver(departmentSchema),
+    defaultValues: {
+      name: "",
+    },
+  });
+
+  const editForm = useForm<DepartmentFormValues>({
+    resolver: zodResolver(departmentSchema),
+    defaultValues: {
+      name: "",
+    },
+  });
+
+  const handleCreate = async (values: DepartmentFormValues) => {
     setLoading(true);
-    const result = await createDepartment({ name: name.trim() });
+    const result = await createDepartment({ name: values.name.trim() });
     setLoading(false);
     if (result.success) {
       toast({ title: "创建成功" });
       setDepartments([...departments, result.data]);
       setCreateOpen(false);
-      setName("");
+      createForm.reset();
     } else {
       toast({ title: "创建失败", description: result.error, variant: "destructive" });
     }
   };
 
-  const handleEdit = async () => {
-    if (!currentId || !name.trim()) return;
+  const handleEdit = async (values: DepartmentFormValues) => {
+    if (!currentId) return;
     setLoading(true);
-    const result = await updateDepartment(currentId, { name: name.trim() });
+    const result = await updateDepartment(currentId, { name: values.name.trim() });
     setLoading(false);
     if (result.success) {
       toast({ title: "更新成功" });
       setDepartments(departments.map((d) => (d.id === currentId ? { ...d, name: result.data.name } : d)));
       setEditOpen(false);
-      setName("");
+      editForm.reset();
       setCurrentId(null);
     } else {
       toast({ title: "更新失败", description: result.error, variant: "destructive" });
@@ -88,7 +109,7 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
 
   const openEdit = (dept: { id: number; name: string }) => {
     setCurrentId(dept.id);
-    setName(dept.name);
+    editForm.reset({ name: dept.name });
     setEditOpen(true);
   };
 
@@ -107,7 +128,7 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>部门列表</CardTitle>
-          <Button size="sm" onClick={() => { setName(""); setCreateOpen(true); }}>
+          <Button size="sm" onClick={() => { createForm.reset(); setCreateOpen(true); }}>
             <Plus className="mr-1 h-4 w-4" />新建
           </Button>
         </CardHeader>
@@ -143,16 +164,19 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
               <DialogHeader>
                 <DialogTitle>新建部门</DialogTitle>
               </DialogHeader>
-              <div className="space-y-2">
+              <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-2">
                 <Label>部门名称</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入部门名称" />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-                <Button onClick={handleCreate} disabled={loading || !name.trim()}>
-                  {loading ? "创建中..." : "确认"}
-                </Button>
-              </DialogFooter>
+                <Input {...createForm.register("name")} placeholder="请输入部门名称" />
+                {createForm.formState.errors.name && (
+                  <p className="text-sm text-destructive">{createForm.formState.errors.name.message}</p>
+                )}
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+                  <Button type="submit" disabled={loading}>
+                    {loading ? "创建中..." : "确认"}
+                  </Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
 
@@ -161,16 +185,19 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
               <DialogHeader>
                 <DialogTitle>编辑部门</DialogTitle>
               </DialogHeader>
-              <div className="space-y-2">
+              <form onSubmit={editForm.handleSubmit(handleEdit)} className="space-y-2">
                 <Label>部门名称</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-                <Button onClick={handleEdit} disabled={loading || !name.trim()}>
-                  {loading ? "更新中..." : "确认"}
-                </Button>
-              </DialogFooter>
+                <Input {...editForm.register("name")} />
+                {editForm.formState.errors.name && (
+                  <p className="text-sm text-destructive">{editForm.formState.errors.name.message}</p>
+                )}
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
+                  <Button type="submit" disabled={loading}>
+                    {loading ? "更新中..." : "确认"}
+                  </Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
 

@@ -43,6 +43,7 @@ import {
   scrapAssets,
   returnAssets,
 } from "@/actions/lifecycle.actions";
+import { LifecycleTimeline } from "@/components/features/lifecycle-timeline";
 
 interface ComponentModel {
   id: number;
@@ -360,61 +361,14 @@ export function AssetDetailClient({ asset, componentModels }: AssetDetailClientP
           </Card>
         </TabsContent>
 
-        {/* 操作记录 */}
+        {/* 操作记录 - 时间线视图 */}
         <TabsContent value="lifecycle">
           <Card>
             <CardHeader>
-              <CardTitle>操作记录</CardTitle>
+              <CardTitle>生命周期时间线</CardTitle>
             </CardHeader>
             <CardContent>
-              {asset.lifecycleLogs.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>时间</TableHead>
-                      <TableHead>操作</TableHead>
-                      <TableHead>状态变化</TableHead>
-                      <TableHead>操作人</TableHead>
-                      <TableHead>备注</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {asset.lifecycleLogs.map((log) => {
-                      const from = log.fromStatus ? statusLabelMap[log.fromStatus] ?? log.fromStatus : null;
-                      const to = log.toStatus ? statusLabelMap[log.toStatus] ?? log.toStatus : null;
-                      return (
-                        <TableRow key={log.id}>
-                          <TableCell>
-                            {new Date(log.createdAt).toLocaleString("zh-CN")}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {actionLabelMap[log.action] ?? log.action}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {from && to ? (
-                              <span className="text-sm">
-                                <span className="text-muted-foreground">{from}</span>
-                                <span className="mx-1">→</span>
-                                <span className="font-medium">{to}</span>
-                              </span>
-                            ) : to ? (
-                              <span className="text-sm font-medium">{to}</span>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">-</span>
-                            )}
-                          </TableCell>
-                          <TableCell>{log.operator}</TableCell>
-                          <TableCell>{log.remark ?? "-"}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground py-8 text-center">暂无操作记录</p>
-              )}
+              <LifecycleTimeline logs={asset.lifecycleLogs} />
             </CardContent>
           </Card>
         </TabsContent>

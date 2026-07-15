@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
@@ -24,14 +27,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Download, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, ChevronRight, Loader2, Monitor } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   createEmployee,
   deleteEmployee,
   updateEmployee,
+  getEmployeeAssets,
+  type EmployeeAsset,
 } from "@/actions/employee.actions";
 import { exportEmployeesToExcel, importEmployeesFromExcel } from "@/actions/excel.actions";
+
+const employeeSchema = z.object({
+  employeeNo: z.string().min(1, "工号不能为空"),
+  name: z.string().min(1, "姓名不能为空"),
+  departmentId: z.string().min(1, "请选择部门"),
+  email: z.string().email("邮箱格式不正确").optional().or(z.literal("")),
+  phone: z.string().optional(),
+});
+
+type EmployeeFormValues = z.infer<typeof employeeSchema>;
 
 interface Employee {
   id: number;
@@ -70,7 +85,14 @@ const columns: ColumnDef<Employee & { _departments: { id: number; name: string }
   {
     id: "assetCount",
     header: "在用设备数",
-    cell: () => "-",
+    cell: ({ row }) => {
+      const count = row.original.assetCount ?? 0;
+      return (
+        <span className={count > 0 ? "font-medium text-primary" : "text-muted-foreground"}>
+          {count}
+        </span>
+      );
+    },
   },
   {
     id: "actions",
@@ -86,6 +108,76 @@ const columns: ColumnDef<Employee & { _departments: { id: number; name: string }
   },
 ];
 
+function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
+  const [assets, setAssets] = useState<EmployeeAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAssets = async () => {
+      setLoading(true);
+      const result = await getEmployeeAssets(employee.id);
+      setLoading(false);
+      if (result.success) {
+        setAssets(result.data);
+      }
+    };
+    loadAssets();
+  }, [employee.id]);
+
+  const statusMap: Record<string, { label: string; className: string }> = {
+    IDLE: { label: "闲置", className: "bg-gray-100 text-gray-700" },
+    IN_USE: { label: "在用", className: "bg-green-100 text-green-700" },
+    IN_MAINTENANCE: { label: "维修中", className: "bg-yellow-100 text-yellow-700" },
+    SCRAPPED: { label: "已报废", className: "bg-red-100 text-red-700" },
+  };
+
+  return (
+    <div className="bg-muted/30 p-4 animate-in slide-in-from-top-1">
+      {loading ? (
+        <div className="flex items-center justify-center py-8 text-muted-foreground">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          加载中...
+        </div>
+      ) : assets.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+          <Monitor className="mb-2 h-8 w-8 opacity-50" />
+          <span className="text-sm">暂无分配设备</span>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-muted-foreground mb-3">
+            分配设备列表（{assets.length} 台）
+          </div>
+          <div className="grid gap-2">
+            {assets.map((asset) => {
+              const status = statusMap[asset.status] ?? statusMap.IDLE;
+              return (
+                <div
+                  key={asset.id}
+                  className="flex items-center justify-between rounded-md border bg-background p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <Monitor className="h-5 w-5 text-primary" />
+                    <div>
+                      <div className="font-medium">{asset.assetNo}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {asset.name} · {asset.categoryName} · {asset.templateName}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>
+                    {status.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmployeeActionButtons({
   employee,
   departments,
@@ -96,13 +188,19 @@ function EmployeeActionButtons({
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editEmployeeNo, setEditEmployeeNo] = useState(employee.employeeNo);
-  const [editName, setEditName] = useState(employee.name);
-  const [editDepartmentId, setEditDepartmentId] = useState(employee.departmentId.toString());
-  const [editPhone, setEditPhone] = useState(employee.phone ?? "");
-  const [editEmail, setEditEmail] = useState(employee.email ?? "");
   const [editLoading, setEditLoading] = useState(false);
   const { toast } = useToast();
+
+  const editForm = useForm<EmployeeFormValues>({
+    resolver: zodResolver(employeeSchema),
+    defaultValues: {
+      employeeNo: "",
+      name: "",
+      departmentId: "",
+      phone: "",
+      email: "",
+    },
+  });
 
   const handleDelete = async () => {
     const result = await deleteEmployee(employee.id);
@@ -115,15 +213,14 @@ function EmployeeActionButtons({
     setDeleteOpen(false);
   };
 
-  const handleEdit = async () => {
-    if (!editEmployeeNo.trim() || !editName.trim() || !editDepartmentId) return;
+  const handleEdit = async (values: EmployeeFormValues) => {
     setEditLoading(true);
     const result = await updateEmployee(employee.id, {
-      employeeNo: editEmployeeNo.trim(),
-      name: editName.trim(),
-      departmentId: Number(editDepartmentId),
-      phone: editPhone.trim() || undefined,
-      email: editEmail.trim() || undefined,
+      employeeNo: values.employeeNo.trim(),
+      name: values.name.trim(),
+      departmentId: Number(values.departmentId),
+      phone: values.phone?.trim() || undefined,
+      email: values.email?.trim() || undefined,
     });
     setEditLoading(false);
     if (result.success) {
@@ -137,11 +234,13 @@ function EmployeeActionButtons({
 
   const handleEditOpen = (open: boolean) => {
     if (open) {
-      setEditEmployeeNo(employee.employeeNo);
-      setEditName(employee.name);
-      setEditDepartmentId(employee.departmentId.toString());
-      setEditPhone(employee.phone ?? "");
-      setEditEmail(employee.email ?? "");
+      editForm.reset({
+        employeeNo: employee.employeeNo,
+        name: employee.name,
+        departmentId: employee.departmentId.toString(),
+        phone: employee.phone ?? "",
+        email: employee.email ?? "",
+      });
     }
     setEditOpen(open);
   };
@@ -161,20 +260,29 @@ function EmployeeActionButtons({
             <DialogTitle>编辑员工</DialogTitle>
             <DialogDescription>修改员工信息</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <form onSubmit={editForm.handleSubmit(handleEdit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>工号</Label>
-                <Input value={editEmployeeNo} onChange={(e) => setEditEmployeeNo(e.target.value)} placeholder="请输入工号" />
+                <Input {...editForm.register("employeeNo")} placeholder="请输入工号" />
+                {editForm.formState.errors.employeeNo && (
+                  <p className="text-sm text-destructive">{editForm.formState.errors.employeeNo.message}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>姓名</Label>
-                <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入姓名" />
+                <Input {...editForm.register("name")} placeholder="请输入姓名" />
+                {editForm.formState.errors.name && (
+                  <p className="text-sm text-destructive">{editForm.formState.errors.name.message}</p>
+                )}
               </div>
             </div>
             <div className="space-y-2">
               <Label>部门</Label>
-              <Select value={editDepartmentId} onValueChange={setEditDepartmentId}>
+              <Select
+                value={editForm.watch("departmentId")}
+                onValueChange={(v) => editForm.setValue("departmentId", v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="选择部门" />
                 </SelectTrigger>
@@ -186,24 +294,30 @@ function EmployeeActionButtons({
                   ))}
                 </SelectContent>
               </Select>
+              {editForm.formState.errors.departmentId && (
+                <p className="text-sm text-destructive">{editForm.formState.errors.departmentId.message}</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>电话</Label>
-                <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="可选" />
+                <Input {...editForm.register("phone")} placeholder="可选" />
               </div>
               <div className="space-y-2">
                 <Label>邮箱</Label>
-                <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="可选" />
+                <Input {...editForm.register("email")} placeholder="可选" />
+                {editForm.formState.errors.email && (
+                  <p className="text-sm text-destructive">{editForm.formState.errors.email.message}</p>
+                )}
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-            <Button onClick={handleEdit} disabled={editLoading || !editEmployeeNo.trim() || !editName.trim() || !editDepartmentId}>
-              {editLoading ? "更新中..." : "确认"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
+              <Button type="submit" disabled={editLoading}>
+                {editLoading ? "更新中..." : "确认"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -222,11 +336,6 @@ function EmployeeActionButtons({
 
 export function EmployeeListClient({ employees, departments }: EmployeeListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
-  const [employeeNo, setEmployeeNo] = useState("");
-  const [name, setName] = useState("");
-  const [departmentId, setDepartmentId] = useState<string>("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -234,25 +343,31 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleCreate = async () => {
-    if (!employeeNo.trim() || !name.trim() || !departmentId) return;
+  const createForm = useForm<EmployeeFormValues>({
+    resolver: zodResolver(employeeSchema),
+    defaultValues: {
+      employeeNo: "",
+      name: "",
+      departmentId: "",
+      phone: "",
+      email: "",
+    },
+  });
+
+  const handleCreate = async (values: EmployeeFormValues) => {
     setLoading(true);
     const result = await createEmployee({
-      employeeNo: employeeNo.trim(),
-      name: name.trim(),
-      departmentId: Number(departmentId),
-      phone: phone.trim() || undefined,
-      email: email.trim() || undefined,
+      employeeNo: values.employeeNo.trim(),
+      name: values.name.trim(),
+      departmentId: Number(values.departmentId),
+      phone: values.phone?.trim() || undefined,
+      email: values.email?.trim() || undefined,
     });
     setLoading(false);
     if (result.success) {
       toast({ title: "创建成功" });
       setCreateOpen(false);
-      setEmployeeNo("");
-      setName("");
-      setDepartmentId("");
-      setPhone("");
-      setEmail("");
+      createForm.reset();
       router.refresh();
     } else {
       toast({ title: "创建失败", description: result.error, variant: "destructive" });
@@ -347,28 +462,46 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
           </div>
         }
       />
-      <DataTable columns={columns} data={dataWithDepartments} />
+      <DataTable
+        columns={columns}
+        data={dataWithDepartments}
+        renderExpandedRow={(employee) =>
+          (employee.assetCount ?? 0) > 0 ? <ExpandedEmployeeRow employee={employee} /> : null
+        }
+      />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        if (!open) createForm.reset();
+        setCreateOpen(open);
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>新建员工</DialogTitle>
             <DialogDescription>添加新的员工信息</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>工号</Label>
-                <Input value={employeeNo} onChange={(e) => setEmployeeNo(e.target.value)} placeholder="请输入工号" />
+                <Input {...createForm.register("employeeNo")} placeholder="请输入工号" />
+                {createForm.formState.errors.employeeNo && (
+                  <p className="text-sm text-destructive">{createForm.formState.errors.employeeNo.message}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>姓名</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入姓名" />
+                <Input {...createForm.register("name")} placeholder="请输入姓名" />
+                {createForm.formState.errors.name && (
+                  <p className="text-sm text-destructive">{createForm.formState.errors.name.message}</p>
+                )}
               </div>
             </div>
             <div className="space-y-2">
               <Label>部门</Label>
-              <Select value={departmentId} onValueChange={setDepartmentId}>
+              <Select
+                value={createForm.watch("departmentId")}
+                onValueChange={(v) => createForm.setValue("departmentId", v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="选择部门" />
                 </SelectTrigger>
@@ -380,24 +513,30 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
                   ))}
                 </SelectContent>
               </Select>
+              {createForm.formState.errors.departmentId && (
+                <p className="text-sm text-destructive">{createForm.formState.errors.departmentId.message}</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>电话</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="可选" />
+                <Input {...createForm.register("phone")} placeholder="可选" />
               </div>
               <div className="space-y-2">
                 <Label>邮箱</Label>
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="可选" />
+                <Input {...createForm.register("email")} placeholder="可选" />
+                {createForm.formState.errors.email && (
+                  <p className="text-sm text-destructive">{createForm.formState.errors.email.message}</p>
+                )}
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button onClick={handleCreate} disabled={loading || !employeeNo.trim() || !name.trim() || !departmentId}>
-              {loading ? "创建中..." : "确认"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "创建中..." : "确认"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

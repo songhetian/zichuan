@@ -7,6 +7,7 @@ import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
 import { StatusBadge } from "@/components/features/status-badge";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
+import { ExportPreview } from "@/components/features/export-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -436,7 +437,14 @@ export function AssetListClient({
   const [employeeFilter, setEmployeeFilter] = useState<string>("all");
   const [keyword, setKeyword] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [selectedAssets, setSelectedAssets] = useState<AssetItem[]>([]);
+  const [batchAllocateOpen, setBatchAllocateOpen] = useState(false);
+  const [batchReturnOpen, setBatchReturnOpen] = useState(false);
+  const [batchScrapOpen, setBatchScrapOpen] = useState(false);
+  const [batchAllocateEmployeeId, setBatchAllocateEmployeeId] = useState("");
+  const [batchLoading, setBatchLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
@@ -468,10 +476,10 @@ export function AssetListClient({
     return matchStatus && matchDepartment && matchCategory && matchEmployee && matchKeyword;
   });
 
-  const handleExport = async () => {
+  const handleExport = async (selectedFields: string[]) => {
     setExportLoading(true);
     try {
-      const result = await exportAssetsToExcel();
+      const result = await exportAssetsToExcel(selectedFields);
       if (result.success) {
         const blob = new Blob([result.data.buffer as BlobPart], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -483,6 +491,7 @@ export function AssetListClient({
         a.click();
         URL.revokeObjectURL(url);
         toast({ title: "导出成功" });
+        setExportPreviewOpen(false);
       } else {
         toast({ title: "导出失败", description: result.error, variant: "destructive" });
       }
@@ -491,6 +500,29 @@ export function AssetListClient({
     }
     setExportLoading(false);
   };
+
+  // 准备导出数据
+  const exportData = filteredAssets.map((asset) => ({
+    assetNo: asset.assetNo,
+    name: asset.name,
+    categoryName: asset.categoryName,
+    templateName: asset.templateName,
+    status: asset.status,
+    employeeName: asset.employeeName,
+    departmentName: asset.departmentName,
+    location: asset.location,
+  }));
+
+  const exportColumns = [
+    { key: "assetNo", label: "设备编号" },
+    { key: "name", label: "设备名称" },
+    { key: "categoryName", label: "分类" },
+    { key: "templateName", label: "模板" },
+    { key: "status", label: "状态" },
+    { key: "employeeName", label: "使用人" },
+    { key: "departmentName", label: "部门" },
+    { key: "location", label: "位置" },
+  ];
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -525,6 +557,68 @@ export function AssetListClient({
     }
   };
 
+  // 批量分配
+  const handleBatchAllocate = async () => {
+    if (!batchAllocateEmployeeId || selectedAssets.length === 0) return;
+    setBatchLoading(true);
+    const result = await allocateAssets({
+      assetIds: selectedAssets.map((a) => a.id),
+      employeeId: Number(batchAllocateEmployeeId),
+      operator: "admin",
+      remark: "批量分配",
+    });
+    setBatchLoading(false);
+    if (result.success) {
+      toast({ title: "批量分配成功" });
+      setBatchAllocateOpen(false);
+      setBatchAllocateEmployeeId("");
+      setSelectedAssets([]);
+      router.refresh();
+    } else {
+      toast({ title: "批量分配失败", description: result.error, variant: "destructive" });
+    }
+  };
+
+  // 批量归还
+  const handleBatchReturn = async () => {
+    if (selectedAssets.length === 0) return;
+    setBatchLoading(true);
+    const result = await returnAssets({
+      assetIds: selectedAssets.map((a) => a.id),
+      operator: "admin",
+      remark: "批量归还",
+    });
+    setBatchLoading(false);
+    if (result.success) {
+      toast({ title: "批量归还成功" });
+      setBatchReturnOpen(false);
+      setSelectedAssets([]);
+      router.refresh();
+    } else {
+      toast({ title: "批量归还失败", description: result.error, variant: "destructive" });
+    }
+  };
+
+  // 批量报废
+  const handleBatchScrap = async () => {
+    if (selectedAssets.length === 0) return;
+    setBatchLoading(true);
+    const result = await scrapAssets({
+      assetIds: selectedAssets.map((a) => a.id),
+      operator: "admin",
+      remark: "批量报废",
+    });
+    setBatchLoading(false);
+    if (result.success) {
+      toast({ title: "批量报废成功" });
+      setBatchScrapOpen(false);
+      setSelectedAssets([]);
+      router.refresh();
+    } else {
+      toast({ title: "批量报废失败", description: result.error, variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -541,7 +635,7 @@ export function AssetListClient({
             />
             <Button
               variant="outline"
-              onClick={handleExport}
+              onClick={() => setExportPreviewOpen(true)}
               disabled={exportLoading}
             >
               <Download className="mr-2 h-4 w-4" />
@@ -562,6 +656,51 @@ export function AssetListClient({
           </div>
         }
       />
+
+      {/* 批量操作栏 */}
+      {selectedAssets.length > 0 && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
+          <span className="text-sm font-medium">
+            已选择 {selectedAssets.length} 项
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchAllocateOpen(true)}
+              disabled={batchLoading}
+            >
+              <UserPlus className="mr-1 h-3 w-3" />
+              批量分配
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchReturnOpen(true)}
+              disabled={batchLoading}
+            >
+              <RotateCcw className="mr-1 h-3 w-3" />
+              批量归还
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchScrapOpen(true)}
+              disabled={batchLoading}
+            >
+              <Trash2 className="mr-1 h-3 w-3" />
+              批量报废
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedAssets([])}
+            >
+              取消选择
+            </Button>
+          </div>
+        </div>
+      )}
       {/* 筛选栏 - 单行 */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -619,8 +758,73 @@ export function AssetListClient({
           ]}
         />
       </div>
-      <DataTable columns={columns} data={filteredAssets} />
+      <DataTable
+        columns={columns}
+        data={filteredAssets}
+        enableRowSelection={true}
+        onRowSelectionChange={setSelectedAssets}
+      />
       <CreateAssetDialog open={createOpen} onOpenChange={setCreateOpen} templates={templates} />
+
+      {/* 批量分配对话框 */}
+      <Dialog open={batchAllocateOpen} onOpenChange={(v) => { if (!v) setBatchAllocateEmployeeId(""); setBatchAllocateOpen(v); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>批量分配设备</DialogTitle>
+            <DialogDescription>将选中的 {selectedAssets.length} 台设备分配给指定员工</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>选择员工</Label>
+            <SearchableSelect
+              value={batchAllocateEmployeeId}
+              onValueChange={setBatchAllocateEmployeeId}
+              placeholder="请选择员工"
+              triggerClassName="w-full"
+              options={employees.map((e) => ({
+                value: e.id.toString(),
+                label: `${e.name}（${e.departmentName}）`,
+              }))}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setBatchAllocateEmployeeId(""); setBatchAllocateOpen(false); }}>取消</Button>
+            <Button onClick={handleBatchAllocate} disabled={batchLoading || !batchAllocateEmployeeId}>
+              {batchLoading ? "分配中..." : "确认分配"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量归还确认对话框 */}
+      <ConfirmDialog
+        open={batchReturnOpen}
+        onOpenChange={setBatchReturnOpen}
+        title="确认批量归还"
+        description={`确定要归还选中的 ${selectedAssets.length} 台设备吗？`}
+        confirmText="批量归还"
+        onConfirm={handleBatchReturn}
+      />
+
+      {/* 批量报废确认对话框 */}
+      <ConfirmDialog
+        open={batchScrapOpen}
+        onOpenChange={setBatchScrapOpen}
+        title="确认批量报废"
+        description={`确定要报废选中的 ${selectedAssets.length} 台设备吗？此操作不可撤销。`}
+        confirmText="批量报废"
+        variant="destructive"
+        onConfirm={handleBatchScrap}
+      />
+
+      {/* 导出预览对话框 */}
+      <ExportPreview
+        open={exportPreviewOpen}
+        onOpenChange={setExportPreviewOpen}
+        data={exportData}
+        columns={exportColumns}
+        onExport={handleExport}
+        loading={exportLoading}
+      />
     </div>
   );
 }

@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
@@ -15,6 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, GripVertical, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -41,6 +52,13 @@ import {
   deleteDeviceTemplate,
   updateDeviceTemplate,
 } from "@/actions/device-template.actions";
+
+const templateSchema = z.object({
+  name: z.string().min(1, "模板名称不能为空"),
+  categoryId: z.string().min(1, "请选择设备分类"),
+});
+
+type TemplateFormValues = z.infer<typeof templateSchema>;
 
 interface Template {
   id: number;
@@ -112,6 +130,7 @@ const columns: ColumnDef<Template>[] = [
             template={template}
             categories={(template as any)._categories}
             componentModels={(template as any)._componentModels}
+            allTemplates={(template as any)._allTemplates}
           />
         </div>
       );
@@ -123,17 +142,17 @@ function ActionButtons({
   template,
   categories,
   componentModels,
+  allTemplates,
 }: {
   template: Template & { _categories?: { id: number; name: string }[] };
   categories?: { id: number; name: string }[];
   componentModels?: ComponentModel[];
+  allTemplates?: Template[];
 }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editName, setEditName] = useState(template.name);
-  const [editCategoryId, setEditCategoryId] = useState(template.categoryId.toString());
   const [editUnique, setEditUnique] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   // 配件清单编辑 state：{ modelId, quantity, name, brand }
@@ -142,7 +161,18 @@ function ActionButtons({
   >([]);
   const [newModelId, setNewModelId] = useState<string>("");
   const [newQuantity, setNewQuantity] = useState<string>("1");
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [selectedCopyTemplateId, setSelectedCopyTemplateId] = useState<string>("");
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const { toast } = useToast();
+
+  const editForm = useForm<TemplateFormValues>({
+    resolver: zodResolver(templateSchema),
+    defaultValues: {
+      name: "",
+      categoryId: "",
+    },
+  });
 
   const handleDelete = async () => {
     const result = await deleteDeviceTemplate(template.id);
@@ -155,12 +185,11 @@ function ActionButtons({
     setDeleteOpen(false);
   };
 
-  const handleEdit = async () => {
-    if (!editName.trim() || !editCategoryId) return;
+  const handleEdit = async (values: TemplateFormValues) => {
     setEditLoading(true);
     const result = await updateDeviceTemplate(template.id, {
-      name: editName.trim(),
-      categoryId: Number(editCategoryId),
+      name: values.name.trim(),
+      categoryId: Number(values.categoryId),
       unique: editUnique,
       components: editComponents.map((c) => ({
         modelId: c.modelId,
@@ -179,8 +208,10 @@ function ActionButtons({
 
   const handleEditOpen = (open: boolean) => {
     if (open) {
-      setEditName(template.name);
-      setEditCategoryId(template.categoryId.toString());
+      editForm.reset({
+        name: template.name,
+        categoryId: template.categoryId.toString(),
+      });
       setEditUnique(template.unique ?? false);
       // 用 template.components 初始化配件清单
       setEditComponents(
@@ -242,11 +273,69 @@ function ActionButtons({
     setEditComponents((prev) => prev.filter((c) => c.modelId !== modelId));
   };
 
+  // 拖拽排序处理
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newComponents = [...editComponents];
+    const draggedItem = newComponents[draggedIndex];
+    newComponents.splice(draggedIndex, 1);
+    newComponents.splice(index, 0, draggedItem);
+    setEditComponents(newComponents);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  // 从其他模板复制配件
+  const handleCopyFromTemplate = () => {
+    if (!selectedCopyTemplateId || !allTemplates) return;
+    const sourceTemplate = allTemplates.find((t) => t.id === Number(selectedCopyTemplateId));
+    if (!sourceTemplate) return;
+
+    setEditComponents((prev) => {
+      const merged = [...prev];
+      sourceTemplate.components.forEach((c) => {
+        const existing = merged.find((item) => item.modelId === c.modelId);
+        if (existing) {
+          existing.quantity += c.quantity;
+        } else {
+          merged.push({
+            modelId: c.modelId,
+            quantity: c.quantity,
+            name: c.modelName,
+            brand: c.modelBrand,
+          });
+        }
+      });
+      return merged;
+    });
+
+    setCopyDialogOpen(false);
+    setSelectedCopyTemplateId("");
+    toast({ title: "复制成功" });
+  };
+
   // 配件型号 Select 选项：名称（品牌）
   const modelOptions = (componentModels ?? []).map((m) => ({
     value: m.id.toString(),
     label: m.brand ? `${m.name}（${m.brand}）` : m.name,
   }));
+
+  // 其他模板选项（排除当前模板）
+  const otherTemplateOptions = (allTemplates ?? [])
+    .filter((t) => t.id !== template.id)
+    .map((t) => ({
+      value: t.id.toString(),
+      label: t.name,
+    }));
 
   return (
     <>
@@ -260,6 +349,37 @@ function ActionButtons({
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
 
+      {/* 从其他模板复制配件对话框 */}
+      <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>从其他模板复制配件</DialogTitle>
+            <DialogDescription>选择要复制配件的源模板</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>源模板</Label>
+              <Select value={selectedCopyTemplateId} onValueChange={setSelectedCopyTemplateId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择模板" />
+                </SelectTrigger>
+                <SelectContent>
+                  {otherTemplateOptions.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCopyDialogOpen(false)}>取消</Button>
+            <Button onClick={handleCopyFromTemplate} disabled={!selectedCopyTemplateId}>确认复制</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -270,20 +390,26 @@ function ActionButtons({
         onConfirm={handleDelete}
       />
 
-      <Dialog open={editOpen} onOpenChange={handleEditOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>编辑模板</DialogTitle>
-            <DialogDescription>修改模板基本信息及配件清单</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
+      <Sheet open={editOpen} onOpenChange={handleEditOpen}>
+        <SheetContent className="sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>编辑模板</SheetTitle>
+            <SheetDescription>修改模板基本信息及配件清单</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={editForm.handleSubmit(handleEdit)} className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>模板名称</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入模板名称" />
+              <Input {...editForm.register("name")} placeholder="请输入模板名称" />
+              {editForm.formState.errors.name && (
+                <p className="text-sm text-destructive">{editForm.formState.errors.name.message}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>设备分类</Label>
-              <Select value={editCategoryId} onValueChange={setEditCategoryId}>
+              <Select
+                value={editForm.watch("categoryId")}
+                onValueChange={(v) => editForm.setValue("categoryId", v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="选择分类" />
                 </SelectTrigger>
@@ -295,6 +421,9 @@ function ActionButtons({
                   ))}
                 </SelectContent>
               </Select>
+              {editForm.formState.errors.categoryId && (
+                <p className="text-sm text-destructive">{editForm.formState.errors.categoryId.message}</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -309,11 +438,23 @@ function ActionButtons({
 
             {/* 配件清单管理 */}
             <div className="space-y-2">
-              <Label>配件清单</Label>
+              <div className="flex items-center justify-between">
+                <Label>配件清单</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCopyDialogOpen(true)}
+                  disabled={editComponents.length === 0 && !otherTemplateOptions.length}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  从其他模板复制
+                </Button>
+              </div>
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12"></TableHead>
                       <TableHead>型号名称</TableHead>
                       <TableHead>品牌</TableHead>
                       <TableHead className="w-28">数量</TableHead>
@@ -322,8 +463,18 @@ function ActionButtons({
                   </TableHeader>
                   <TableBody>
                     {editComponents.length > 0 ? (
-                      editComponents.map((c) => (
-                        <TableRow key={c.modelId}>
+                      editComponents.map((c, index) => (
+                        <TableRow
+                          key={c.modelId}
+                          draggable
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={draggedIndex === index ? "opacity-50" : ""}
+                        >
+                          <TableCell className="cursor-move">
+                            <GripVertical className="h-4 w-4 text-muted-foreground" />
+                          </TableCell>
                           <TableCell className="font-medium">{c.name}</TableCell>
                           <TableCell>{c.brand ?? "-"}</TableCell>
                           <TableCell>
@@ -353,15 +504,16 @@ function ActionButtons({
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={4}
+                          colSpan={5}
                           className="text-center text-sm text-muted-foreground py-4"
                         >
-                          暂无配件，请在下方添加
+                          暂无配件，请在下方添加或从其他模板复制
                         </TableCell>
                       </TableRow>
                     )}
                     {/* 添加配件行 */}
                     <TableRow>
+                      <TableCell></TableCell>
                       <TableCell colSpan={2}>
                         <SearchableSelect
                           options={modelOptions}
@@ -398,15 +550,15 @@ function ActionButtons({
                 </Table>
               </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-            <Button onClick={handleEdit} disabled={editLoading || !editName.trim() || !editCategoryId}>
+          </form>
+          <SheetFooter>
+            <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
+            <Button type="submit" disabled={editLoading}>
               {editLoading ? "更新中..." : "确认"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-lg">
@@ -444,25 +596,31 @@ function ActionButtons({
 
 export function TemplateListClient({ templates, categories, componentModels }: TemplateListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("");
   const [isUnique, setIsUnique] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
+  const createForm = useForm<TemplateFormValues>({
+    resolver: zodResolver(templateSchema),
+    defaultValues: {
+      name: "",
+      categoryId: "",
+    },
+  });
+
   const dataWithCategories = templates.map((t) => ({
     ...t,
     _categories: categories,
     _componentModels: componentModels,
+    _allTemplates: templates,
   }));
 
-  const handleCreate = async () => {
-    if (!name.trim() || !categoryId) return;
+  const handleCreate = async (values: TemplateFormValues) => {
     setLoading(true);
     const result = await createDeviceTemplate({
-      name: name.trim(),
-      categoryId: Number(categoryId),
+      name: values.name.trim(),
+      categoryId: Number(values.categoryId),
       components: [],
       unique: isUnique,
     });
@@ -470,8 +628,7 @@ export function TemplateListClient({ templates, categories, componentModels }: T
     if (result.success) {
       toast({ title: "创建成功" });
       setCreateOpen(false);
-      setName("");
-      setCategoryId("");
+      createForm.reset();
       router.refresh();
     } else {
       toast({ title: "创建失败", description: result.error, variant: "destructive" });
@@ -492,20 +649,29 @@ export function TemplateListClient({ templates, categories, componentModels }: T
       />
       <DataTable columns={columns} data={dataWithCategories} />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        if (!open) createForm.reset();
+        setCreateOpen(open);
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>新建模板</DialogTitle>
             <DialogDescription>创建新的设备模板</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="space-y-2">
               <Label>模板名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入模板名称" />
+              <Input {...createForm.register("name")} placeholder="请输入模板名称" />
+              {createForm.formState.errors.name && (
+                <p className="text-sm text-destructive">{createForm.formState.errors.name.message}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>设备分类</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
+              <Select
+                value={createForm.watch("categoryId")}
+                onValueChange={(v) => createForm.setValue("categoryId", v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="选择分类" />
                 </SelectTrigger>
@@ -517,6 +683,9 @@ export function TemplateListClient({ templates, categories, componentModels }: T
                   ))}
                 </SelectContent>
               </Select>
+              {createForm.formState.errors.categoryId && (
+                <p className="text-sm text-destructive">{createForm.formState.errors.categoryId.message}</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -528,13 +697,13 @@ export function TemplateListClient({ templates, categories, componentModels }: T
                 唯一设备（每个员工只能拥有一台）
               </Label>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button onClick={handleCreate} disabled={loading || !name.trim() || !categoryId}>
-              {loading ? "创建中..." : "确认"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "创建中..." : "确认"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

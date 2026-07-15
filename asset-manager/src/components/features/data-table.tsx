@@ -7,9 +7,11 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  getExpandedRowModel,
   useReactTable,
   SortingState,
   ColumnFiltersState,
+  ExpandedState,
 } from "@tanstack/react-table"
 import {
   Table,
@@ -21,7 +23,8 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useState } from "react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useState, useEffect } from "react"
 import { ChevronLeft, ChevronRight, Search, Inbox } from "lucide-react"
 
 interface DataTableProps<TData, TValue> {
@@ -29,6 +32,9 @@ interface DataTableProps<TData, TValue> {
   data: TData[]
   searchKey?: string
   searchPlaceholder?: string
+  enableRowSelection?: boolean
+  onRowSelectionChange?: (selectedRows: TData[]) => void
+  renderExpandedRow?: (row: TData) => React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -36,9 +42,14 @@ export function DataTable<TData, TValue>({
   data,
   searchKey,
   searchPlaceholder = "搜索...",
+  enableRowSelection = false,
+  onRowSelectionChange,
+  renderExpandedRow,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [rowSelection, setRowSelection] = useState({})
+  const [expanded, setExpanded] = useState<ExpandedState>({})
 
   const table = useReactTable({
     data,
@@ -47,13 +58,25 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getExpandedRowModel: renderExpandedRow ? getExpandedRowModel() : undefined,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    state: { sorting, columnFilters },
+    onRowSelectionChange: setRowSelection,
+    onExpandedChange: setExpanded,
+    enableRowSelection,
+    state: { sorting, columnFilters, rowSelection, expanded },
     initialState: {
       pagination: { pageSize: 20 },
     },
   })
+
+  // 通知父组件选中行变化
+  useEffect(() => {
+    if (onRowSelectionChange) {
+      const selectedRows = table.getFilteredSelectedRowModel().rows.map(row => row.original)
+      onRowSelectionChange(selectedRows)
+    }
+  }, [rowSelection, onRowSelectionChange, table])
 
   return (
     <div className="space-y-4">
@@ -88,13 +111,26 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"} className="hover:bg-muted/30 transition-colors">
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="text-center">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
+                <React.Fragment key={row.id}>
+                  <TableRow
+                    data-state={row.getIsSelected() && "selected"}
+                    className={`hover:bg-muted/30 transition-colors ${renderExpandedRow ? 'cursor-pointer' : ''}`}
+                    onClick={renderExpandedRow ? () => row.toggleExpanded() : undefined}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id} className="text-center">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                  {row.getIsExpanded() && renderExpandedRow && (
+                    <TableRow>
+                      <TableCell colSpan={columns.length} className="p-0">
+                        {renderExpandedRow(row.original)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
               ))
             ) : (
               <TableRow>

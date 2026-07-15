@@ -36,6 +36,7 @@ type EmployeeWithDept = {
   departmentName: string;
   phone: string | null;
   email: string | null;
+  assetCount: number;
 };
 
 function formatEmployee(emp: any): EmployeeWithDept {
@@ -47,6 +48,7 @@ function formatEmployee(emp: any): EmployeeWithDept {
     departmentName: emp.department?.name ?? "",
     phone: emp.phone ?? null,
     email: emp.email ?? null,
+    assetCount: emp._count?.assets ?? 0,
   };
 }
 
@@ -110,7 +112,10 @@ export async function getEmployees(
   const emps = await prisma.employee.findMany({
     where,
     orderBy: { id: "asc" },
-    include: { department: { select: { name: true } } },
+    include: {
+      department: { select: { name: true } },
+      _count: { select: { assets: true } },
+    },
   });
 
   return { success: true, data: emps.map(formatEmployee) };
@@ -166,6 +171,43 @@ export async function updateEmployee(
     }
     return { success: false, error: "更新失败" };
   }
+}
+
+export type EmployeeAsset = {
+  id: number;
+  assetNo: string;
+  name: string;
+  status: string;
+  templateName: string;
+  categoryName: string;
+};
+
+export async function getEmployeeAssets(
+  employeeId: number
+): Promise<ActionResult<EmployeeAsset[]>> {
+  const assets = await prisma.asset.findMany({
+    where: { employeeId },
+    select: {
+      id: true,
+      assetNo: true,
+      name: true,
+      status: true,
+      template: { select: { name: true, category: { select: { name: true } } } },
+    },
+    orderBy: { id: "asc" },
+  });
+
+  return {
+    success: true,
+    data: assets.map((a) => ({
+      id: a.id,
+      assetNo: a.assetNo,
+      name: a.name,
+      status: a.status,
+      templateName: a.template.name,
+      categoryName: a.template.category.name,
+    })),
+  };
 }
 
 export async function deleteEmployee(

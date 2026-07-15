@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/auth-store"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { LogOut } from "lucide-react"
+import { CommandPalette } from "@/components/features/command-palette"
 
 export function Header() {
   const { username, logout } = useAuthStore()
@@ -16,13 +17,18 @@ export function Header() {
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-card px-6">
-      <div className="text-sm text-muted-foreground">
-        当前用户：<span className="font-medium text-foreground">{username}</span>
+      <div className="flex items-center gap-4">
+        <div className="text-sm text-muted-foreground">
+          当前用户：<span className="font-medium text-foreground">{username}</span>
+        </div>
       </div>
-      <Button variant="ghost" size="sm" onClick={handleLogout}>
-        <LogOut className="mr-2 h-4 w-4" />
-        退出登录
-      </Button>
+      <div className="flex items-center gap-2">
+        <CommandPalette />
+        <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <LogOut className="mr-2 h-4 w-4" />
+          退出登录
+        </Button>
+      </div>
     </header>
   )
 }

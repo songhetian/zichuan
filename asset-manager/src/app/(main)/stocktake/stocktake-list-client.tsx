@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
@@ -26,21 +29,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Plus, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   createStocktakeSession,
   completeStocktakeSession,
-  getStocktakeSessionById,
 } from "@/actions/stocktake.actions";
+
+const stocktakeSchema = z.object({
+  name: z.string().min(1, "盘点名称不能为空"),
+  description: z.string().optional(),
+});
+
+type StocktakeFormValues = z.infer<typeof stocktakeSchema>;
 
 interface StocktakeSession {
   id: number;
@@ -91,23 +92,13 @@ const columns: ColumnDef<StocktakeSession>[] = [
 ];
 
 function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
-  const [detailOpen, setDetailOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
-  const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleViewDetail = async () => {
-    setLoading(true);
-    const result = await getStocktakeSessionById(session.id);
-    setLoading(false);
-    if (result.success) {
-      setRecords(result.data.records);
-      setDetailOpen(true);
-    } else {
-      toast({ title: "获取详情失败", description: result.error, variant: "destructive" });
-    }
+  const handleViewDetail = () => {
+    router.push(`/stocktake/${session.id}`);
   };
 
   const handleComplete = async () => {
@@ -126,52 +117,16 @@ function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
     setCompleteOpen(false);
   };
 
-  const resultLabelMap: Record<string, string> = {
-    NORMAL: "正常",
-    MISSING: "盘亏",
-    EXTRA: "盘盈",
-  };
-
   return (
     <>
       <Button variant="ghost" size="icon" title="详情" onClick={handleViewDetail}>
         <Eye className="h-4 w-4" />
       </Button>
-      {session.status === "PENDING" && (
+      {session.status === "OPEN" && (
         <Button variant="outline" size="sm" onClick={() => setCompleteOpen(true)}>
           完成
         </Button>
       )}
-
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>盘点详情 - {session.name}</DialogTitle>
-          </DialogHeader>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>设备编号</TableHead>
-                <TableHead>预期状态</TableHead>
-                <TableHead>实际结果</TableHead>
-                <TableHead>备注</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {records.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.assetNo}</TableCell>
-                  <TableCell>{r.expectedStatus}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{resultLabelMap[r.actualStatus] ?? r.actualStatus}</Badge>
-                  </TableCell>
-                  <TableCell>{r.remark ?? "-"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DialogContent>
-      </Dialog>
 
       <ConfirmDialog
         open={completeOpen}
@@ -186,27 +141,31 @@ function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
 
 export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
+  const createForm = useForm<StocktakeFormValues>({
+    resolver: zodResolver(stocktakeSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+    },
+  });
+
+  const handleCreate = async (values: StocktakeFormValues) => {
     setLoading(true);
     const result = await createStocktakeSession({
-      name: name.trim(),
-      description: description.trim() || undefined,
+      name: values.name.trim(),
+      description: values.description?.trim() || undefined,
       operator: "admin",
     });
     setLoading(false);
     if (result.success) {
       toast({ title: "盘点任务创建成功" });
       setCreateOpen(false);
-      setName("");
-      setDescription("");
+      createForm.reset();
       setStatusFilter("");
       router.refresh();
     } else {
@@ -228,20 +187,26 @@ export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
       />
       <DataTable columns={columns} data={sessions} />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        if (!open) createForm.reset();
+        setCreateOpen(open);
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>新建盘点任务</DialogTitle>
             <DialogDescription>创建新的库存盘点任务</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="space-y-2">
               <Label>盘点名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入盘点名称" />
+              <Input {...createForm.register("name")} placeholder="请输入盘点名称" />
+              {createForm.formState.errors.name && (
+                <p className="text-sm text-destructive">{createForm.formState.errors.name.message}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>备注说明</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选" rows={3} />
+              <Textarea {...createForm.register("description")} placeholder="可选" rows={3} />
             </div>
             <div className="space-y-2">
               <Label>状态筛选（可选）</Label>
@@ -257,13 +222,13 @@ export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button onClick={handleCreate} disabled={loading || !name.trim()}>
-              {loading ? "创建中..." : "确认"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "创建中..." : "确认"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

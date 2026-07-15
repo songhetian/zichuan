@@ -15,6 +15,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -84,19 +91,25 @@ export function AssetCategoriesClient({
   const [createOpen, setCreateOpen] = useState(false);
   const [catName, setCatName] = useState("");
   const [catCode, setCatCode] = useState("");
+  const [parentId, setParentId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const handleCreate = async () => {
     if (!catName.trim() || !catCode.trim()) return;
     setLoading(true);
-    const result = await createAssetCategory({ name: catName.trim(), code: catCode.trim() });
+    const result = await createAssetCategory({
+      name: catName.trim(),
+      code: catCode.trim(),
+      parentId: parentId ? Number(parentId) : undefined,
+    });
     setLoading(false);
     if (result.success) {
       toast({ title: "创建成功" });
       setCreateOpen(false);
       setCatName("");
       setCatCode("");
+      setParentId("");
       window.location.reload();
     } else {
       toast({ title: "创建失败", description: result.error, variant: "destructive" });
@@ -122,6 +135,22 @@ export function AssetCategoriesClient({
             <DialogTitle>新建设备分类</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>父分类（可选）</Label>
+              <Select value={parentId} onValueChange={setParentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="无父分类（顶级分类）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">无父分类</SelectItem>
+                  {initialCategories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id.toString()}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>分类名称</Label>
               <Input value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="如：笔记本电脑" />

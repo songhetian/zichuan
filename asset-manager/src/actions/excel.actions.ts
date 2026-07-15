@@ -7,9 +7,9 @@ type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
-export async function exportAssetsToExcel(): Promise<
-  ActionResult<{ buffer: Buffer; fileName: string }>
-> {
+export async function exportAssetsToExcel(
+  selectedFields?: string[]
+): Promise<ActionResult<{ buffer: Buffer; fileName: string }>> {
   const assets = await prisma.asset.findMany({
     orderBy: { assetNo: "asc" },
     include: {
@@ -28,16 +28,42 @@ export async function exportAssetsToExcel(): Promise<
     },
   });
 
-  const rows = assets.map((a) => ({
-    "设备编号": a.assetNo,
-    "设备名称": a.name,
-    "分类": a.template?.category?.name ?? "",
-    "模板": a.template?.name ?? "",
-    "状态": mapStatus(a.status),
-    "使用人": a.employee?.name ?? "",
-    "部门": a.employee?.department?.name ?? "",
-    "位置": a.location ?? "",
-  }));
+  const allFields: Record<string, (a: any) => string> = {
+    assetNo: (a) => a.assetNo,
+    name: (a) => a.name,
+    categoryName: (a) => a.template?.category?.name ?? "",
+    templateName: (a) => a.template?.name ?? "",
+    status: (a) => mapStatus(a.status),
+    employeeName: (a) => a.employee?.name ?? "",
+    departmentName: (a) => a.employee?.department?.name ?? "",
+    location: (a) => a.location ?? "",
+  };
+
+  const fieldLabels: Record<string, string> = {
+    assetNo: "设备编号",
+    name: "设备名称",
+    categoryName: "分类",
+    templateName: "模板",
+    status: "状态",
+    employeeName: "使用人",
+    departmentName: "部门",
+    location: "位置",
+  };
+
+  const fieldsToExport = selectedFields && selectedFields.length > 0
+    ? selectedFields
+    : Object.keys(allFields);
+
+  const rows = assets.map((a) => {
+    const row: Record<string, string> = {};
+    for (const field of fieldsToExport) {
+      const getter = allFields[field];
+      if (getter) {
+        row[fieldLabels[field] ?? field] = getter(a);
+      }
+    }
+    return row;
+  });
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
