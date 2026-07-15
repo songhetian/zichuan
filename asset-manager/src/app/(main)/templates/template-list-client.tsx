@@ -18,14 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -81,11 +73,46 @@ interface ComponentModel {
   categoryId: number;
 }
 
+// ============================================================
+// BOM（配件清单）共享 state 类型
+// ============================================================
+
+type BomComponent = {
+  modelId: number;
+  quantity: number;
+  name: string;
+  brand: string | null;
+};
+
+interface BomProps {
+  components: BomComponent[];
+  setComponents: React.Dispatch<React.SetStateAction<BomComponent[]>>;
+  newModelId: string;
+  setNewModelId: (v: string) => void;
+  newQuantity: string;
+  setNewQuantity: (v: string) => void;
+  draggedIndex: number | null;
+  setDraggedIndex: (v: number | null) => void;
+  setCopyDialogOpen: (v: boolean) => void;
+  setEditingTemplateId: (v: number | null) => void;
+  modelOptions: { value: string; label: string }[];
+  handleAddComponent: () => void;
+  handleQuantityChange: (modelId: number, value: string) => void;
+  handleRemoveComponent: (modelId: number) => void;
+  handleDragStart: (index: number) => void;
+  handleDragOver: (e: React.DragEvent, index: number) => void;
+  handleDragEnd: () => void;
+}
+
 interface TemplateListClientProps {
   templates: Template[];
   categories: { id: number; name: string; code: string; parentId: number | null }[];
   componentModels: ComponentModel[];
 }
+
+// ============================================================
+// 列定义
+// ============================================================
 
 const columns: ColumnDef<Template>[] = [
   { accessorKey: "name", header: "模板名称" },
@@ -131,6 +158,7 @@ const columns: ColumnDef<Template>[] = [
             categories={(template as any)._categories}
             componentModels={(template as any)._componentModels}
             allTemplates={(template as any)._allTemplates}
+            bomProps={(template as any)._bomProps}
           />
         </div>
       );
@@ -138,16 +166,22 @@ const columns: ColumnDef<Template>[] = [
   },
 ];
 
+// ============================================================
+// ActionButtons 组件（使用父组件传入的 BOM state）
+// ============================================================
+
 function ActionButtons({
   template,
   categories,
   componentModels,
   allTemplates,
+  bomProps: bom,
 }: {
   template: Template & { _categories?: { id: number; name: string }[] };
   categories?: { id: number; name: string }[];
   componentModels?: ComponentModel[];
   allTemplates?: Template[];
+  bomProps?: BomProps;
 }) {
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -155,15 +189,6 @@ function ActionButtons({
   const [editOpen, setEditOpen] = useState(false);
   const [editUnique, setEditUnique] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
-  // 配件清单编辑 state：{ modelId, quantity, name, brand }
-  const [editComponents, setEditComponents] = useState<
-    { modelId: number; quantity: number; name: string; brand: string | null }[]
-  >([]);
-  const [newModelId, setNewModelId] = useState<string>("");
-  const [newQuantity, setNewQuantity] = useState<string>("1");
-  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
-  const [selectedCopyTemplateId, setSelectedCopyTemplateId] = useState<string>("");
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const { toast } = useToast();
 
   const editForm = useForm<TemplateFormValues>({
@@ -191,7 +216,7 @@ function ActionButtons({
       name: values.name.trim(),
       categoryId: Number(values.categoryId),
       unique: editUnique,
-      components: editComponents.map((c) => ({
+      components: (bom?.components ?? []).map((c) => ({
         modelId: c.modelId,
         quantity: Number(c.quantity),
       })),
@@ -213,8 +238,8 @@ function ActionButtons({
         categoryId: template.categoryId.toString(),
       });
       setEditUnique(template.unique ?? false);
-      // 用 template.components 初始化配件清单
-      setEditComponents(
+      // 用 template.components 初始化父组件的 BOM state
+      bom?.setComponents(
         template.components.map((c) => ({
           modelId: c.modelId,
           quantity: c.quantity,
@@ -222,114 +247,14 @@ function ActionButtons({
           brand: c.modelBrand,
         }))
       );
-      setNewModelId("");
-      setNewQuantity("1");
+      bom?.setNewModelId("");
+      bom?.setNewQuantity("1");
+      bom?.setEditingTemplateId(template.id);
     }
     setEditOpen(open);
   };
 
-  // 添加配件到清单
-  const handleAddComponent = () => {
-    if (!newModelId) return;
-    const model = (componentModels ?? []).find((m) => m.id === Number(newModelId));
-    if (!model) return;
-    const qty = Number(newQuantity);
-    if (!Number.isFinite(qty) || qty <= 0) return;
-    setEditComponents((prev) => {
-      const existing = prev.find((c) => c.modelId === model.id);
-      if (existing) {
-        // 已存在则累加数量
-        return prev.map((c) =>
-          c.modelId === model.id
-            ? { ...c, quantity: c.quantity + qty }
-            : c
-        );
-      }
-      return [
-        ...prev,
-        {
-          modelId: model.id,
-          quantity: qty,
-          name: model.name,
-          brand: model.brand,
-        },
-      ];
-    });
-    setNewModelId("");
-    setNewQuantity("1");
-  };
-
-  // 修改某行数量
-  const handleQuantityChange = (modelId: number, value: string) => {
-    setEditComponents((prev) =>
-      prev.map((c) =>
-        c.modelId === modelId ? { ...c, quantity: Number(value) || 0 } : c
-      )
-    );
-  };
-
-  // 删除某行配件
-  const handleRemoveComponent = (modelId: number) => {
-    setEditComponents((prev) => prev.filter((c) => c.modelId !== modelId));
-  };
-
-  // 拖拽排序处理
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
-
-    const newComponents = [...editComponents];
-    const draggedItem = newComponents[draggedIndex];
-    newComponents.splice(draggedIndex, 1);
-    newComponents.splice(index, 0, draggedItem);
-    setEditComponents(newComponents);
-    setDraggedIndex(index);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
-  };
-
-  // 从其他模板复制配件
-  const handleCopyFromTemplate = () => {
-    if (!selectedCopyTemplateId || !allTemplates) return;
-    const sourceTemplate = allTemplates.find((t) => t.id === Number(selectedCopyTemplateId));
-    if (!sourceTemplate) return;
-
-    setEditComponents((prev) => {
-      const merged = [...prev];
-      sourceTemplate.components.forEach((c) => {
-        const existing = merged.find((item) => item.modelId === c.modelId);
-        if (existing) {
-          existing.quantity += c.quantity;
-        } else {
-          merged.push({
-            modelId: c.modelId,
-            quantity: c.quantity,
-            name: c.modelName,
-            brand: c.modelBrand,
-          });
-        }
-      });
-      return merged;
-    });
-
-    setCopyDialogOpen(false);
-    setSelectedCopyTemplateId("");
-    toast({ title: "复制成功" });
-  };
-
-  // 配件型号 Select 选项：名称（品牌）
-  const modelOptions = (componentModels ?? []).map((m) => ({
-    value: m.id.toString(),
-    label: m.brand ? `${m.name}（${m.brand}）` : m.name,
-  }));
-
-  // 其他模板选项（排除当前模板）
+  // 其他模板选项（排除当前模板，用于编辑弹窗的复制按钮）
   const otherTemplateOptions = (allTemplates ?? [])
     .filter((t) => t.id !== template.id)
     .map((t) => ({
@@ -339,46 +264,15 @@ function ActionButtons({
 
   return (
     <>
-      <Button variant="ghost" size="icon" title="详情" onClick={() => setDetailOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="详情" onClick={() => setDetailOpen(true)}>
         <Eye className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
         <Pencil className="h-4 w-4 text-primary" />
       </Button>
-      <Button variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
-
-      {/* 从其他模板复制配件对话框 */}
-      <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>从其他模板复制配件</DialogTitle>
-            <DialogDescription>选择要复制配件的源模板</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>源模板</Label>
-              <Select value={selectedCopyTemplateId} onValueChange={setSelectedCopyTemplateId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择模板" />
-                </SelectTrigger>
-                <SelectContent>
-                  {otherTemplateOptions.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCopyDialogOpen(false)}>取消</Button>
-            <Button onClick={handleCopyFromTemplate} disabled={!selectedCopyTemplateId}>确认复制</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -390,13 +284,13 @@ function ActionButtons({
         onConfirm={handleDelete}
       />
 
-      <Sheet open={editOpen} onOpenChange={handleEditOpen}>
-        <SheetContent className="sm:max-w-xl overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>编辑模板</SheetTitle>
-            <SheetDescription>修改模板基本信息及配件清单</SheetDescription>
-          </SheetHeader>
-          <form onSubmit={editForm.handleSubmit(handleEdit)} className="space-y-4 py-4">
+      <Dialog open={editOpen} onOpenChange={handleEditOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>编辑模板</DialogTitle>
+            <DialogDescription>修改模板基本信息及配件清单</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={editForm.handleSubmit(handleEdit)} className="space-y-4">
             <div className="space-y-2">
               <Label>模板名称</Label>
               <Input {...editForm.register("name")} placeholder="请输入模板名称" />
@@ -443,8 +337,9 @@ function ActionButtons({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCopyDialogOpen(true)}
-                  disabled={editComponents.length === 0 && !otherTemplateOptions.length}
+                  type="button"
+                  onClick={() => bom?.setCopyDialogOpen(true)}
+                  disabled={!otherTemplateOptions.length}
                 >
                   <Copy className="mr-2 h-4 w-4" />
                   从其他模板复制
@@ -462,15 +357,15 @@ function ActionButtons({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {editComponents.length > 0 ? (
-                      editComponents.map((c, index) => (
+                    {(bom?.components ?? []).length > 0 ? (
+                      bom!.components.map((c, index) => (
                         <TableRow
                           key={c.modelId}
                           draggable
-                          onDragStart={() => handleDragStart(index)}
-                          onDragOver={(e) => handleDragOver(e, index)}
-                          onDragEnd={handleDragEnd}
-                          className={draggedIndex === index ? "opacity-50" : ""}
+                          onDragStart={() => bom?.handleDragStart(index)}
+                          onDragOver={(e) => bom?.handleDragOver(e, index)}
+                          onDragEnd={() => bom?.handleDragEnd()}
+                          className={(bom?.draggedIndex ?? null) === index ? "opacity-50" : ""}
                         >
                           <TableCell className="cursor-move">
                             <GripVertical className="h-4 w-4 text-muted-foreground" />
@@ -484,7 +379,7 @@ function ActionButtons({
                               className="h-8 w-20"
                               value={c.quantity}
                               onChange={(e) =>
-                                handleQuantityChange(c.modelId, e.target.value)
+                                bom?.handleQuantityChange(c.modelId, e.target.value)
                               }
                             />
                           </TableCell>
@@ -494,7 +389,8 @@ function ActionButtons({
                               size="icon"
                               className="h-8 w-8"
                               title="移除"
-                              onClick={() => handleRemoveComponent(c.modelId)}
+                              type="button"
+                              onClick={() => bom?.handleRemoveComponent(c.modelId)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -516,9 +412,9 @@ function ActionButtons({
                       <TableCell></TableCell>
                       <TableCell colSpan={2}>
                         <SearchableSelect
-                          options={modelOptions}
-                          value={newModelId}
-                          onValueChange={setNewModelId}
+                          options={bom?.modelOptions ?? []}
+                          value={bom?.newModelId ?? ""}
+                          onValueChange={(v) => bom?.setNewModelId(v)}
                           placeholder="选择配件型号"
                           emptyText="无匹配的配件型号"
                           triggerClassName="w-full"
@@ -529,8 +425,8 @@ function ActionButtons({
                           type="number"
                           min={1}
                           className="h-8 w-20"
-                          value={newQuantity}
-                          onChange={(e) => setNewQuantity(e.target.value)}
+                          value={bom?.newQuantity ?? "1"}
+                          onChange={(e) => bom?.setNewQuantity(e.target.value)}
                         />
                       </TableCell>
                       <TableCell className="text-center">
@@ -539,8 +435,9 @@ function ActionButtons({
                           size="icon"
                           className="h-8 w-8"
                           title="添加"
-                          disabled={!newModelId}
-                          onClick={handleAddComponent}
+                          type="button"
+                          disabled={!bom?.newModelId}
+                          onClick={() => bom?.handleAddComponent()}
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
@@ -550,15 +447,15 @@ function ActionButtons({
                 </Table>
               </div>
             </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
+              <Button type="submit" disabled={editLoading}>
+                {editLoading ? "更新中..." : "确认"}
+              </Button>
+            </DialogFooter>
           </form>
-          <SheetFooter>
-            <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-            <Button type="submit" disabled={editLoading}>
-              {editLoading ? "更新中..." : "确认"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-lg">
@@ -594,12 +491,149 @@ function ActionButtons({
   );
 }
 
+// ============================================================
+// TemplateListClient 主组件（持有 BOM state）
+// ============================================================
+
 export function TemplateListClient({ templates, categories, componentModels }: TemplateListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [isUnique, setIsUnique] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+
+  // ---------- 共享 BOM state ----------
+  const [bomComponents, setBomComponents] = useState<BomComponent[]>([]);
+  const [bomNewModelId, setBomNewModelId] = useState<string>("");
+  const [bomNewQuantity, setBomNewQuantity] = useState<string>("1");
+  const [bomCopyDialogOpen, setBomCopyDialogOpen] = useState(false);
+  const [bomSelectedCopyTemplateId, setBomSelectedCopyTemplateId] = useState<string>("");
+  const [bomDraggedIndex, setBomDraggedIndex] = useState<number | null>(null);
+  // 记录当前正在编辑的模板 ID，用于复制弹窗排除当前模板
+  const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
+
+  // ---------- 配件型号选项 ----------
+  const modelOptions = componentModels.map((m) => ({
+    value: m.id.toString(),
+    label: m.brand ? `${m.name}（${m.brand}）` : m.name,
+  }));
+
+  // ---------- 复制弹窗的可选模板（排除正在编辑的模板） ----------
+  const otherTemplateOptions = templates
+    .filter((t) => t.id !== editingTemplateId)
+    .map((t) => ({
+      value: t.id.toString(),
+      label: t.name,
+    }));
+
+  // ---------- BOM 操作 handlers ----------
+  const handleAddComponent = () => {
+    if (!bomNewModelId) return;
+    const model = componentModels.find((m) => m.id === Number(bomNewModelId));
+    if (!model) return;
+    const qty = Number(bomNewQuantity);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    setBomComponents((prev) => {
+      const existing = prev.find((c) => c.modelId === model.id);
+      if (existing) {
+        return prev.map((c) =>
+          c.modelId === model.id ? { ...c, quantity: c.quantity + qty } : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          modelId: model.id,
+          quantity: qty,
+          name: model.name,
+          brand: model.brand,
+        },
+      ];
+    });
+    setBomNewModelId("");
+    setBomNewQuantity("1");
+  };
+
+  const handleQuantityChange = (modelId: number, value: string) => {
+    setBomComponents((prev) =>
+      prev.map((c) =>
+        c.modelId === modelId ? { ...c, quantity: Number(value) || 0 } : c
+      )
+    );
+  };
+
+  const handleRemoveComponent = (modelId: number) => {
+    setBomComponents((prev) => prev.filter((c) => c.modelId !== modelId));
+  };
+
+  const handleDragStart = (index: number) => {
+    setBomDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (bomDraggedIndex === null || bomDraggedIndex === index) return;
+
+    const newComponents = [...bomComponents];
+    const draggedItem = newComponents[bomDraggedIndex];
+    newComponents.splice(bomDraggedIndex, 1);
+    newComponents.splice(index, 0, draggedItem);
+    setBomComponents(newComponents);
+    setBomDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setBomDraggedIndex(null);
+  };
+
+  const handleCopyFromTemplate = () => {
+    if (!bomSelectedCopyTemplateId) return;
+    const sourceTemplate = templates.find((t) => t.id === Number(bomSelectedCopyTemplateId));
+    if (!sourceTemplate) return;
+
+    setBomComponents((prev) => {
+      const merged = [...prev];
+      sourceTemplate.components.forEach((c) => {
+        const existing = merged.find((item) => item.modelId === c.modelId);
+        if (existing) {
+          existing.quantity += c.quantity;
+        } else {
+          merged.push({
+            modelId: c.modelId,
+            quantity: c.quantity,
+            name: c.modelName,
+            brand: c.modelBrand,
+          });
+        }
+      });
+      return merged;
+    });
+
+    setBomCopyDialogOpen(false);
+    setBomSelectedCopyTemplateId("");
+    toast({ title: "复制成功" });
+  };
+
+  // ---------- 组装 BOM props ----------
+  const bomProps: BomProps = {
+    components: bomComponents,
+    setComponents: setBomComponents,
+    newModelId: bomNewModelId,
+    setNewModelId: setBomNewModelId,
+    newQuantity: bomNewQuantity,
+    setNewQuantity: setBomNewQuantity,
+    draggedIndex: bomDraggedIndex,
+    setDraggedIndex: setBomDraggedIndex,
+    setCopyDialogOpen: setBomCopyDialogOpen,
+    setEditingTemplateId: setEditingTemplateId,
+    modelOptions,
+    handleAddComponent,
+    handleQuantityChange,
+    handleRemoveComponent,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+  };
 
   const createForm = useForm<TemplateFormValues>({
     resolver: zodResolver(templateSchema),
@@ -614,6 +648,7 @@ export function TemplateListClient({ templates, categories, componentModels }: T
     _categories: categories,
     _componentModels: componentModels,
     _allTemplates: templates,
+    _bomProps: bomProps,
   }));
 
   const handleCreate = async (values: TemplateFormValues) => {
@@ -621,7 +656,10 @@ export function TemplateListClient({ templates, categories, componentModels }: T
     const result = await createDeviceTemplate({
       name: values.name.trim(),
       categoryId: Number(values.categoryId),
-      components: [],
+      components: bomComponents.map((c) => ({
+        modelId: c.modelId,
+        quantity: Number(c.quantity),
+      })),
       unique: isUnique,
     });
     setLoading(false);
@@ -635,13 +673,28 @@ export function TemplateListClient({ templates, categories, componentModels }: T
     }
   };
 
+  const handleCreateOpen = (open: boolean) => {
+    if (open) {
+      createForm.reset({ name: "", categoryId: "" });
+      setIsUnique(false);
+      setBomComponents([]);
+      setBomNewModelId("");
+      setBomNewQuantity("1");
+      setEditingTemplateId(null);
+    }
+    if (!open) {
+      createForm.reset();
+    }
+    setCreateOpen(open);
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="设备模板"
         description="管理设备模板及配件清单"
         action={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button type="button" onClick={() => handleCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             新建模板
           </Button>
@@ -649,14 +702,12 @@ export function TemplateListClient({ templates, categories, componentModels }: T
       />
       <DataTable columns={columns} data={dataWithCategories} />
 
-      <Dialog open={createOpen} onOpenChange={(open) => {
-        if (!open) createForm.reset();
-        setCreateOpen(open);
-      }}>
-        <DialogContent className="max-w-md">
+      {/* ========== 创建模板弹窗 ========== */}
+      <Dialog open={createOpen} onOpenChange={handleCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>新建模板</DialogTitle>
-            <DialogDescription>创建新的设备模板</DialogDescription>
+            <DialogDescription>创建新的设备模板，可同时添加配件清单</DialogDescription>
           </DialogHeader>
           <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="space-y-2">
@@ -697,6 +748,125 @@ export function TemplateListClient({ templates, categories, componentModels }: T
                 唯一设备（每个员工只能拥有一台）
               </Label>
             </div>
+
+            {/* 配件清单管理（与编辑弹窗共用同一套 state） */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>配件清单</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => setBomCopyDialogOpen(true)}
+                  disabled={!templates.length}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  从其他模板复制
+                </Button>
+              </div>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12"></TableHead>
+                      <TableHead>型号名称</TableHead>
+                      <TableHead>品牌</TableHead>
+                      <TableHead className="w-28">数量</TableHead>
+                      <TableHead className="w-12 text-center">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {bomComponents.length > 0 ? (
+                      bomComponents.map((c, index) => (
+                        <TableRow
+                          key={c.modelId}
+                          draggable
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={bomDraggedIndex === index ? "opacity-50" : ""}
+                        >
+                          <TableCell className="cursor-move">
+                            <GripVertical className="h-4 w-4 text-muted-foreground" />
+                          </TableCell>
+                          <TableCell className="font-medium">{c.name}</TableCell>
+                          <TableCell>{c.brand ?? "-"}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={1}
+                              className="h-8 w-20"
+                              value={c.quantity}
+                              onChange={(e) =>
+                                handleQuantityChange(c.modelId, e.target.value)
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="移除"
+                              type="button"
+                              onClick={() => handleRemoveComponent(c.modelId)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="text-center text-sm text-muted-foreground py-4"
+                        >
+                          暂无配件，请在下方添加或从其他模板复制
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {/* 添加配件行 */}
+                    <TableRow>
+                      <TableCell></TableCell>
+                      <TableCell colSpan={2}>
+                        <SearchableSelect
+                          options={modelOptions}
+                          value={bomNewModelId}
+                          onValueChange={setBomNewModelId}
+                          placeholder="选择配件型号"
+                          emptyText="无匹配的配件型号"
+                          triggerClassName="w-full"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          min={1}
+                          className="h-8 w-20"
+                          value={bomNewQuantity}
+                          onChange={(e) => setBomNewQuantity(e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="添加"
+                          type="button"
+                          disabled={!bomNewModelId}
+                          onClick={handleAddComponent}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
               <Button type="submit" disabled={loading}>
@@ -704,6 +874,37 @@ export function TemplateListClient({ templates, categories, componentModels }: T
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========== 从其他模板复制配件弹窗（创建/编辑共用） ========== */}
+      <Dialog open={bomCopyDialogOpen} onOpenChange={setBomCopyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>从其他模板复制配件</DialogTitle>
+            <DialogDescription>选择要复制配件的源模板</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>源模板</Label>
+              <Select value={bomSelectedCopyTemplateId} onValueChange={setBomSelectedCopyTemplateId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择模板" />
+                </SelectTrigger>
+                <SelectContent>
+                  {otherTemplateOptions.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBomCopyDialogOpen(false)}>取消</Button>
+            <Button type="button" onClick={handleCopyFromTemplate} disabled={!bomSelectedCopyTemplateId}>确认复制</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -18,7 +18,7 @@ export function PageHeader({ title, description, showBack, action }: PageHeaderP
     <div className="flex items-center justify-between pb-4">
       <div className="flex items-center gap-3">
         {showBack && (
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+          <Button type="button" variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}

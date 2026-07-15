@@ -72,6 +72,9 @@ async function seed() {
 
   const officeCat = await prisma.assetCategory.create({ data: { name: "办公设备", code: "BG" } });
   const printerCat = await prisma.assetCategory.create({ data: { name: "打印机", code: "PR", parentId: officeCat.id } });
+
+  const serverCat = await prisma.assetCategory.create({ data: { name: "服务器", code: "SV" } });
+  const monitorCat = await prisma.assetCategory.create({ data: { name: "显示器", code: "MN" } });
   console.log("创建设备分类");
 
   // 6. 设备模板 + BOM
@@ -244,9 +247,124 @@ async function seed() {
     }
   });
 
-  console.log("创建 12 台设备（闲置3 + 在用6 + 维修1 + 报废1 + 网络设备2）");
+  // 添加更多设备让分页更有意义
+  // 服务器
+  for (let i = 0; i < 2; i++) {
+    const no = nextNo("SV");
+    await prisma.asset.create({
+      data: { assetNo: no, name: `服务器-${i + 1}`, templateId: tpl2.id, status: "IN_USE", employeeId: employees[0].id, location: "机房A-机架1", purchaseDate: new Date("2023-08-01"), warrantyMonths: 60 },
+    });
+  }
 
-  // 8. 创建管理员
+  // 显示器（多台闲置）
+  for (let i = 0; i < 4; i++) {
+    const no = nextNo("MN");
+    await prisma.asset.create({
+      data: { assetNo: no, name: `显示器-${i + 1}`, templateId: tpl1.id, status: i < 2 ? "IDLE" : "IN_USE", employeeId: i >= 2 ? employees[i % employees.length].id : null, location: i < 2 ? "仓库" : `工位${i + 1}`, purchaseDate: new Date("2024-04-01"), warrantyMonths: 24 },
+    });
+  }
+
+  // 额外台式机
+  for (let i = 0; i < 3; i++) {
+    const no = nextNo("DN");
+    const a = await prisma.asset.create({
+      data: { assetNo: no, name: `备用台式电脑-${i + 1}`, templateId: tpl1.id, status: "IDLE", location: "仓库", purchaseDate: new Date("2024-05-01"), warrantyMonths: 36 },
+      include: { template: { include: { components: true } } },
+    });
+    for (const tc of a.template.components) {
+      await prisma.assetComponent.create({ data: { assetId: a.id, modelId: tc.modelId, quantity: tc.quantity } });
+    }
+  }
+
+  console.log("创建 21 台设备（闲置8 + 在用10 + 维修1 + 报废1 + 网络设备2）");
+
+  // 8. 创建生命周期操作日志
+  const allAssets = await prisma.asset.findMany({ include: { template: true } });
+  const logs = [];
+  for (const asset of allAssets) {
+    // 每台设备至少有一条 CREATED 日志
+    logs.push(
+      prisma.lifecycleLog.create({
+        data: {
+          action: "CREATED",
+          assetId: asset.id,
+          operator: "admin",
+          remark: `创建设备 ${asset.assetNo}`,
+        },
+      })
+    );
+
+    // 根据状态添加后续操作日志
+    if (asset.status === "IN_USE" && asset.employeeId) {
+      const emp = await prisma.employee.findUnique({ where: { id: asset.employeeId } });
+      logs.push(
+        prisma.lifecycleLog.create({
+          data: {
+            action: "ALLOCATED",
+            assetId: asset.id,
+            employeeId: asset.employeeId,
+            operator: "admin",
+            remark: `分配给 ${emp?.name ?? ""}`,
+          },
+        })
+      );
+    }
+    if (asset.status === "IN_MAINTENANCE") {
+      logs.push(
+        prisma.lifecycleLog.create({
+          data: {
+            action: "MAINTENANCE_START",
+            assetId: asset.id,
+            operator: "admin",
+            remark: "送修",
+          },
+        })
+      );
+    }
+    if (asset.status === "SCRAPPED") {
+      logs.push(
+        prisma.lifecycleLog.create({
+          data: {
+            action: "SCRAPPED",
+            assetId: asset.id,
+            operator: "admin",
+            remark: "设备报废",
+          },
+        })
+      );
+    }
+  }
+
+  // 额外添加一些 RETURNED 和 UPGRADED 日志让数据更丰富
+  const inUseAssets = allAssets.filter((a) => a.status === "IN_USE").slice(0, 2);
+  for (const asset of inUseAssets) {
+    logs.push(
+      prisma.lifecycleLog.create({
+        data: {
+          action: "RETURNED",
+          assetId: asset.id,
+          operator: "admin",
+          remark: "临时归还",
+        },
+      })
+    );
+    logs.push(
+      prisma.lifecycleLog.create({
+        data: {
+          action: "ALLOCATED",
+          assetId: asset.id,
+          employeeId: asset.employeeId,
+          operator: "admin",
+          remark: "重新分配",
+        },
+      })
+    );
+  }
+
+  await Promise.all(logs);
+  console.log(`创建 ${logs.length} 条生命周期操作日志`);
+
+  // 9. 创建管理员
   const existingAdmin = await prisma.admin.findFirst();
   if (!existingAdmin) {
     const bcrypt = await import("bcryptjs");

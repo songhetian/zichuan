@@ -83,8 +83,7 @@ export function CommandPalette() {
       } else {
         setSearchResults([]);
       }
-    } catch (error) {
-      console.error("搜索失败:", error);
+    } catch {
       setSearchResults([]);
     } finally {
       setSearching(false);

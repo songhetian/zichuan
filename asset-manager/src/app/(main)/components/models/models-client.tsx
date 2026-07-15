@@ -172,13 +172,13 @@ function ComponentActionButtons({
 
   return (
     <>
-      <Button variant="ghost" size="icon" title="入库" onClick={() => setStockInOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="入库" onClick={() => setStockInOpen(true)}>
         <PackagePlus className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
         <Pencil className="h-4 w-4 text-primary" />
       </Button>
-      <Button variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
 

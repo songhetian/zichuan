@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +8,7 @@ import { z } from "zod";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
+import { FilterBar } from "@/components/features/filter-bar";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -247,10 +248,10 @@ function EmployeeActionButtons({
 
   return (
     <>
-      <Button variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
         <Pencil className="h-4 w-4 text-primary" />
       </Button>
-      <Button variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
 
@@ -339,6 +340,8 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [keyword, setKeyword] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { toast } = useToast();
@@ -428,7 +431,19 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
     }
   };
 
-  const dataWithDepartments = employees.map((e) => ({
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) => {
+      const matchesDepartment =
+        departmentFilter === "all" || emp.departmentId.toString() === departmentFilter;
+      const matchesKeyword =
+        !keyword.trim() ||
+        emp.name.toLowerCase().includes(keyword.toLowerCase()) ||
+        emp.employeeNo.toLowerCase().includes(keyword.toLowerCase());
+      return matchesDepartment && matchesKeyword;
+    });
+  }, [employees, departmentFilter, keyword]);
+
+  const dataWithDepartments = filteredEmployees.map((e) => ({
     ...e,
     _departments: departments,
   }));
@@ -461,6 +476,33 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
             </Button>
           </div>
         }
+      />
+      <FilterBar
+        items={[
+          {
+            key: "department",
+            content: (
+              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="全部部门" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部部门</SelectItem>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={d.id.toString()}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ),
+          },
+        ]}
+        searchValue={keyword}
+        searchPlaceholder="搜索工号、姓名..."
+        onSearchChange={setKeyword}
+        showReset
+        onReset={() => { setDepartmentFilter("all"); setKeyword(""); }}
       />
       <DataTable
         columns={columns}

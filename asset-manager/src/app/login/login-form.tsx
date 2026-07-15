@@ -36,7 +36,7 @@ export function LoginForm() {
       const result = await login({ username, password })
       if (result.success) {
         authLogin(username)
-        router.push("/assets")
+        router.push("/dashboard")
       } else {
         setError(result.error)
       }

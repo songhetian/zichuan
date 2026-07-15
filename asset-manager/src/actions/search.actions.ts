@@ -138,8 +138,7 @@ export async function globalSearch(
     );
 
     return { success: true, data: results };
-  } catch (error) {
-    console.error("全局搜索失败:", error);
+  } catch {
     return { success: false, error: "搜索失败，请稍后重试" };
   }
 }

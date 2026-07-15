@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
+import { FilterBar } from "@/components/features/filter-bar";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -68,11 +70,23 @@ const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: str
   {
     accessorKey: "stock",
     header: "库存数量",
-    cell: ({ row }) => (
-      <span className={row.original.stock > 0 ? "text-green-600 font-medium" : "text-muted-foreground"}>
-        {row.original.stock}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const stock = row.original.stock;
+      if (stock === 0) {
+        return <span className="text-red-600 font-medium">缺货</span>;
+      }
+      if (stock <= 5) {
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-red-600 font-medium">{stock}</span>
+            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 leading-normal">
+              低库存
+            </Badge>
+          </span>
+        );
+      }
+      return <span className="text-green-600 font-medium">{stock}</span>;
+    },
   },
   {
     id: "actions",
@@ -170,13 +184,13 @@ function ComponentActionButtons({
 
   return (
     <>
-      <Button variant="ghost" size="icon" title="入库" onClick={() => setStockInOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="入库" onClick={() => setStockInOpen(true)}>
         <PackagePlus className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
         <Pencil className="h-4 w-4 text-primary" />
       </Button>
-      <Button variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
 
@@ -267,7 +281,42 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
   const router = useRouter();
   const { toast } = useToast();
 
-  const dataWithCategories = models.map((m) => ({
+  // 筛选状态
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // 提取分类列表（去重）
+  const categoryOptions = useMemo(() => {
+    const seen = new Set<number>();
+    return categories.filter((c) => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  }, [categories]);
+
+  // 筛选数据
+  const filteredModels = useMemo(() => {
+    let result = models;
+
+    if (selectedCategory && selectedCategory !== "all") {
+      const catId = Number(selectedCategory);
+      result = result.filter((m) => m.categoryId === catId);
+    }
+
+    if (searchKeyword.trim()) {
+      const kw = searchKeyword.trim().toLowerCase();
+      result = result.filter(
+        (m) =>
+          m.name.toLowerCase().includes(kw) ||
+          (m.brand && m.brand.toLowerCase().includes(kw)),
+      );
+    }
+
+    return result;
+  }, [models, selectedCategory, searchKeyword]);
+
+  const dataWithCategories = filteredModels.map((m) => ({
     ...m,
     _categories: categories,
   }));
@@ -305,6 +354,35 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
           </Button>
         }
       />
+
+      <FilterBar
+        items={[
+          {
+            key: "category",
+            content: (
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="全部分类" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部分类</SelectItem>
+                  {categoryOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id.toString()}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ),
+          },
+        ]}
+        searchValue={searchKeyword}
+        searchPlaceholder="搜索型号名称、品牌..."
+        onSearchChange={setSearchKeyword}
+        showReset
+        onReset={() => { setSelectedCategory("all"); setSearchKeyword(""); }}
+      />
+
       <DataTable columns={columns} data={dataWithCategories} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

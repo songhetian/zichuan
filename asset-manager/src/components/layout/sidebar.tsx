@@ -6,11 +6,22 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   Monitor, Cpu, Users, ArrowRightLeft,
-  ClipboardCheck, BarChart3, Settings, FileText, Package,
-  LayoutGrid, Wrench, ChevronDown,
+  ClipboardCheck, Settings, FileText, Package,
+  LayoutGrid, ChevronDown, LayoutDashboard,
+  PanelLeftClose, PanelLeft,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface SubItem {
   href: string
@@ -25,20 +36,13 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { href: "/dashboard", label: "首页概览", icon: LayoutDashboard },
   { href: "/assets", label: "设备管理", icon: Monitor },
   { href: "/templates", label: "设备模板", icon: LayoutGrid },
-  {
-    href: "/components",
-    label: "配件库存",
-    icon: Cpu,
-    children: [
-      { href: "/components/models", label: "配件型号" },
-      { href: "/components/stock", label: "库存流水" },
-    ],
-  },
+  { href: "/components/models", label: "配件库存", icon: Cpu },
+  { href: "/components/stock", label: "库存流水", icon: ArrowRightLeft },
   { href: "/employees", label: "员工管理", icon: Users },
   { href: "/stocktake", label: "库存盘点", icon: ClipboardCheck },
-  { href: "/stats", label: "统计报表", icon: BarChart3 },
   { href: "/logs", label: "系统日志", icon: FileText },
   {
     href: "/settings",
@@ -57,14 +61,24 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname()
 
-  // Determine which parent menus should be expanded by default
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("sidebar-collapsed") === "true"
+    }
+    return false
+  })
+
+  const toggleCollapsed = () => {
+    const next = !collapsed
+    setCollapsed(next)
+    localStorage.setItem("sidebar-collapsed", String(next))
+  }
+
   const getDefaultExpanded = (): string[] => {
     const expanded: string[] = []
     for (const item of navItems) {
       if (item.children) {
-        const childMatch = item.children.some(
-          (child) => pathname === child.href
-        )
+        const childMatch = item.children.some((child) => pathname === child.href)
         if (childMatch) {
           expanded.push(item.href)
         }
@@ -77,31 +91,90 @@ export function Sidebar() {
 
   const toggleExpand = (href: string) => {
     setExpandedItems((prev) =>
-      prev.includes(href)
-        ? prev.filter((h) => h !== href)
-        : [...prev, href]
+      prev.includes(href) ? prev.filter((h) => h !== href) : [...prev, href]
     )
   }
 
   const isActiveParent = (item: NavItem) => {
     if (!item.children) return false
-    return item.children.some(
-      (child) => pathname === child.href
-    )
+    return item.children.some((child) => pathname === child.href)
   }
 
+  const isActive = (item: NavItem) =>
+    pathname === item.href ||
+    (item.href !== "/assets" && pathname.startsWith(item.href))
+
   return (
-    <div className="hidden md:flex h-full w-56 flex-col border-r bg-card">
-      <div className="flex h-14 items-center border-b px-4">
-        <Package className="h-6 w-6 text-primary" />
-        <span className="ml-2 text-lg font-semibold">资产管理系统</span>
+    <div
+      className={cn(
+        "hidden md:flex h-full flex-col border-r bg-card transition-all duration-300",
+        collapsed ? "w-14" : "w-56"
+      )}
+    >
+      {/* Header */}
+      <div
+        className={cn(
+          "flex h-14 items-center border-b",
+          collapsed ? "justify-center px-2" : "px-4"
+        )}
+      >
+        <Package className="h-6 w-6 shrink-0 text-primary" />
+        {!collapsed && (
+          <span className="ml-2 text-lg font-semibold whitespace-nowrap">资产管理系统</span>
+        )}
       </div>
+
+      {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-2">
         <nav className="flex flex-col gap-1">
           {navItems.map((item) => {
+            const isParentActive = isActiveParent(item)
+
             if (item.children) {
+              if (collapsed) {
+                return (
+                  <Popover key={item.href}>
+                    <PopoverTrigger asChild>
+                      <button
+                        className={cn(
+                          "flex w-full items-center justify-center rounded-md p-2 text-sm transition-colors",
+                          isParentActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        )}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="right" align="start" className="w-48 p-2">
+                      <p className="px-2 py-1.5 text-sm font-medium text-muted-foreground">
+                        {item.label}
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {item.children.map((child) => {
+                          const isChildActive = pathname === child.href
+                          return (
+                            <Link
+                              key={child.href}
+                              href={child.href}
+                              className={cn(
+                                "rounded-md px-3 py-2 text-sm transition-colors",
+                                isChildActive
+                                  ? "bg-primary/10 text-primary font-medium"
+                                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                              )}
+                            >
+                              {child.label}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )
+              }
+
               const isExpanded = expandedItems.includes(item.href)
-              const isParentActive = isActiveParent(item)
 
               return (
                 <div key={item.href}>
@@ -148,10 +221,30 @@ export function Sidebar() {
               )
             }
 
-            // No children - simple link
-            const isActive =
-              pathname === item.href ||
-              (item.href !== "/assets" && pathname.startsWith(item.href))
+            const active = isActive(item)
+
+            if (collapsed) {
+              return (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "flex w-full items-center justify-center rounded-md p-2 text-sm transition-colors",
+                        active
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={8}>
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            }
 
             return (
               <Link
@@ -159,18 +252,47 @@ export function Sidebar() {
                 href={item.href}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
+                  active
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-4 w-4 shrink-0" />
                 {item.label}
               </Link>
             )
           })}
         </nav>
       </ScrollArea>
+
+      {/* Toggle button */}
+      <div className="border-t p-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleCollapsed}
+              className={cn(
+                "w-full",
+                collapsed ? "justify-center px-2" : "justify-start px-3"
+              )}
+            >
+              {collapsed ? (
+                <PanelLeft className="h-4 w-4 shrink-0" />
+              ) : (
+                <>
+                  <PanelLeftClose className="h-4 w-4 shrink-0" />
+                  <span className="ml-2 text-sm whitespace-nowrap">收起菜单</span>
+                </>
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            {collapsed ? "展开菜单" : "收起菜单"}
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   )
 }

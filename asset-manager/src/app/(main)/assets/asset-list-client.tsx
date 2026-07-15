@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
@@ -34,7 +34,15 @@ import {
   UserPlus,
   Wrench,
   CheckCircle2,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
 import {
@@ -256,38 +264,50 @@ function ActionButtons({
 
   return (
     <>
-      <div className="flex items-center gap-0.5 justify-center">
-        <Button variant="ghost" size="icon" className="h-8 w-8" title="详情" onClick={() => router.push(`/assets/${asset.id}`)}>
+      <div className="flex items-center gap-1 justify-center">
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="详情" onClick={() => router.push(`/assets/${asset.id}`)}>
           <Eye className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8" title="编辑" onClick={() => setEditOpen(true)}>
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="编辑" onClick={() => setEditOpen(true)}>
           <Pencil className="h-4 w-4 text-primary" />
         </Button>
-        {asset.status === "IDLE" && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="分配" onClick={() => setAllocateOpen(true)}>
-            <UserPlus className="h-4 w-4 text-blue-500" />
-          </Button>
-        )}
-        {asset.status === "IN_USE" && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="归还" onClick={() => setReturnOpen(true)}>
-            <RotateCcw className="h-4 w-4 text-orange-500" />
-          </Button>
-        )}
-        {asset.status === "IN_MAINTENANCE" && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="维修完成" onClick={() => setMaintenanceDoneOpen(true)}>
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-          </Button>
-        )}
-        {(asset.status === "IDLE" || asset.status === "IN_USE") && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="送修" onClick={() => setMaintenanceOpen(true)}>
-            <Wrench className="h-4 w-4 text-yellow-500" />
-          </Button>
-        )}
-        {asset.status !== "SCRAPPED" && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" title="报废" onClick={() => setScrapOpen(true)}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {asset.status === "IDLE" && (
+              <DropdownMenuItem onClick={() => { setAllocateOpen(true); }}>
+                <UserPlus className="mr-2 h-4 w-4 text-blue-500" />分配
+              </DropdownMenuItem>
+            )}
+            {asset.status === "IN_USE" && (
+              <DropdownMenuItem onClick={() => { setReturnOpen(true); }}>
+                <RotateCcw className="mr-2 h-4 w-4 text-orange-500" />归还
+              </DropdownMenuItem>
+            )}
+            {asset.status === "IN_MAINTENANCE" && (
+              <DropdownMenuItem onClick={() => { setMaintenanceCompleteOpen(true); }}>
+                <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />维修完成
+              </DropdownMenuItem>
+            )}
+            {(asset.status === "IDLE" || asset.status === "IN_USE") && (
+              <DropdownMenuItem onClick={() => { setMaintenanceOpen(true); }}>
+                <Wrench className="mr-2 h-4 w-4 text-yellow-500" />送修
+              </DropdownMenuItem>
+            )}
+            {asset.status !== "SCRAPPED" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive" onClick={() => { setScrapOpen(true); }}>
+                  <Trash2 className="mr-2 h-4 w-4" />报废
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <EditAssetDialog open={editOpen} onOpenChange={setEditOpen} asset={asset} />
       <ConfirmDialog
@@ -411,6 +431,8 @@ function getColumns(
     {
       id: "actions",
       header: "操作",
+      size: 120,
+      minSize: 120,
       cell: ({ row }) => {
         const asset = row.original;
         return <ActionButtons asset={asset} employees={employees} />;
@@ -448,6 +470,15 @@ export function AssetListClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // 从 URL 参数初始化筛选状态
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (status && ["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED"].includes(status)) {
+      setStatusFilter(status);
+    }
+  }, [searchParams]);
 
   const columns = getColumns(employees);
 

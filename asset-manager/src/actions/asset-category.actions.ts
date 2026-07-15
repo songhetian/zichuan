@@ -1,11 +1,18 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { pinyin } from "pinyin-pro";
+
+function generateCodeFromName(name: string): string {
+  const py = pinyin(name, { toneType: "none", type: "array" });
+  return py.map((s) => s.charAt(0).toUpperCase()).join("").slice(0, 6);
+}
 
 const createSchema = z.object({
   name: z.string().min(1, "分类名称不能为空"),
-  code: z.string().min(1, "分类编码不能为空"),
+  code: z.string().optional(),
   parentId: z.number().nullable().optional(),
 });
 
@@ -13,10 +20,6 @@ const updateSchema = z.object({
   name: z.string().min(1, "分类名称不能为空").optional(),
   code: z.string().min(1, "分类编码不能为空").optional(),
 });
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
 
 export async function createAssetCategory(
   input: z.infer<typeof createSchema>
@@ -26,7 +29,8 @@ export async function createAssetCategory(
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
   }
 
-  const { name, code, parentId } = validated.data;
+  const { name, parentId } = validated.data;
+  const code = validated.data.code || generateCodeFromName(name);
 
   if (parentId != null) {
     const parent = await prisma.assetCategory.findUnique({ where: { id: parentId } });

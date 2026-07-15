@@ -57,6 +57,7 @@ interface StocktakeListClientProps {
 }
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  OPEN: { label: "进行中", variant: "secondary" },
   PENDING: { label: "进行中", variant: "secondary" },
   COMPLETED: { label: "已完成", variant: "default" },
 };
@@ -119,7 +120,7 @@ function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
 
   return (
     <>
-      <Button variant="ghost" size="icon" title="详情" onClick={handleViewDetail}>
+      <Button type="button" variant="ghost" size="icon" title="详情" onClick={handleViewDetail}>
         <Eye className="h-4 w-4" />
       </Button>
       {session.status === "OPEN" && (
@@ -141,7 +142,6 @@ function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
 
 export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -166,7 +166,6 @@ export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
       toast({ title: "盘点任务创建成功" });
       setCreateOpen(false);
       createForm.reset();
-      setStatusFilter("");
       router.refresh();
     } else {
       toast({ title: "创建失败", description: result.error, variant: "destructive" });
@@ -207,20 +206,6 @@ export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
             <div className="space-y-2">
               <Label>备注说明</Label>
               <Textarea {...createForm.register("description")} placeholder="可选" rows={3} />
-            </div>
-            <div className="space-y-2">
-              <Label>状态筛选（可选）</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="全部设备" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部设备</SelectItem>
-                  <SelectItem value="IDLE">闲置</SelectItem>
-                  <SelectItem value="IN_USE">在用</SelectItem>
-                  <SelectItem value="IN_MAINTENANCE">维修中</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>

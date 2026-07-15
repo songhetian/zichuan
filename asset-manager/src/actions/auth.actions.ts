@@ -1,5 +1,6 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
@@ -13,10 +14,6 @@ const changePasswordSchema = z.object({
   oldPassword: z.string().min(1),
   newPassword: z.string().min(1, "新密码不能为空"),
 });
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
 
 async function ensureAdminExists(): Promise<void> {
   const count = await prisma.admin.count();

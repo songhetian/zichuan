@@ -1,5 +1,6 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
@@ -23,14 +24,6 @@ const querySchema = z.object({
   categoryId: z.number().optional(),
   keyword: z.string().optional(),
 });
-
-// ============================================================
-// 统一返回类型
-// ============================================================
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
 
 type ComponentModelWithStock = {
   id: number;

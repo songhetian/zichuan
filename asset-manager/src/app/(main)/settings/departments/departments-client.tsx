@@ -28,8 +28,8 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getDepartments,
   createDepartment,
   updateDepartment,
   deleteDepartment,
@@ -41,14 +41,21 @@ const departmentSchema = z.object({
 
 type DepartmentFormValues = z.infer<typeof departmentSchema>;
 
+const PAGE_SIZE = 10;
+
 export function DepartmentsClient({ initialDepartments }: { initialDepartments: { id: number; name: string }[] }) {
   const [departments, setDepartments] = useState(initialDepartments);
+  const [currentPage, setCurrentPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
+  const [currentName, setCurrentName] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  const totalPages = Math.ceil(departments.length / PAGE_SIZE);
+  const paginatedDepartments = departments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const createForm = useForm<DepartmentFormValues>({
     resolver: zodResolver(departmentSchema),
@@ -113,8 +120,9 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
     setEditOpen(true);
   };
 
-  const openDelete = (id: number) => {
-    setCurrentId(id);
+  const openDelete = (dept: { id: number; name: string }) => {
+    setCurrentId(dept.id);
+    setCurrentName(dept.name);
     setDeleteOpen(true);
   };
 
@@ -141,15 +149,15 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {departments.map((dept) => (
+              {paginatedDepartments.map((dept) => (
                 <TableRow key={dept.id}>
                   <TableCell>{dept.name}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 justify-center">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(dept)}>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(dept)}>
                         <Pencil className="h-4 w-4 text-primary" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => openDelete(dept.id)}>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => openDelete(dept)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -159,6 +167,12 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
             </TableBody>
           </Table>
 
+          <Pagination
+            total={departments.length}
+            current={currentPage}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogContent className="max-w-sm">
               <DialogHeader>
@@ -205,7 +219,7 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
             open={deleteOpen}
             onOpenChange={setDeleteOpen}
             title="确认删除"
-            description="确定要删除该部门吗？"
+            description={`确定要删除部门「${currentName}」吗？`}
             confirmText="删除"
             variant="destructive"
             onConfirm={handleDelete}

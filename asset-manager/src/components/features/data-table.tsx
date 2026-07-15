@@ -66,7 +66,7 @@ export function DataTable<TData, TValue>({
     enableRowSelection,
     state: { sorting, columnFilters, rowSelection, expanded },
     initialState: {
-      pagination: { pageSize: 20 },
+      pagination: { pageSize: 10 },
     },
   })
 
@@ -111,10 +111,11 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <React.Fragment key={row.id}>
+                <>
                   <TableRow
+                    key={`row-${row.id}`}
                     data-state={row.getIsSelected() && "selected"}
-                    className={`hover:bg-muted/30 transition-colors ${renderExpandedRow ? 'cursor-pointer' : ''}`}
+                    className={`hover:bg-muted/60 transition-colors ${renderExpandedRow ? 'cursor-pointer' : ''}`}
                     onClick={renderExpandedRow ? () => row.toggleExpanded() : undefined}
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -124,20 +125,29 @@ export function DataTable<TData, TValue>({
                     ))}
                   </TableRow>
                   {row.getIsExpanded() && renderExpandedRow && (
-                    <TableRow>
+                    <TableRow key={`expanded-${row.id}`}>
                       <TableCell colSpan={columns.length} className="p-0">
                         {renderExpandedRow(row.original)}
                       </TableCell>
                     </TableRow>
                   )}
-                </React.Fragment>
+                </>
               ))
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <Inbox className="h-8 w-8" />
-                    <span className="text-sm">暂无数据</span>
+                  <div className="flex flex-col items-center gap-2">
+                    {data.length === 0 ? (
+                      <>
+                        <Inbox className="h-8 w-8 text-muted-foreground/50" />
+                        <p className="text-muted-foreground">暂无数据</p>
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-8 w-8 text-muted-foreground/50" />
+                        <p className="text-muted-foreground">未找到匹配的记录</p>
+                      </>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -145,6 +155,7 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
+      {table.getRowModel().rows.length > 0 && (
       <div className="flex items-center justify-between py-1">
         <div className="text-xs text-muted-foreground">
           共 {table.getFilteredRowModel().rows.length} 条记录
@@ -173,6 +184,7 @@ export function DataTable<TData, TValue>({
           </Button>
         </div>
       </div>
+      )}
     </div>
   )
 }

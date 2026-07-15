@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { DashboardClient } from "./dashboard-client";
+import { getStockStats, getLifecycleTrend } from "@/actions/stats.actions";
 
 export default async function DashboardPage() {
   // 获取设备统计数据
@@ -107,15 +107,6 @@ export default async function DashboardPage() {
   // 保修即将到期设备（30天内）
   const thirtyDaysFromNow = new Date();
   thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-  const warrantyExpiringCount = await prisma.asset.count({
-    where: {
-      purchaseDate: { not: null },
-      warrantyMonths: { not: null },
-      status: { in: ["IDLE", "IN_USE"] },
-    },
-  });
-
-  // 简单计算：采购日期 + 保修月数 < 当前日期 + 30天
   const allAssetsWithWarranty = await prisma.asset.findMany({
     where: {
       purchaseDate: { not: null },
@@ -148,6 +139,12 @@ export default async function DashboardPage() {
     });
   }
 
+  // 获取配件库存和生命周期趋势（来自统计报表）
+  const [stockResult, trendResult] = await Promise.all([
+    getStockStats(),
+    getLifecycleTrend({ months: 6 }),
+  ]);
+
   return (
     <DashboardClient
       data={{
@@ -167,6 +164,8 @@ export default async function DashboardPage() {
           createdAt: log.createdAt,
         })),
         pendingTasks,
+        stockStats: stockResult.success ? stockResult.data : [],
+        trendData: trendResult.success ? trendResult.data : [],
       }}
     />
   );

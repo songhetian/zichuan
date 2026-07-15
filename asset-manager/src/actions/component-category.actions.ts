@@ -1,5 +1,6 @@
 "use server";
 
+import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
@@ -16,14 +17,6 @@ const updateSchema = z.object({
   name: z.string().min(1, "分类名称不能为空").optional(),
   parentId: z.number().nullable().optional(),
 });
-
-// ============================================================
-// 统一返回类型
-// ============================================================
-
-type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string };
 
 // ============================================================
 // Actions

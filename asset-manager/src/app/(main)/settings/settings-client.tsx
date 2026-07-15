@@ -36,19 +36,16 @@ import {
 import { Plus, Pencil, Trash2, Upload, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
-  getDepartments,
   createDepartment,
   updateDepartment,
   deleteDepartment,
 } from "@/actions/department.actions";
 import {
-  getAssetCategories,
   createAssetCategory,
   updateAssetCategory,
   deleteAssetCategory,
 } from "@/actions/asset-category.actions";
 import {
-  getComponentCategories,
   createComponentCategory,
   updateComponentCategory,
   deleteComponentCategory,
@@ -197,10 +194,10 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
                 <TableCell>{dept.name}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(dept)}>
+                    <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(dept)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openDelete(dept.id)}>
+                    <Button type="button" variant="ghost" size="icon" onClick={() => openDelete(dept.id)}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
@@ -330,7 +327,7 @@ function AssetCategoryManager({
                 <TableCell>{cat.name}</TableCell>
                 <TableCell className="font-mono">{cat.code}</TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>
@@ -443,7 +440,7 @@ function ComponentCategoryManager({
               <TableRow key={cat.id}>
                 <TableCell>{cat.name}</TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>
