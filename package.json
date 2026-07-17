@@ -12,7 +12,14 @@
     "start": "next start",
     "setup": "npm install && node scripts/db-init.js && prisma migrate dev --name init && npx tsx prisma/seed.ts",
     "dev:full": "node scripts/kill-node.js && node scripts/db-init.js && prisma migrate dev --name init && npx tsx prisma/seed.ts && next dev",
-    "prod": "NODE_ENV=production prisma generate && next build && next start"
+    "prod": "NODE_ENV=production prisma generate && next build && next start",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:restart": "docker compose restart",
+    "docker:ps": "docker compose ps",
+    "docker:deploy": "docker compose up -d --build && docker compose up db-init"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

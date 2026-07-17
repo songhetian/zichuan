@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getAssets } from "@/actions/asset.actions";
 import { getDeviceTemplates } from "@/actions/device-template.actions";
 import { AssetListClient } from "./asset-list-client";

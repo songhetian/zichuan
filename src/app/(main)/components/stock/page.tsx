@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getStockLogs } from "@/actions/component-stock.actions";
 import { getComponentModels } from "@/actions/component-model.actions";
 import { StockLogClient } from "./stock-log-client";

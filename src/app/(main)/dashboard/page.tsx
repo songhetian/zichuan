@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { prisma } from "@/lib/prisma";
 import { DashboardClient } from "./dashboard-client";
 import { getStockStats, getLifecycleTrend } from "@/actions/stats.actions";

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getStocktakeSessions } from "@/actions/stocktake.actions";
 import { StocktakeListClient } from "./stocktake-list-client";
 

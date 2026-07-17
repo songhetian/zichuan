@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getComponentModels } from "@/actions/component-model.actions";
 import { getComponentCategories } from "@/actions/component-category.actions";
 import { ModelsClient } from "./models-client";

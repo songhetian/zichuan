@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getSystemLogs } from "@/actions/system-log.actions";
 import { getLifecycleLogs } from "@/actions/lifecycle-log.actions";
 import { LogListClient } from "./log-list-client";

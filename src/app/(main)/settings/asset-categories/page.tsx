@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getAssetCategories } from "@/actions/asset-category.actions";
 import { AssetCategoriesClient } from "./asset-categories-client";
 

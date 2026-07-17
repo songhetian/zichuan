@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getAssetById } from "@/actions/asset.actions";
 import { getComponentModels } from "@/actions/component-model.actions";
 import { getEmployees } from "@/actions/employee.actions";

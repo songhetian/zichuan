@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { LabelsClient } from "./labels-client";
 import { getAssets } from "@/actions/asset.actions";
 import { getEmployees } from "@/actions/employee.actions";

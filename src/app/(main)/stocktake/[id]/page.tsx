@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { notFound } from "next/navigation";
 import { getStocktakeSessionById } from "@/actions/stocktake.actions";
 import { StocktakeDetailClient } from "./stocktake-detail-client";

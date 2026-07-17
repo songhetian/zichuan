@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getDepartments } from "@/actions/department.actions";
 import { DepartmentsClient } from "./departments-client";
 
