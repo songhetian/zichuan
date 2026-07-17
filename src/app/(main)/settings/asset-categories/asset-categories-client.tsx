@@ -15,9 +15,11 @@ import {
 } from "@/actions/asset-category.actions";
 import { ActionButtons } from "@/components/features/action-buttons";
 import { SimpleCrudDialog, type FieldConfig } from "@/components/features/simple-crud-dialog";
+import { Badge } from "@/components/ui/badge";
 
 interface Category extends TreeNode {
   code: string;
+  unique: boolean;
 }
 
 export function AssetCategoriesClient({
@@ -61,17 +63,20 @@ export function AssetCategoriesClient({
   const createFields: FieldConfig[] = [
     { key: "parentId", label: "父分类", type: "select", options: parentOptions, optional: true, placeholder: "无父分类（顶级分类）" },
     { key: "name", label: "分类名称", type: "text", placeholder: "如：笔记本电脑" },
+    { key: "unique", label: "唯一设备", type: "select", options: [{ value: "false", label: "否 - 员工可持有多台" }, { value: "true", label: "是 - 每人仅限一台" }], placeholder: "选择分配规则" },
   ];
 
   const editFields: FieldConfig[] = [
     { key: "name", label: "分类名称", type: "text", placeholder: "分类名称" },
     { key: "code", label: "分类编码", type: "text", placeholder: "自动生成的编码", optional: true, hint: "留空则保持原编码" },
+    { key: "unique", label: "唯一设备", type: "select", options: [{ value: "false", label: "否 - 员工可持有多台" }, { value: "true", label: "是 - 每人仅限一台" }], placeholder: "选择分配规则" },
   ];
 
   const handleCreate = async (values: Record<string, string>) => {
     const result = await createAssetCategory({
       name: values.name,
       parentId: values.parentId ? Number(values.parentId) : undefined,
+      unique: values.unique === "true",
     });
     if (result.success) {
       router.refresh();
@@ -83,6 +88,7 @@ export function AssetCategoriesClient({
     const result = await updateAssetCategory(category.id, {
       name: values.name,
       code: values.code || undefined,
+      unique: values.unique === "true",
     });
     if (result.success) {
       router.refresh();
@@ -104,6 +110,15 @@ export function AssetCategoriesClient({
       key: "code",
       header: "编码",
       render: (node: Category) => <span className="font-mono text-sm">{node.code}</span>,
+    },
+    {
+      key: "unique",
+      header: "分配规则",
+      render: (node: Category) => node.unique ? (
+        <Badge variant="secondary" className="text-xs">唯一</Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">普通</span>
+      ),
     },
   ];
 
@@ -129,7 +144,7 @@ export function AssetCategoriesClient({
             onDelete={() => handleDelete(node as Category)}
             editTitle="编辑分类"
             editFields={editFields}
-            initialValues={{ name: (node as Category).name, code: (node as Category).code }}
+            initialValues={{ name: (node as Category).name, code: (node as Category).code, unique: String((node as Category).unique) }}
           />
         )}
         emptyText="暂无分类数据"

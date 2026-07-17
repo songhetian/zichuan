@@ -58,6 +58,7 @@ interface DepartmentItem {
 }
 
 interface LabelData {
+  id: number;
   assetNo: string;
   name: string;
   employeeName: string;
@@ -466,72 +467,30 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
 // ============================================================
 
 function LabelContent({ label, compact = false }: { label: LabelData; compact?: boolean }) {
-  const hasComponents = label.components.length > 0;
-
   if (compact) {
     return (
-      <div className="flex flex-col justify-center h-full text-xs">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-1 mb-1">
-          <span className="font-bold font-mono">{label.assetNo}</span>
-          <span className="text-gray-500">{label.departmentName}</span>
-        </div>
-        <div className="font-medium truncate">{label.name}</div>
-        <div className="text-gray-500 mt-0.5">{label.employeeName || "-"}</div>
-        {hasComponents && (
-          <div className="mt-1 text-gray-400">
-            {label.components.map((c) => c.modelName).join(" · ")}
-          </div>
+      <div className="flex flex-col justify-center h-full px-1">
+        <div className="font-bold font-mono text-sm truncate text-center">{label.assetNo}</div>
+        <div className="text-gray-500 text-[10px] truncate text-center mt-0.5">{label.employeeName || "未分配"}</div>
+        {label.departmentName && (
+          <div className="text-gray-400 text-[9px] truncate text-center">{label.departmentName}</div>
         )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* 头部：编号 + 部门 */}
-      <div className="flex items-start justify-between">
-        <div className="space-y-0.5">
-          <p className="text-base font-mono font-bold text-primary tracking-wide">
-            {label.assetNo}
-          </p>
-          <p className="text-sm font-semibold text-foreground">{label.name}</p>
-        </div>
-        {label.departmentName && (
-          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-            {label.departmentName}
-          </span>
-        )}
-      </div>
-
-      {/* 中部：使用人 */}
-      <div className="text-sm text-muted-foreground">
-        {label.employeeName ? (
-          <span>使用人：<span className="text-foreground font-medium">{label.employeeName}</span></span>
-        ) : (
-          <span className="text-muted-foreground/60">未分配</span>
-        )}
-      </div>
-
-      {/* 底部：配件列表 */}
-      {hasComponents && (
-        <div className="pt-2 border-t border-border/40">
-          <div className="flex flex-wrap gap-1">
-            {label.components.slice(0, 4).map((comp, i) => (
-              <span
-                key={i}
-                className="text-xs bg-muted px-1.5 py-0.5 rounded"
-              >
-                {comp.modelName}
-                {comp.brand ? ` (${comp.brand})` : ""}
-              </span>
-            ))}
-            {label.components.length > 4 && (
-              <span className="text-xs text-muted-foreground px-1.5 py-0.5">
-                +{label.components.length - 4}
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="flex flex-col items-center justify-center h-full space-y-0.5">
+      <p className="text-lg font-mono font-bold text-primary tracking-wider">
+        {label.assetNo}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        使用人：<span className="text-foreground font-medium">{label.employeeName || "未分配"}</span>
+      </p>
+      {label.departmentName && (
+        <p className="text-xs text-muted-foreground">
+          部门：<span className="text-foreground/80">{label.departmentName}</span>
+        </p>
       )}
     </div>
   );

@@ -30,7 +30,7 @@ import type { ComponentModelOption, TemplateOption } from "./bom-table";
 
 interface TemplateListClientProps {
   templates: TemplateData[];
-  categories: { id: number; name: string; code: string; parentId: number | null }[];
+  categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   componentModels: ComponentModelOption[];
 }
 
@@ -40,7 +40,7 @@ interface TemplateListClientProps {
 
 interface RowActionProps {
   template: TemplateData;
-  categories: { id: number; name: string; code: string; parentId: number | null }[];
+  categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   componentModels: ComponentModelOption[];
   allTemplates: TemplateOption[];
 }
@@ -183,21 +183,6 @@ export function TemplateListClient({ templates, categories, componentModels }: T
             id: "componentCount",
             header: "配件数量",
             cell: ({ row }) => row.original.components.length,
-          },
-          {
-            id: "unique",
-            header: "唯一",
-            cell: ({ row }) => (
-              <div className="flex items-center justify-center">
-                {row.original.unique ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                    唯一
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">-</span>
-                )}
-              </div>
-            ),
           },
           {
             id: "actions",

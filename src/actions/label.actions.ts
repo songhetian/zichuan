@@ -11,6 +11,7 @@ const querySchema = z.object({
 });
 
 type LabelData = {
+  id: number;
   assetNo: string;
   name: string;
   employeeName: string;
@@ -61,6 +62,7 @@ export async function generateLabelData(
   });
 
   const data: LabelData[] = assets.map((a) => ({
+    id: a.id,
     assetNo: a.assetNo,
     name: a.name,
     employeeName: a.employee?.name ?? "",

@@ -34,7 +34,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, ArrowUpCircle, Wrench, RotateCcw, Trash2 } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Pencil, ArrowUpCircle, Wrench, RotateCcw, Trash2, ArrowRightLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
 import {
@@ -42,6 +43,7 @@ import {
   maintenanceStart,
   scrapAssets,
   returnAssets,
+  transferAssets,
 } from "@/actions/lifecycle.actions";
 import { LifecycleTimeline } from "@/components/features/lifecycle-timeline";
 
@@ -51,6 +53,12 @@ interface ComponentModel {
   brand: string | null;
   categoryId: number;
   stock: number;
+}
+
+interface EmployeeOption {
+  id: number;
+  name: string;
+  departmentName: string;
 }
 
 interface AssetDetailClientProps {
@@ -87,6 +95,7 @@ interface AssetDetailClientProps {
     }[];
   };
   componentModels: ComponentModel[];
+  employees: EmployeeOption[];
 }
 
 const actionLabelMap: Record<string, string> = {
@@ -107,7 +116,7 @@ const statusLabelMap: Record<string, string> = {
   SCRAPPED: "报废",
 };
 
-export function AssetDetailClient({ asset, componentModels }: AssetDetailClientProps) {
+export function AssetDetailClient({ asset, componentModels, employees }: AssetDetailClientProps) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -133,6 +142,11 @@ export function AssetDetailClient({ asset, componentModels }: AssetDetailClientP
 
   // Confirm dialog state for maintenance/scrap/return
   const [confirmAction, setConfirmAction] = useState<"maintenance" | "scrap" | "return" | null>(null);
+
+  // Transfer dialog state
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferEmployeeId, setTransferEmployeeId] = useState("");
+  const [transferLoading, setTransferLoading] = useState(false);
 
   const isScrapped = asset.status === "SCRAPPED";
   const isInMaintenance = asset.status === "IN_MAINTENANCE";
@@ -241,6 +255,26 @@ export function AssetDetailClient({ asset, componentModels }: AssetDetailClientP
     setConfirmAction(null);
   };
 
+  const handleTransfer = async () => {
+    if (!transferEmployeeId) return;
+    setTransferLoading(true);
+    const result = await transferAssets({
+      assetIds: [asset.id],
+      toEmployeeId: Number(transferEmployeeId),
+      operator: "admin",
+      remark: "详情页调拨",
+    });
+    setTransferLoading(false);
+    if (result.success) {
+      toast({ title: "调拨成功" });
+      setTransferOpen(false);
+      setTransferEmployeeId("");
+      router.refresh();
+    } else {
+      toast({ title: "调拨失败", description: result.error, variant: "destructive" });
+    }
+  };
+
   const selectedUpgradeComponent = asset.components.find(
     (c) => c.modelId === Number(upgradeModelId)
   );
@@ -275,6 +309,12 @@ export function AssetDetailClient({ asset, componentModels }: AssetDetailClientP
               <Wrench className="mr-2 h-4 w-4" />
               送修
             </Button>
+            {isInUse && (
+              <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                调拨
+              </Button>
+            )}
             {isInUse && (
               <Button variant="outline" size="sm" onClick={() => setConfirmAction("return")}>
                 <RotateCcw className="mr-2 h-4 w-4" />
@@ -532,6 +572,45 @@ export function AssetDetailClient({ asset, componentModels }: AssetDetailClientP
         variant="default"
         onConfirm={handleReturn}
       />
+
+      {/* Transfer Dialog */}
+      <Dialog
+        open={transferOpen}
+        onOpenChange={(open) => {
+          if (!open) setTransferEmployeeId("");
+          setTransferOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>调拨设备</DialogTitle>
+            <DialogDescription>将设备调拨给其他员工</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>目标员工</Label>
+            <SearchableSelect
+              value={transferEmployeeId}
+              onValueChange={setTransferEmployeeId}
+              placeholder="请选择目标员工"
+              triggerClassName="w-full"
+              options={employees
+                .filter((e) => e.id !== asset.employeeId)
+                .map((e) => ({
+                  value: e.id.toString(),
+                  label: `${e.name}（${e.departmentName}）`,
+                }))}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTransferEmployeeId(""); setTransferOpen(false); }}>
+              取消
+            </Button>
+            <Button onClick={handleTransfer} disabled={transferLoading || !transferEmployeeId}>
+              {transferLoading ? "调拨中..." : "确认调拨"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

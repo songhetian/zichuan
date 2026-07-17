@@ -1,5 +1,6 @@
 import { getAssetById } from "@/actions/asset.actions";
 import { getComponentModels } from "@/actions/component-model.actions";
+import { getEmployees } from "@/actions/employee.actions";
 import { notFound } from "next/navigation";
 import { AssetDetailClient } from "./asset-detail-client";
 
@@ -13,9 +14,10 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
     notFound();
   }
 
-  const [assetResult, modelsResult] = await Promise.all([
+  const [assetResult, modelsResult, employeesResult] = await Promise.all([
     getAssetById(id),
     getComponentModels(),
+    getEmployees(),
   ]);
 
   if (!assetResult.success) {
@@ -23,6 +25,7 @@ export default async function AssetDetailPage({ params }: AssetDetailPageProps) 
   }
 
   const componentModels = modelsResult.success ? modelsResult.data : [];
+  const employees = employeesResult.success ? employeesResult.data : [];
 
-  return <AssetDetailClient asset={assetResult.data} componentModels={componentModels} />;
+  return <AssetDetailClient asset={assetResult.data} componentModels={componentModels} employees={employees} />;
 }

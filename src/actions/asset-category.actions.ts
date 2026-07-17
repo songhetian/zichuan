@@ -25,11 +25,13 @@ const createSchema = z.object({
   name: z.string().min(1, "分类名称不能为空"),
   code: z.string().optional(),
   parentId: z.number().nullable().optional(),
+  unique: z.boolean().optional(),
 });
 
 const updateSchema = z.object({
   name: z.string().min(1, "分类名称不能为空").optional(),
   code: z.string().min(1, "分类编码不能为空").optional(),
+  unique: z.boolean().optional(),
 });
 
 const moveSchema = z.object({
@@ -94,7 +96,7 @@ export async function moveAssetCategory(
 
 export async function createAssetCategory(
   input: z.infer<typeof createSchema>
-): Promise<ActionResult<{ id: number; name: string; code: string; parentId: number | null }>> {
+): Promise<ActionResult<{ id: number; name: string; code: string; unique: boolean; parentId: number | null }>> {
   requireAuth();
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -102,6 +104,7 @@ export async function createAssetCategory(
   }
 
   const { name, parentId } = validated.data;
+  const unique = validated.data.unique ?? false;
   let code = validated.data.code;
   if (code === undefined || code === "") {
     code = generateCodeFromName(name);
@@ -114,8 +117,8 @@ export async function createAssetCategory(
 
   try {
     const cat = await prisma.assetCategory.create({
-      data: { name, code, parentId: parentId ?? null },
-      select: { id: true, name: true, code: true, parentId: true },
+      data: { name, code, unique, parentId: parentId ?? null },
+      select: { id: true, name: true, code: true, unique: true, parentId: true },
     });
     return { success: true, data: cat };
   } catch (e) {
@@ -124,21 +127,21 @@ export async function createAssetCategory(
 }
 
 export async function getAssetCategories(): Promise<
-  ActionResult<{ id: number; name: string; code: string; parentId: number | null }[]>
+  ActionResult<{ id: number; name: string; code: string; unique: boolean; parentId: number | null }[]>
 > {
   const cats = await prisma.assetCategory.findMany({
     orderBy: { id: "asc" },
-    select: { id: true, name: true, code: true, parentId: true },
+    select: { id: true, name: true, code: true, unique: true, parentId: true },
   });
   return { success: true, data: cats };
 }
 
 export async function getAssetCategoryById(
   id: number
-): Promise<ActionResult<{ id: number; name: string; code: string; parentId: number | null }>> {
+): Promise<ActionResult<{ id: number; name: string; code: string; unique: boolean; parentId: number | null }>> {
   const cat = await prisma.assetCategory.findUnique({
     where: { id },
-    select: { id: true, name: true, code: true, parentId: true },
+    select: { id: true, name: true, code: true, unique: true, parentId: true },
   });
   if (!cat) return { success: false, error: "设备分类不存在" };
   return { success: true, data: cat };
@@ -147,7 +150,7 @@ export async function getAssetCategoryById(
 export async function updateAssetCategory(
   id: number,
   input: z.infer<typeof updateSchema>
-): Promise<ActionResult<{ id: number; name: string; code: string; parentId: number | null }>> {
+): Promise<ActionResult<{ id: number; name: string; code: string; unique: boolean; parentId: number | null }>> {
   requireAuth();
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -161,7 +164,7 @@ export async function updateAssetCategory(
     const cat = await prisma.assetCategory.update({
       where: { id },
       data: validated.data,
-      select: { id: true, name: true, code: true, parentId: true },
+      select: { id: true, name: true, code: true, unique: true, parentId: true },
     });
     return { success: true, data: cat };
   } catch (e) {

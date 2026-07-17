@@ -83,6 +83,7 @@ model AssetCategory {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   code        String   @unique  // 编号前缀，如 DN、WL
+  unique      Boolean  @default(false) @map("is_unique")  // 该分类下每人只能拥有一台设备
   parentId    Int?
   parent      AssetCategory?  @relation("AssetCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children    AssetCategory[] @relation("AssetCategoryTree")
@@ -99,7 +100,6 @@ model DeviceTemplate {
   category    AssetCategory @relation(fields: [categoryId], references: [id])
   components  TemplateComponent[]
   assets      Asset[]
-  unique      Boolean  @default(false) @map("is_unique")  // 每人只能拥有一台该模板设备
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@unique([categoryId, name])

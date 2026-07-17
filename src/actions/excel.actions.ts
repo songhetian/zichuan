@@ -225,11 +225,12 @@ export async function importEmployeesFromExcel(
 // ============================================================
 
 export async function importAssetsFromExcel(
-  input: { buffer: Buffer }
+  input: { buffer: number[] }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
   requireAuth();
   try {
-    const wb = XLSX.read(input.buffer);
+    const fileBuffer = Buffer.from(input.buffer);
+    const wb = XLSX.read(fileBuffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
 

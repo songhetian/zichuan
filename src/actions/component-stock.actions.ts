@@ -344,6 +344,63 @@ export async function getStockByModelId(
   };
 }
 
+export async function getAllStocks(): Promise<
+  ActionResult<
+    {
+      modelId: number;
+      modelName: string;
+      modelBrand: string | null;
+      categoryId: number;
+      categoryName: string;
+      quantity: number;
+    }[]
+  >
+> {
+  const stocks = await prisma.componentStock.findMany({
+    include: {
+      model: {
+        include: {
+          category: true,
+        },
+      },
+    },
+    orderBy: { modelId: "asc" },
+  });
+
+  const allModels = await prisma.componentModel.findMany({
+    include: {
+      category: true,
+    },
+    where: {
+      id: {
+        notIn: stocks.map((s) => s.modelId),
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+
+  const result = [
+    ...stocks.map((s) => ({
+      modelId: s.modelId,
+      modelName: s.model.name,
+      modelBrand: s.model.brand,
+      categoryId: s.model.categoryId,
+      categoryName: s.model.category?.name ?? "",
+      quantity: s.quantity,
+    })),
+    ...allModels.map((m) => ({
+      modelId: m.id,
+      modelName: m.name,
+      modelBrand: m.brand,
+      categoryId: m.categoryId,
+      categoryName: m.category?.name ?? "",
+      quantity: 0,
+    })),
+  ];
+
+  return { success: true, data: result };
+}
+
 export async function getStockLogs(
   input: z.infer<typeof logQuerySchema> = {}
 ): Promise<

@@ -92,24 +92,33 @@ export async function allocateAssets(
         throw new Error("STATUS_CONFLICT");
       }
 
-      // 唯一性校验：检查目标员工是否已拥有相同模板的唯一设备
+      // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
+      // 从模板获取分类ID
       const templateIds = [...new Set(assets.map(a => a.templateId))];
-      const uniqueTemplates = await tx.deviceTemplate.findMany({
-        where: { id: { in: templateIds }, unique: true },
-        select: { id: true },
+      const templatesWithCategory = await tx.deviceTemplate.findMany({
+        where: { id: { in: templateIds } },
+        select: { id: true, categoryId: true },
       });
-      if (uniqueTemplates.length > 0) {
-        const uniqueTemplateIds = new Set(uniqueTemplates.map(t => t.id));
+      const templateToCategory = new Map(templatesWithCategory.map(t => [t.id, t.categoryId]));
+      const allCategoryIds = [...new Set(assets.map(a => templateToCategory.get(a.templateId)!))];
+
+      const uniqueCategories = await tx.assetCategory.findMany({
+        where: { id: { in: allCategoryIds }, unique: true },
+        select: { id: true, name: true },
+      });
+      if (uniqueCategories.length > 0) {
+        const uniqueCategoryIds = new Set(uniqueCategories.map(c => c.id));
         const existingAssets = await tx.asset.findMany({
           where: {
             employeeId,
-            templateId: { in: Array.from(uniqueTemplateIds) },
+            template: { categoryId: { in: Array.from(uniqueCategoryIds) } },
             status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
             id: { notIn: assetIds },
           },
         });
         if (existingAssets.length > 0) {
-          throw new Error("UNIQUE_VIOLATION");
+          const categoryNames = uniqueCategories.map(c => c.name).join("、");
+          throw new Error(`UNIQUE_VIOLATION:${categoryNames}`);
         }
       }
 
@@ -146,8 +155,9 @@ export async function allocateAssets(
       if (e.message === "STATUS_CONFLICT") {
         return { success: false, error: "部分设备非闲置状态，无法分配" };
       }
-      if (e.message === "UNIQUE_VIOLATION") {
-        return { success: false, error: "唯一性约束：员工已拥有同类唯一设备，不能重复分配" };
+      if (e.message.startsWith("UNIQUE_VIOLATION")) {
+        const categoryNames = e.message.split(":")[1] ?? "";
+        return { success: false, error: `唯一性约束：员工已拥有该分类（${categoryNames}）下的设备，不能重复分配` };
       }
     }
     return { success: false, error: "分配失败" };
@@ -275,6 +285,34 @@ export async function transferAssets(
         throw new Error("STATUS_CONFLICT");
       }
 
+      // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
+      const templatesWithCategory = await tx.deviceTemplate.findMany({
+        where: { id: { in: [...new Set(assets.map(a => a.templateId))] } },
+        select: { id: true, categoryId: true },
+      });
+      const templateToCategory = new Map(templatesWithCategory.map(t => [t.id, t.categoryId]));
+      const allCategoryIds = [...new Set(assets.map(a => templateToCategory.get(a.templateId)!))];
+
+      const uniqueCategories = await tx.assetCategory.findMany({
+        where: { id: { in: allCategoryIds }, unique: true },
+        select: { id: true, name: true },
+      });
+      if (uniqueCategories.length > 0) {
+        const uniqueCategoryIds = new Set(uniqueCategories.map(c => c.id));
+        const existingAssets = await tx.asset.findMany({
+          where: {
+            employeeId: toEmployeeId,
+            template: { categoryId: { in: Array.from(uniqueCategoryIds) } },
+            status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
+            id: { notIn: assetIds },
+          },
+        });
+        if (existingAssets.length > 0) {
+          const categoryNames = uniqueCategories.map(c => c.name).join("、");
+          throw new Error(`UNIQUE_VIOLATION:${categoryNames}`);
+        }
+      }
+
       await tx.lifecycleLog.createMany({
         data: assets.map((a) => ({
           assetId: a.id,
@@ -304,8 +342,14 @@ export async function transferAssets(
 
     return { success: true, data: result };
   } catch (e) {
-    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
-      return { success: false, error: "部分设备非在用状态，无法调拨" };
+    if (e instanceof Error) {
+      if (e.message === "STATUS_CONFLICT") {
+        return { success: false, error: "部分设备非在用状态，无法调拨" };
+      }
+      if (e.message.startsWith("UNIQUE_VIOLATION")) {
+        const categoryNames = e.message.split(":")[1] ?? "";
+        return { success: false, error: `唯一性约束：目标员工已拥有该分类（${categoryNames}）下的设备，不能调拨` };
+      }
     }
     return { success: false, error: "调拨失败" };
   }

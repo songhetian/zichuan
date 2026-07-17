@@ -19,14 +19,12 @@ const createSchema = z.object({
   name: z.string().min(1, "模板名称不能为空"),
   categoryId: z.number(),
   components: z.array(bomItemSchema),
-  unique: z.boolean().optional(),
 });
 
 const updateSchema = z.object({
   name: z.string().min(1, "模板名称不能为空").optional(),
   categoryId: z.number().optional(),
   components: z.array(bomItemSchema).optional(),
-  unique: z.boolean().optional(),
 });
 
 const querySchema = z.object({
@@ -41,7 +39,6 @@ type TemplateWithComponents = {
   id: number;
   name: string;
   categoryId: number;
-  unique: boolean;
   components: {
     id: number;
     modelId: number;
@@ -55,7 +52,6 @@ type PrismaTemplate = {
   id: number;
   name: string;
   categoryId: number;
-  unique: boolean;
   components: {
     id: number;
     modelId: number;
@@ -66,13 +62,12 @@ type PrismaTemplate = {
 
 function formatTemplate(template: PrismaTemplate | null): TemplateWithComponents {
   if (!template) {
-    return { id: 0, name: "", categoryId: 0, unique: false, components: [] };
+    return { id: 0, name: "", categoryId: 0, components: [] };
   }
   return {
     id: template.id,
     name: template.name,
     categoryId: template.categoryId,
-    unique: template.unique ?? false,
     components: template.components.map((c) => ({
       id: c.id,
       modelId: c.modelId,
@@ -132,7 +127,7 @@ export async function createDeviceTemplate(
   try {
     const template = await prisma.$transaction(async (tx) => {
       const created = await tx.deviceTemplate.create({
-        data: { name, categoryId, unique: input.unique ?? false },
+        data: { name, categoryId },
       });
 
       if (components.length > 0) {
@@ -240,10 +235,9 @@ export async function updateDeviceTemplate(
 
   try {
     const template = await prisma.$transaction(async (tx) => {
-      const updateData: Partial<Pick<typeof validated.data, 'name' | 'categoryId' | 'unique'>> = {};
+      const updateData: Partial<Pick<typeof validated.data, 'name' | 'categoryId'>> = {};
       if (validated.data.name != null) updateData.name = validated.data.name;
       if (validated.data.categoryId != null) updateData.categoryId = validated.data.categoryId;
-      if (validated.data.unique != null) updateData.unique = validated.data.unique;
 
       if (Object.keys(updateData).length > 0) {
         await tx.deviceTemplate.update({ where: { id }, data: updateData });

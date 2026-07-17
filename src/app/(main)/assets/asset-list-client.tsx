@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CreateAssetDialog } from "./create-asset-dialog";
 import {
   Eye,
@@ -36,6 +37,7 @@ import {
   Wrench,
   CheckCircle2,
   MoreHorizontal,
+  ArrowRightLeft,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -44,20 +46,96 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
 import {
   returnAssets,
   scrapAssets,
   allocateAssets,
+  transferAssets,
   maintenanceStart,
   maintenanceComplete,
 } from "@/actions/lifecycle.actions";
 import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.actions";
+import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
 
 // ============================================================
-// Types
+// Hover Preview Hook (300ms delay)
 // ============================================================
+
+function useHoverPreview(delay: number = 300) {
+  const [isOpen, setIsOpen] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    timeoutRef.current = setTimeout(() => {
+      setIsOpen(true);
+    }, delay);
+  }, [delay]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsOpen(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return { isOpen, handleMouseEnter, handleMouseLeave };
+}
+
+// ============================================================
+// Asset Preview Content
+// ============================================================
+
+function AssetPreviewContent({ asset }: { asset: AssetItem }) {
+  return (
+    <>
+      <div className="p-3 border-b border-border">
+        <div className="font-medium text-sm">{asset.assetNo}</div>
+        <div className="text-xs text-muted-foreground">{asset.name} · {asset.categoryName}</div>
+        {asset.templateName && (
+          <div className="text-xs text-muted-foreground mt-0.5">模板：{asset.templateName}</div>
+        )}
+      </div>
+      {asset.components.length > 0 ? (
+        <div className="p-2">
+          <div className="text-xs font-medium text-muted-foreground mb-1.5 px-1">配件配置</div>
+          <div className="space-y-0.5">
+            {asset.components.map((comp) => (
+              <div key={comp.id} className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-muted/50">
+                <span className="truncate">{comp.modelName}</span>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  {comp.modelBrand && (
+                    <span className="text-muted-foreground">{comp.modelBrand}</span>
+                  )}
+                  {comp.quantity > 1 && (
+                    <span className="text-muted-foreground">×{comp.quantity}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="p-3 text-xs text-muted-foreground text-center">暂无配件配置</div>
+      )}
+    </>
+  );
+}
 
 interface AssetComponent {
   id: number;
@@ -100,7 +178,7 @@ interface AssetItem {
 interface AssetListClientProps {
   assets: AssetItem[];
   templates: { id: number; name: string }[];
-  categories: { id: number; name: string; code: string; parentId: number | null }[];
+  categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   employees: { id: number; name: string; departmentName: string }[];
   departments: { id: number; name: string }[];
 }
@@ -201,7 +279,12 @@ function ActionButtons({
   const [allocateEmployeeId, setAllocateEmployeeId] = useState("");
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [maintenanceCompleteOpen, setMaintenanceCompleteOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferEmployeeId, setTransferEmployeeId] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 悬浮预览（300ms延迟）
+  const preview = useHoverPreview(300);
 
   const handleScrap = async () => {
     const result = await scrapAssets({
@@ -281,12 +364,54 @@ function ActionButtons({
     setMaintenanceCompleteOpen(false);
   };
 
+  const handleTransfer = async () => {
+    if (!transferEmployeeId) return;
+    setLoading(true);
+    const result = await transferAssets({
+      assetIds: [asset.id],
+      toEmployeeId: Number(transferEmployeeId),
+      operator: "admin",
+      remark: "列表快捷调拨",
+    });
+    setLoading(false);
+    if (result.success) {
+      toast({ title: "调拨成功" });
+      setTransferOpen(false);
+      setTransferEmployeeId("");
+      router.refresh();
+    } else {
+      toast({ title: "调拨失败", description: result.error, variant: "destructive" });
+    }
+  };
+
   return (
     <>
       <div className="flex items-center gap-0.5 justify-center flex-wrap">
-        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="详情" onClick={() => router.push(`/assets/${asset.id}`)}>
-          <Eye className="h-3.5 w-3.5" />
-        </Button>
+        <Popover open={preview.isOpen} onOpenChange={() => {}}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="查看配置"
+              onClick={() => router.push(`/assets/${asset.id}`)}
+              onMouseEnter={preview.handleMouseEnter}
+              onMouseLeave={preview.handleMouseLeave}
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-72 p-0"
+            side="left"
+            align="center"
+            onMouseEnter={preview.handleMouseEnter}
+            onMouseLeave={preview.handleMouseLeave}
+          >
+            <AssetPreviewContent asset={asset} />
+          </PopoverContent>
+        </Popover>
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="编辑" onClick={() => setEditOpen(true)}>
           <Pencil className="h-3.5 w-3.5 text-primary" />
         </Button>
@@ -303,6 +428,11 @@ function ActionButtons({
         {asset.status === "IN_MAINTENANCE" && (
           <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          </Button>
+        )}
+        {asset.status === "IN_USE" && (
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="调拨" onClick={() => setTransferOpen(true)}>
+            <ArrowRightLeft className="h-3.5 w-3.5 text-purple-500" />
           </Button>
         )}
         {(asset.status === "IDLE" || asset.status === "IN_USE") && (
@@ -377,6 +507,36 @@ function ActionButtons({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={transferOpen} onOpenChange={(v) => { if (!v) setTransferEmployeeId(""); setTransferOpen(v); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>调拨设备</DialogTitle>
+            <DialogDescription>将设备调拨给其他员工</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>目标员工</Label>
+            <SearchableSelect
+              value={transferEmployeeId}
+              onValueChange={setTransferEmployeeId}
+              placeholder="请选择目标员工"
+              triggerClassName="w-full"
+              options={employees
+                .filter((e) => e.id !== asset.employeeId)
+                .map((e) => ({
+                  value: e.id.toString(),
+                  label: `${e.name}（${e.departmentName}）`,
+                }))}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTransferEmployeeId(""); setTransferOpen(false); }}>取消</Button>
+            <Button onClick={handleTransfer} disabled={loading || !transferEmployeeId}>
+              {loading ? "调拨中..." : "确认调拨"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -397,19 +557,73 @@ function StatusCell({ asset }: { asset: AssetItem }) {
 // Column Definitions
 // ============================================================
 
+// ============================================================
+// Asset No Cell with Hover Preview
+// ============================================================
+
+function AssetNoCell({ asset }: { asset: AssetItem }) {
+  const router = useRouter();
+  const preview = useHoverPreview(300);
+
+  return (
+    <Popover open={preview.isOpen} onOpenChange={() => {}}>
+      <PopoverTrigger asChild>
+        <div
+          className="text-center cursor-pointer group"
+          onClick={() => router.push(`/assets/${asset.id}`)}
+          onMouseEnter={preview.handleMouseEnter}
+          onMouseLeave={preview.handleMouseLeave}
+        >
+          <div className="text-primary group-hover:underline">{asset.assetNo}</div>
+          <div className="text-muted-foreground text-xs">{asset.name}</div>
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-0"
+        side="right"
+        align="start"
+        onMouseEnter={preview.handleMouseEnter}
+        onMouseLeave={preview.handleMouseLeave}
+      >
+        <AssetPreviewContent asset={asset} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function getColumns(
   employees: { id: number; name: string; departmentName: string }[]
 ): ColumnDef<AssetItem>[] {
   return [
     {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="全选"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="选择行"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+      size: 40,
+      minSize: 40,
+      maxSize: 40,
+    },
+    {
       accessorKey: "assetNo",
       header: "编号/名称",
-      cell: ({ row }) => (
-        <div className="text-center">
-          <div>{row.original.assetNo}</div>
-          <div className="text-muted-foreground text-xs">{row.original.name}</div>
-        </div>
-      ),
+      cell: ({ row }) => <AssetNoCell asset={row.original} />,
     },
     {
       accessorKey: "categoryName",
@@ -472,9 +686,14 @@ export function AssetListClient({
   const [batchAllocateOpen, setBatchAllocateOpen] = useState(false);
   const [batchReturnOpen, setBatchReturnOpen] = useState(false);
   const [batchScrapOpen, setBatchScrapOpen] = useState(false);
+  const [batchTransferOpen, setBatchTransferOpen] = useState(false);
+  const [batchMaintenanceOpen, setBatchMaintenanceOpen] = useState(false);
   const [batchAllocateEmployeeId, setBatchAllocateEmployeeId] = useState("");
+  const [batchTransferEmployeeId, setBatchTransferEmployeeId] = useState("");
   const [batchLoading, setBatchLoading] = useState(false);
+  const [autoImportLoading, setAutoImportLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autoImportFileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -568,11 +787,12 @@ export function AssetListClient({
 
     setImportLoading(true);
     try {
-      const buffer = Buffer.from(await file.arrayBuffer());
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Array.from(new Uint8Array(arrayBuffer));
       const result = await importAssetsFromExcel({ buffer });
       if (result.success) {
-        const { importedCount, errors } = result.data;
-        if (errors.length > 0) {
+        const { importedCount, errors = [] } = result.data;
+        if (Array.isArray(errors) && errors.length > 0) {
           toast({
             title: `导入完成，成功 ${importedCount} 条，${errors.length} 条有误`,
             description: errors.slice(0, 3).join("；") + (errors.length > 3 ? "..." : ""),
@@ -592,6 +812,41 @@ export function AssetListClient({
     // 重置 file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  // 自动导入（Excel格式，来自硬件扫描脚本）
+  const handleAutoImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAutoImportLoading(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Array.from(new Uint8Array(arrayBuffer));
+
+      const result = await importAssetsFromExcelAuto({ buffer });
+      if (result.success) {
+        const { importedCount, errors = [], details } = result.data;
+        if (Array.isArray(errors) && errors.length > 0) {
+          toast({
+            title: `自动导入完成，成功 ${importedCount} 条，${errors.length} 条有误`,
+            description: errors.slice(0, 3).join("；") + (errors.length > 3 ? "..." : ""),
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: `自动导入成功，共 ${importedCount} 条` });
+        }
+        router.refresh();
+      } else {
+        toast({ title: "自动导入失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "自动导入失败", description: "Excel文件解析失败", variant: "destructive" });
+    }
+    setAutoImportLoading(false);
+    if (autoImportFileRef.current) {
+      autoImportFileRef.current.value = "";
     }
   };
 
@@ -657,6 +912,48 @@ export function AssetListClient({
     }
   };
 
+  // 批量调拨
+  const handleBatchTransfer = async () => {
+    if (!batchTransferEmployeeId || selectedAssets.length === 0) return;
+    setBatchLoading(true);
+    const result = await transferAssets({
+      assetIds: selectedAssets.map((a) => a.id),
+      toEmployeeId: Number(batchTransferEmployeeId),
+      operator: "admin",
+      remark: "批量调拨",
+    });
+    setBatchLoading(false);
+    if (result.success) {
+      toast({ title: "批量调拨成功" });
+      setBatchTransferOpen(false);
+      setBatchTransferEmployeeId("");
+      setSelectedAssets([]);
+      router.refresh();
+    } else {
+      toast({ title: "批量调拨失败", description: result.error, variant: "destructive" });
+    }
+  };
+
+  // 批量送修
+  const handleBatchMaintenance = async () => {
+    if (selectedAssets.length === 0) return;
+    setBatchLoading(true);
+    const result = await maintenanceStart({
+      assetIds: selectedAssets.map((a) => a.id),
+      operator: "admin",
+      remark: "批量送修",
+    });
+    setBatchLoading(false);
+    if (result.success) {
+      toast({ title: "批量送修成功" });
+      setBatchMaintenanceOpen(false);
+      setSelectedAssets([]);
+      router.refresh();
+    } else {
+      toast({ title: "批量送修失败", description: result.error, variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -683,9 +980,27 @@ export function AssetListClient({
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
               disabled={importLoading}
+              title="手动导入：需提前创建模板，适合手动维护设备数据"
             >
               <Upload className="mr-2 h-4 w-4" />
               {importLoading ? "导入中..." : "导入 Excel"}
+            </Button>
+            <input
+              ref={autoImportFileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleAutoImport}
+            />
+            <Button
+              variant="outline"
+              onClick={() => autoImportFileRef.current?.click()}
+              disabled={autoImportLoading}
+              className="border-primary text-primary hover:bg-primary/5"
+              title="硬件扫描导入：从扫描脚本生成的Excel导入，自动创建分类、模板和配件"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {autoImportLoading ? "导入中..." : "硬件扫描导入"}
             </Button>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
@@ -719,6 +1034,24 @@ export function AssetListClient({
             >
               <RotateCcw className="mr-1 h-3 w-3" />
               批量归还
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchTransferOpen(true)}
+              disabled={batchLoading}
+            >
+              <ArrowRightLeft className="mr-1 h-3 w-3" />
+              批量调拨
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchMaintenanceOpen(true)}
+              disabled={batchLoading}
+            >
+              <Wrench className="mr-1 h-3 w-3" />
+              批量送修
             </Button>
             <Button
               variant="outline"
@@ -841,6 +1174,45 @@ export function AssetListClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量调拨对话框 */}
+      <Dialog open={batchTransferOpen} onOpenChange={(v) => { if (!v) setBatchTransferEmployeeId(""); setBatchTransferOpen(v); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>批量调拨设备</DialogTitle>
+            <DialogDescription>将选中的 {selectedAssets.length} 台设备调拨给指定员工</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>目标员工</Label>
+            <SearchableSelect
+              value={batchTransferEmployeeId}
+              onValueChange={setBatchTransferEmployeeId}
+              placeholder="请选择目标员工"
+              triggerClassName="w-full"
+              options={employees.map((e) => ({
+                value: e.id.toString(),
+                label: `${e.name}（${e.departmentName}）`,
+              }))}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setBatchTransferEmployeeId(""); setBatchTransferOpen(false); }}>取消</Button>
+            <Button onClick={handleBatchTransfer} disabled={batchLoading || !batchTransferEmployeeId}>
+              {batchLoading ? "调拨中..." : "确认调拨"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量送修确认对话框 */}
+      <ConfirmDialog
+        open={batchMaintenanceOpen}
+        onOpenChange={setBatchMaintenanceOpen}
+        title="确认批量送修"
+        description={`确定要将选中的 ${selectedAssets.length} 台设备送修吗？`}
+        confirmText="批量送修"
+        onConfirm={handleBatchMaintenance}
+      />
 
       {/* 批量归还确认对话框 */}
       <ConfirmDialog
