@@ -181,9 +181,9 @@ describe("脚本生成的 Excel 文件导入测试", () => {
       });
       expect(assets).toHaveLength(3);
 
-      // 整机模式：设备不写配件记录，配件配置在模板 BOM 上
+      // 设备复制模板 BOM 配件记录（每个设备应有配件配置）
       for (const asset of assets) {
-        expect(asset.components.length).toBe(0);
+        expect(asset.components.length).toBeGreaterThan(0);
       }
 
       // 模板 BOM 应包含配件配置

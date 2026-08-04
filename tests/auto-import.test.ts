@@ -101,8 +101,8 @@ describe("自动导入设备", () => {
     expect(asset!.assetNo).toMatch(/^PC-\d{4}$/);
     expect(asset!.status).toBe("IN_USE");
     expect(asset!.employeeId).toBe(emp!.id);
-    // 完全解耦：整机模式不写配件记录
-    expect(asset!.components).toHaveLength(0);
+    // 设备复制模板 BOM 配件（4 个：CPU/内存/硬盘/主板）
+    expect(asset!.components).toHaveLength(4);
 
     // 验证生命周期日志
     const logs = await prisma.lifecycleLog.findMany({ where: { assetId: asset!.id } });
@@ -579,12 +579,12 @@ describe("自动导入设备", () => {
     expect(memoryComps[0].quantity).toBe(1);
     expect(memoryComps[1].quantity).toBe(1);
 
-    // 设备本身不写配件记录
+    // 设备复制模板 BOM 配件（4 个：CPU + 2 条内存 + 硬盘）
     const createdAsset = await prisma.asset.findFirst({
       where: { name: "张三的电脑主机" },
       include: { components: true },
     });
-    expect(createdAsset!.components).toHaveLength(0);
+    expect(createdAsset!.components).toHaveLength(4);
 
     // 验证模板名称包含总内存容量（16GB）
     expect(templateBom!.name).toContain("16GB");

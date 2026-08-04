@@ -99,9 +99,9 @@ describe("硬件扫描工具导出 Excel 导入测试", () => {
       });
       expect(assets.length).toBeGreaterThan(0);
 
-      // 整机模式：设备不写配件记录，配件配置记录在模板 BOM 上
+      // 设备复制模板 BOM 配件记录（每个设备应有配件配置）
       for (const asset of assets) {
-        expect(asset.components.length).toBe(0);
+        expect(asset.components.length).toBeGreaterThan(0);
       }
 
       // 设备模板应包含 BOM 配件配置
