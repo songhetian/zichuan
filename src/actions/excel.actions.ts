@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { generateAssetNo } from "@/lib/asset-numbering";
 import * as XLSX from "xlsx";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
@@ -8,6 +9,8 @@ import { requireAuth } from "@/lib/auth";
 export async function exportAssetsToExcel(
   selectedFields?: string[]
 ): Promise<ActionResult<{ buffer: Buffer; fileName: string }>> {
+  await requireAuth();
+
   const assets = await prisma.asset.findMany({
     orderBy: { assetNo: "asc" },
     include: {
@@ -81,6 +84,8 @@ export async function exportAssetsToExcel(
 export async function exportComponentsToExcel(): Promise<
   ActionResult<{ buffer: Buffer; fileName: string }>
 > {
+  await requireAuth();
+
   const models = await prisma.componentModel.findMany({
     orderBy: { id: "asc" },
     include: {
@@ -114,6 +119,8 @@ export async function exportComponentsToExcel(): Promise<
 export async function exportEmployeesToExcel(): Promise<
   ActionResult<{ buffer: Buffer; fileName: string }>
 > {
+  await requireAuth();
+
   const emps = await prisma.employee.findMany({
     orderBy: { employeeNo: "asc" },
     include: {
@@ -166,7 +173,8 @@ function formatDate(): string {
 export async function importEmployeesFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
-  requireAuth();
+  await requireAuth();
+
   try {
     const wb = XLSX.read(input.buffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -227,16 +235,20 @@ export async function importEmployeesFromExcel(
 export async function importAssetsFromExcel(
   input: { buffer: number[] }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
-  requireAuth();
+  await requireAuth();
+
   try {
     const fileBuffer = Buffer.from(input.buffer);
     const wb = XLSX.read(fileBuffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
 
-    // 预缓存模板名 -> ID 映射
+    // 预缓存模板名 -> ID 映射（包含分类的 numberingRule 和 BOM 配件）
     const allTemplates = await prisma.deviceTemplate.findMany({
-      include: { category: { select: { id: true, code: true } } },
+      include: {
+        category: { select: { id: true, code: true, numberingRule: true } },
+        components: true,
+      },
     });
     const templateMap = new Map(allTemplates.map((t) => [t.name, t]));
 
@@ -275,59 +287,63 @@ export async function importAssetsFromExcel(
 
         const employeeId = employeeName ? (employeeMap.get(employeeName) ?? undefined) : undefined;
 
-        // 生成编号：使用模板所属分类的 code 作为前缀
-        const categoryCode = template.category?.code ?? "EQ";
-        const prefix = categoryCode.substring(0, 2).toUpperCase();
-        const lastAsset = await prisma.asset.findFirst({
-          where: { assetNo: { startsWith: prefix + "-" } },
-          orderBy: { id: "desc" },
-        });
-        let nextNum = 1;
-        if (lastAsset) {
-          const match = lastAsset.assetNo.match(new RegExp(`^${prefix}-(\\d+)$`));
-          if (match) {
-            nextNum = parseInt(match[1], 10) + 1;
+        // 使用事务保证编号生成与资产创建的原子性，并尊重模板分类的 numberingRule
+        await prisma.$transaction(async (tx) => {
+          const prefix = template.category?.code ?? "EQ";
+          const assetNo = await generateAssetNo(
+            tx,
+            prefix,
+            template.category?.numberingRule
+          );
+          const status = employeeId ? "IN_USE" : "IDLE";
+
+          const createdAsset = await tx.asset.create({
+            data: {
+              assetNo,
+              name,
+              templateId: template.id,
+              status,
+              employeeId: employeeId ?? null,
+            },
+          });
+
+          // 复制模板 BOM 配件到设备（仅记录配置，不扣减库存）
+          if (template.components && template.components.length > 0) {
+            await tx.assetComponent.createMany({
+              data: template.components.map((bom) => ({
+                assetId: createdAsset.id,
+                modelId: bom.modelId,
+                quantity: bom.quantity,
+              })),
+            });
           }
-        }
-        const assetNo = `${prefix}-${String(nextNum).padStart(4, "0")}`;
 
-        const status = employeeId ? "IN_USE" : "IDLE";
-
-        const createdAsset = await prisma.asset.create({
-          data: {
-            assetNo,
-            name,
-            templateId: template.id,
-            status,
-            employeeId: employeeId ?? null,
-          },
+          // 如果有使用人，记录生命周期日志
+          if (employeeId) {
+            await tx.lifecycleLog.create({
+              data: {
+                assetId: createdAsset.id,
+                action: "ALLOCATED",
+                fromStatus: "IDLE",
+                toStatus: "IN_USE",
+                employeeId,
+                operator: "admin",
+                remark: "Excel 导入分配",
+              },
+            });
+          } else {
+            // 记录创建日志
+            await tx.lifecycleLog.create({
+              data: {
+                assetId: createdAsset.id,
+                action: "CREATED",
+                toStatus: "IDLE",
+                operator: "admin",
+                remark: "Excel 导入创建",
+              },
+            });
+          }
         });
-
-        // 如果有使用人，记录生命周期日志
-        if (employeeId) {
-          await prisma.lifecycleLog.create({
-            data: {
-              assetId: createdAsset.id,
-              action: "ALLOCATED",
-              fromStatus: "IDLE",
-              toStatus: "IN_USE",
-              employeeId,
-              operator: "admin",
-              remark: "Excel 导入分配",
-            },
-          });
-        } else {
-          // 记录创建日志
-          await prisma.lifecycleLog.create({
-            data: {
-              assetId: createdAsset.id,
-              action: "CREATED",
-              toStatus: "IDLE",
-              operator: "admin",
-              remark: "Excel 导入创建",
-            },
-          });
-        }
 
         importedCount++;
       } catch (e: any) {
@@ -344,7 +360,8 @@ export async function importAssetsFromExcel(
 export async function importComponentModelsFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
-  requireAuth();
+  await requireAuth();
+
   try {
     const wb = XLSX.read(input.buffer);
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -358,7 +375,7 @@ export async function importComponentModelsFromExcel(
 
     for (const row of rows) {
       const name = row["型号名称"]?.trim();
-      const brand = row["品牌"]?.trim() || null;
+      const brand = row["品牌"]?.trim() || undefined;
       const catName = row["分类"]?.trim();
 
       if (!name || !catName) {

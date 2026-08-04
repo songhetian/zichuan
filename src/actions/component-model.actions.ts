@@ -32,6 +32,7 @@ type ComponentModelWithStock = {
   name: string;
   brand: string | null;
   categoryId: number;
+  categoryName: string;
   stock: number;
 };
 
@@ -40,6 +41,7 @@ type PrismaComponentModel = {
   name: string;
   brand: string | null;
   categoryId: number;
+  category: { name: string } | null;
   stock: { quantity: number } | null;
 };
 
@@ -49,6 +51,7 @@ function formatModel(model: PrismaComponentModel): ComponentModelWithStock {
     name: model.name,
     brand: model.brand,
     categoryId: model.categoryId,
+    categoryName: model.category?.name ?? "",
     stock: model.stock?.quantity ?? 0,
   };
 }
@@ -60,7 +63,8 @@ function formatModel(model: PrismaComponentModel): ComponentModelWithStock {
 export async function createComponentModel(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<ComponentModelWithStock>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -80,13 +84,13 @@ export async function createComponentModel(
     const model = await prisma.componentModel.create({
       data: {
         name,
-        brand: brand ?? null,
+        brand: brand || "",
         categoryId,
         stock: {
           create: { quantity: 0 },
         },
       },
-      include: { stock: true },
+      include: { stock: true, category: { select: { name: true } } },
     });
     return { success: true, data: formatModel(model) };
   } catch (e) {
@@ -97,6 +101,8 @@ export async function createComponentModel(
 export async function getComponentModels(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<ComponentModelWithStock[]>> {
+  await requireAuth();
+
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };
@@ -117,7 +123,7 @@ export async function getComponentModels(
 
   const models = await prisma.componentModel.findMany({
     where,
-    include: { stock: true },
+    include: { stock: true, category: { select: { name: true } } },
     orderBy: { id: "asc" },
   });
 
@@ -127,9 +133,11 @@ export async function getComponentModels(
 export async function getComponentModelById(
   id: number
 ): Promise<ActionResult<ComponentModelWithStock>> {
+  await requireAuth();
+
   const model = await prisma.componentModel.findUnique({
     where: { id },
-    include: { stock: true },
+    include: { stock: true, category: { select: { name: true } } },
   });
   if (!model) {
     return { success: false, error: "配件型号不存在" };
@@ -141,7 +149,8 @@ export async function updateComponentModel(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<ComponentModelWithStock>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -166,10 +175,10 @@ export async function updateComponentModel(
   try {
     const model = await prisma.componentModel.update({
       where: { id },
-      data: validated.data,
-      include: { stock: true },
+      data: validated.data as any,
+      include: { stock: true, category: { select: { name: true } } },
     });
-    return { success: true, data: formatModel(model) };
+    return { success: true, data: formatModel(model as any) };
   } catch (e) {
     return handleUniqueViolation(e, { name: "该分类下已存在相同名称的型号" }, "更新失败");
   }
@@ -178,7 +187,8 @@ export async function updateComponentModel(
 export async function deleteComponentModel(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
+
   // 检查型号是否存在
   const existing = await prisma.componentModel.findUnique({ where: { id } });
   if (!existing) {

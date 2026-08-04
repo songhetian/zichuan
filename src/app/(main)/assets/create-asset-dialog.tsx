@@ -35,10 +35,17 @@ const createAssetSchema = z.object({
 
 type CreateAssetFormValues = z.infer<typeof createAssetSchema>;
 
+interface TemplateComponent {
+  modelId: number;
+  modelName: string;
+  modelBrand: string | null;
+  quantity: number;
+}
+
 interface CreateAssetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  templates: { id: number; name: string }[];
+  templates: { id: number; name: string; components: TemplateComponent[] }[];
 }
 
 export function CreateAssetDialog({ open, onOpenChange, templates }: CreateAssetDialogProps) {
@@ -59,6 +66,9 @@ export function CreateAssetDialog({ open, onOpenChange, templates }: CreateAsset
   const resetForm = () => {
     form.reset();
   };
+
+  const selectedTemplateId = form.watch("templateId");
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
   const handleSubmit = async (values: CreateAssetFormValues) => {
     setLoading(true);
@@ -115,6 +125,27 @@ export function CreateAssetDialog({ open, onOpenChange, templates }: CreateAsset
               <p className="text-sm text-destructive">{form.formState.errors.templateId.message}</p>
             )}
           </div>
+
+          {selectedTemplate && (
+            <div className="space-y-2">
+              <Label>配置预览</Label>
+              {selectedTemplate.components.length > 0 ? (
+                <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
+                  {selectedTemplate.components.map((c) => (
+                    <div key={c.modelId} className="flex items-center justify-between text-sm">
+                      <span className="text-foreground">
+                        {c.modelName}
+                        {c.modelBrand ? <span className="text-muted-foreground ml-1">· {c.modelBrand}</span> : null}
+                      </span>
+                      <span className="text-muted-foreground font-mono text-xs">× {c.quantity}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">该模板暂无配件配置</p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>设备名称</Label>

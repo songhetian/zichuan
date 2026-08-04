@@ -436,21 +436,21 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
           <div className="print:hidden flex items-center justify-between">
             <h3 className="text-base font-semibold">标签预览</h3>
             <p className="text-sm text-muted-foreground">
-              预览效果如下，点击上方按钮打印或导出
+              共 {labels.length} 个标签 · 80 × 40 mm
             </p>
           </div>
-          <div id="label-print-area" className="grid grid-cols-3 gap-4 print:gap-0">
+          <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:gap-0">
             {labels.map((label) => (
               <div
                 key={label.assetNo}
                 className="print:break-inside-avoid print:m-0 print:p-0"
               >
-                {/* 屏幕预览样式 */}
-                <div className="bg-white border border-border/50 rounded-lg shadow-sm p-4 print:hidden">
+                {/* 屏幕预览：固定 2:1 比例，模拟真实标签尺寸 */}
+                <div className="print:hidden aspect-[2/1] w-full">
                   <LabelContent label={label} />
                 </div>
-                {/* 打印样式 */}
-                <div className="hidden print:block p-3" style={{ width: "80mm", height: "40mm", boxSizing: "border-box" }}>
+                {/* 打印样式：80mm × 40mm */}
+                <div className="hidden print:block" style={{ width: "80mm", height: "40mm", boxSizing: "border-box" }}>
                   <LabelContent label={label} compact />
                 </div>
               </div>
@@ -469,29 +469,73 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
 function LabelContent({ label, compact = false }: { label: LabelData; compact?: boolean }) {
   if (compact) {
     return (
-      <div className="flex flex-col justify-center h-full px-1">
-        <div className="font-bold font-mono text-sm truncate text-center">{label.assetNo}</div>
-        <div className="text-gray-500 text-[10px] truncate text-center mt-0.5">{label.employeeName || "未分配"}</div>
-        {label.departmentName && (
-          <div className="text-gray-400 text-[9px] truncate text-center">{label.departmentName}</div>
-        )}
+      <div className="flex h-full w-full overflow-hidden" style={{ boxSizing: "border-box" }}>
+        {/* 左侧竖条 */}
+        <div className="w-1.5 bg-primary shrink-0" />
+
+        {/* 右侧内容 */}
+        <div className="flex-1 flex flex-col justify-center px-2 py-1 overflow-hidden">
+          {/* 编号：最大最醒目 */}
+          <div className="font-mono font-black text-[18px] leading-none tracking-tight text-foreground truncate">
+            {label.assetNo}
+          </div>
+
+          {/* 设备名：第二层级 */}
+          <div className="text-[11px] font-medium text-foreground/80 truncate mt-1">
+            {label.name}
+          </div>
+
+          {/* 底部分隔线 + 人名部门 */}
+          <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-border/60">
+            <span className="text-[9px] text-muted-foreground truncate">
+              {label.employeeName || "未分配"}
+            </span>
+            {label.departmentName && (
+              <>
+                <span className="text-[8px] text-muted-foreground/40">·</span>
+                <span className="text-[9px] text-muted-foreground truncate">
+                  {label.departmentName}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full space-y-0.5">
-      <p className="text-lg font-mono font-bold text-primary tracking-wider">
-        {label.assetNo}
-      </p>
-      <p className="text-sm text-muted-foreground">
-        使用人：<span className="text-foreground font-medium">{label.employeeName || "未分配"}</span>
-      </p>
-      {label.departmentName && (
-        <p className="text-xs text-muted-foreground">
-          部门：<span className="text-foreground/80">{label.departmentName}</span>
-        </p>
-      )}
+    <div className="flex h-full w-full rounded-md overflow-hidden border border-border/80 shadow-sm bg-white">
+      {/* 左侧竖条 */}
+      <div className="w-2 bg-primary shrink-0" />
+
+      {/* 右侧内容 */}
+      <div className="flex-1 flex flex-col justify-center px-4 py-3 overflow-hidden">
+        {/* 编号：最大最醒目 */}
+        <div className="font-mono font-black text-2xl tracking-tight text-foreground truncate">
+          {label.assetNo}
+        </div>
+
+        {/* 设备名：第二层级 */}
+        <div className="text-sm font-medium text-foreground/80 truncate mt-1">
+          {label.name}
+        </div>
+
+        {/* 底部分隔线 + 人名部门 */}
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/60">
+          <span className="text-xs text-muted-foreground truncate">
+            {label.employeeName || "未分配"}
+          </span>
+          {label.departmentName && (
+            <>
+              <span className="text-xs text-muted-foreground/30">·</span>
+              <span className="text-xs text-muted-foreground truncate">
+                {label.departmentName}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +21,8 @@ const querySchema = z.object({
 export async function createSystemLog(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };
@@ -46,6 +47,8 @@ export async function getSystemLogs(
     createdAt: Date;
   }[]>
 > {
+  await requireAuth();
+
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };

@@ -125,11 +125,9 @@ describe("Prisma 稳定性测试 - 防止DLL锁定导致空白页面", () => {
         "dev",
         "predev",
         "build",
-        "prisma:gen",
-        "kill-node",
-        "health",
-        "dev:clean",
-        "dev:restart",
+        "setup",
+        "dev:full",
+        "prod",
       ]
       requiredScripts.forEach((script) => {
         expect(pkg.scripts[script]).toBeDefined()

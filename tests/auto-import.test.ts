@@ -101,7 +101,8 @@ describe("自动导入设备", () => {
     expect(asset!.assetNo).toMatch(/^PC-\d{4}$/);
     expect(asset!.status).toBe("IN_USE");
     expect(asset!.employeeId).toBe(emp!.id);
-    expect(asset!.components).toHaveLength(4);
+    // 完全解耦：整机模式不写配件记录
+    expect(asset!.components).toHaveLength(0);
 
     // 验证生命周期日志
     const logs = await prisma.lifecycleLog.findMany({ where: { assetId: asset!.id } });
@@ -530,5 +531,151 @@ describe("自动导入设备", () => {
     const assets = await prisma.asset.findMany();
     expect(assets).toHaveLength(1);
     expect(assets[0].employeeId).toBe(employees[0].id);
+  });
+
+  it("支持多条不同品牌的内存导入（8GB*2 不同品牌）", async () => {
+    const result = await importAssetsAuto({
+      assets: [
+        {
+          employeeName: "张三",
+          departmentName: "技术部",
+          deviceName: "张三的电脑主机",
+          categoryName: "电脑主机",
+          categoryCode: "PC",
+          components: [
+            { category: "CPU", name: "Intel Core i5-12400", brand: "Intel" },
+            { category: "内存", name: "8GB DDR4 3200MHz", brand: "Kingston" },
+            { category: "内存", name: "8GB DDR4 3200MHz", brand: "ADATA" },
+            { category: "硬盘", name: "512GB NVMe SSD", brand: "Samsung" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    const data = unwrap(result);
+    expect(data.importedCount).toBe(1);
+    expect(data.errors).toHaveLength(0);
+
+    // 验证配件型号：两条内存是不同的（品牌不同）
+    const memoryModels = await prisma.componentModel.findMany({
+      where: { category: { name: "内存" } },
+      orderBy: { id: "asc" },
+    });
+    expect(memoryModels).toHaveLength(2);
+    expect(memoryModels[0].brand).toBe("Kingston");
+    expect(memoryModels[1].brand).toBe("ADATA");
+
+    // 验证模板 BOM：有两条内存记录（整机模式，配件记录在模板上）
+    const templateBom = await prisma.deviceTemplate.findFirst({
+      where: { category: { name: "电脑主机" } },
+      include: { components: { include: { model: { include: { category: true } } } } },
+    });
+    expect(templateBom).not.toBeNull();
+    const memoryComps = templateBom!.components.filter(
+      (c) => c.model.category.name === "内存"
+    );
+    expect(memoryComps).toHaveLength(2);
+    expect(memoryComps[0].quantity).toBe(1);
+    expect(memoryComps[1].quantity).toBe(1);
+
+    // 设备本身不写配件记录
+    const createdAsset = await prisma.asset.findFirst({
+      where: { name: "张三的电脑主机" },
+      include: { components: true },
+    });
+    expect(createdAsset!.components).toHaveLength(0);
+
+    // 验证模板名称包含总内存容量（16GB）
+    expect(templateBom!.name).toContain("16GB");
+  });
+
+  it("支持多个硬盘导入（SSD + HDD）", async () => {
+    const result = await importAssetsAuto({
+      assets: [
+        {
+          employeeName: "李四",
+          departmentName: "技术部",
+          deviceName: "李四的电脑主机",
+          categoryName: "电脑主机",
+          categoryCode: "PC",
+          components: [
+            { category: "CPU", name: "Intel Core i7-12700", brand: "Intel" },
+            { category: "内存", name: "16GB DDR4 3200MHz", brand: "Kingston" },
+            { category: "硬盘", name: "1TB NVMe SSD", brand: "Samsung" },
+            { category: "硬盘", name: "2TB HDD", brand: "WD" },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    const data = unwrap(result);
+    expect(data.importedCount).toBe(1);
+    expect(data.errors).toHaveLength(0);
+
+    // 验证有两个不同的硬盘型号
+    const diskModels = await prisma.componentModel.findMany({
+      where: { category: { name: "硬盘" } },
+    });
+    expect(diskModels).toHaveLength(2);
+
+    // 验证模板 BOM 有两条硬盘记录（整机模式，配件记录在模板上）
+    const template = await prisma.deviceTemplate.findFirst({
+      where: { category: { name: "电脑主机" } },
+      include: { components: { include: { model: { include: { category: true } } } } },
+    });
+    const diskComps = template!.components.filter(
+      (c) => c.model.category.name === "硬盘"
+    );
+    expect(diskComps).toHaveLength(2);
+  });
+
+  it("Excel格式支持内存1_内存2_硬盘1_硬盘2 多配件列", async () => {
+    const rows = [
+      {
+        "使用人": "王五",
+        "部门": "技术部",
+        "设备名称": "王五的电脑主机",
+        "设备分类": "电脑主机",
+        "设备分类编号": "PC",
+        "CPU型号": "Intel Core i5-12400",
+        "CPU品牌": "Intel",
+        "内存1型号": "8GB DDR4 3200MHz",
+        "内存1品牌": "Kingston",
+        "内存2型号": "8GB DDR4 3200MHz",
+        "内存2品牌": "ADATA",
+        "硬盘1型号": "512GB NVMe SSD",
+        "硬盘1品牌": "Samsung",
+        "硬盘2型号": "2TB HDD",
+        "硬盘2品牌": "WD",
+        "主板型号": "B660M",
+        "主板品牌": "ASUS",
+      },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "设备导入");
+    const fileBuffer = Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+    const buffer = Array.from(fileBuffer);
+
+    const result = await importAssetsFromExcelAuto({ buffer });
+    expect(result.success).toBe(true);
+    const data = unwrap(result);
+    expect(data.importedCount).toBe(1);
+    expect(data.errors).toHaveLength(0);
+
+    // 验证有2条内存
+    const memoryModels = await prisma.componentModel.findMany({
+      where: { category: { name: "内存" } },
+    });
+    expect(memoryModels).toHaveLength(2);
+
+    // 验证有2个硬盘
+    const diskModels = await prisma.componentModel.findMany({
+      where: { category: { name: "硬盘" } },
+    });
+    expect(diskModels).toHaveLength(2);
   });
 });

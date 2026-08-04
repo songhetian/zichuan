@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 
@@ -15,6 +16,8 @@ type AssetStatsResult = {
 export async function getAssetStats(
   input: { groupBy?: "category" | "department" | "employee" } = {}
 ): Promise<ActionResult<AssetStatsResult>> {
+  await requireAuth();
+
   const statusGroups = await prisma.asset.groupBy({
     by: ["status"],
     _count: { id: true },
@@ -136,6 +139,8 @@ export async function getStockStats(): Promise<
     quantity: number;
   }[]>
 > {
+  await requireAuth();
+
   const stocks = await prisma.componentStock.findMany({
     where: { quantity: { gt: 0 } },
     include: {
@@ -170,6 +175,8 @@ export async function getLifecycleTrend(
     scrapped: number;
   }[]>
 > {
+  await requireAuth();
+
   const months = input.months ?? 6;
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - months + 1);

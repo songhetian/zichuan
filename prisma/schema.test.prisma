@@ -62,6 +62,8 @@ model AssetCategory {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   code        String   @unique
+  unique      Boolean  @default(false) @map("is_unique")
+  numberingRule String?
   parentId    Int?
   parent      AssetCategory?  @relation("AssetCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children    AssetCategory[] @relation("AssetCategoryTree")
@@ -163,6 +165,7 @@ enum AssetStatus {
   IN_USE
   IN_MAINTENANCE
   SCRAPPED
+  IN_STOCK
 }
 
 enum LifecycleAction {

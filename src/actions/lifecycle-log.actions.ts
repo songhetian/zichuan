@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 
@@ -22,6 +23,8 @@ export async function getLifecycleLogs(
     createdAt: Date;
   }[]>
 > {
+  await requireAuth();
+
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };

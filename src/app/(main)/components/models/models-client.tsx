@@ -282,7 +282,7 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
     setLoading(true);
     const result = await createComponentModel({
       name: name.trim(),
-      brand: brand.trim() || undefined,
+      brand: brand.trim(),
       categoryId: Number(categoryId),
     });
     setLoading(false);

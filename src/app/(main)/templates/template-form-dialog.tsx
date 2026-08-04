@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { BomTable, type BomComponent, type ComponentModelOption, type TemplateOption } from "./bom-table";
+import { BomTable, type BomComponent, type ComponentModelOption, type TemplateOption, type ComponentCategoryOption } from "./bom-table";
 import { createDeviceTemplate, updateDeviceTemplate } from "@/actions/device-template.actions";
 
 const templateSchema = z.object({
@@ -55,6 +55,7 @@ interface TemplateFormDialogProps {
   categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   componentModels: ComponentModelOption[];
   templates: TemplateOption[];
+  componentCategories: ComponentCategoryOption[];
 }
 
 export function TemplateFormDialog({
@@ -65,6 +66,7 @@ export function TemplateFormDialog({
   categories,
   componentModels,
   templates,
+  componentCategories,
 }: TemplateFormDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -83,13 +85,22 @@ export function TemplateFormDialog({
         name: template.name,
         categoryId: template.categoryId.toString(),
       });
+      // 构建 modelId → (categoryId, categoryName) 映射，用于补充配件分类信息
+      const modelInfoMap = new Map(
+        componentModels.map((m) => [m.id, { categoryId: m.categoryId, categoryName: m.categoryName }])
+      );
       setBomComponents(
-        template.components.map((c) => ({
-          modelId: c.modelId,
-          quantity: c.quantity,
-          name: c.modelName,
-          brand: c.modelBrand,
-        }))
+        template.components.map((c) => {
+          const info = modelInfoMap.get(c.modelId);
+          return {
+            modelId: c.modelId,
+            quantity: c.quantity,
+            name: c.modelName,
+            brand: c.modelBrand,
+            categoryId: info?.categoryId,
+            categoryName: info?.categoryName,
+          };
+        })
       );
     } else {
       form.reset({ name: "", categoryId: "" });
@@ -212,6 +223,7 @@ export function TemplateFormDialog({
                 <BomTable
                   modelOptions={componentModels}
                   templates={templates}
+                  categories={componentCategories}
                   value={bomComponents}
                   onChange={setBomComponents}
                 />

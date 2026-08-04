@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import {
   Monitor, Cpu, Users, ArrowRightLeft,
   ClipboardCheck, Settings, FileText, Package,
-  LayoutGrid, ChevronDown, LayoutDashboard,
+  LayoutGrid, ChevronDown, LayoutDashboard, Warehouse,
   PanelLeftClose, PanelLeft,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -44,6 +44,7 @@ const navItems: NavItem[] = [
     children: [
       { href: "/assets", label: "设备列表" },
       { href: "/templates", label: "设备模板" },
+      { href: "/stock/in", label: "批量入库" },
     ],
   },
   {

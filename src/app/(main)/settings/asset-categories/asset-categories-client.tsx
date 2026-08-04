@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 interface Category extends TreeNode {
   code: string;
   unique: boolean;
+  numberingRule?: string | null;
 }
 
 export function AssetCategoriesClient({
@@ -64,12 +65,14 @@ export function AssetCategoriesClient({
     { key: "parentId", label: "父分类", type: "select", options: parentOptions, optional: true, placeholder: "无父分类（顶级分类）" },
     { key: "name", label: "分类名称", type: "text", placeholder: "如：笔记本电脑" },
     { key: "unique", label: "唯一设备", type: "select", options: [{ value: "false", label: "否 - 员工可持有多台" }, { value: "true", label: "是 - 每人仅限一台" }], placeholder: "选择分配规则" },
+    { key: "numberingRule", label: "编号规则", type: "text", optional: true, placeholder: "如：{prefix}-{####}（留空用默认规则）", hint: "支持 {prefix} {YYYY} {MM} {DD} {####} {R4}（R4=4位随机字符）" },
   ];
 
   const editFields: FieldConfig[] = [
     { key: "name", label: "分类名称", type: "text", placeholder: "分类名称" },
     { key: "code", label: "分类编码", type: "text", placeholder: "自动生成的编码", optional: true, hint: "留空则保持原编码" },
     { key: "unique", label: "唯一设备", type: "select", options: [{ value: "false", label: "否 - 员工可持有多台" }, { value: "true", label: "是 - 每人仅限一台" }], placeholder: "选择分配规则" },
+    { key: "numberingRule", label: "编号规则", type: "text", optional: true, placeholder: "如：{prefix}-{####}（留空用默认规则）", hint: "支持 {prefix} {YYYY} {MM} {DD} {####} {R4}（R4=4位随机字符）" },
   ];
 
   const handleCreate = async (values: Record<string, string>) => {
@@ -77,6 +80,7 @@ export function AssetCategoriesClient({
       name: values.name,
       parentId: values.parentId ? Number(values.parentId) : undefined,
       unique: values.unique === "true",
+      numberingRule: values.numberingRule || null,
     });
     if (result.success) {
       router.refresh();
@@ -89,6 +93,7 @@ export function AssetCategoriesClient({
       name: values.name,
       code: values.code || undefined,
       unique: values.unique === "true",
+      numberingRule: values.numberingRule ?? null,
     });
     if (result.success) {
       router.refresh();
@@ -120,6 +125,15 @@ export function AssetCategoriesClient({
         <span className="text-xs text-muted-foreground">普通</span>
       ),
     },
+    {
+      key: "numberingRule",
+      header: "编号规则",
+      render: (node: Category) => node.numberingRule ? (
+        <span className="font-mono text-xs">{node.numberingRule}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground">默认</span>
+      ),
+    },
   ];
 
   return (
@@ -144,7 +158,7 @@ export function AssetCategoriesClient({
             onDelete={() => handleDelete(node as Category)}
             editTitle="编辑分类"
             editFields={editFields}
-            initialValues={{ name: (node as Category).name, code: (node as Category).code, unique: String((node as Category).unique) }}
+            initialValues={{ name: (node as Category).name, code: (node as Category).code, unique: String((node as Category).unique), numberingRule: (node as Category).numberingRule ?? "" }}
           />
         )}
         emptyText="暂无分类数据"

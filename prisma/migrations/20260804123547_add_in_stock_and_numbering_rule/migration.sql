@@ -1,0 +1,12 @@
+-- AlterTable
+ALTER TABLE `Asset` MODIFY `status` ENUM('IDLE', 'IN_USE', 'IN_MAINTENANCE', 'SCRAPPED', 'IN_STOCK') NOT NULL DEFAULT 'IDLE';
+
+-- AlterTable
+ALTER TABLE `AssetCategory` ADD COLUMN `numberingRule` VARCHAR(191) NULL;
+
+-- AlterTable
+ALTER TABLE `LifecycleLog` MODIFY `fromStatus` ENUM('IDLE', 'IN_USE', 'IN_MAINTENANCE', 'SCRAPPED', 'IN_STOCK') NULL,
+    MODIFY `toStatus` ENUM('IDLE', 'IN_USE', 'IN_MAINTENANCE', 'SCRAPPED', 'IN_STOCK') NULL;
+
+-- AlterTable
+ALTER TABLE `StocktakeRecord` MODIFY `expectedStatus` ENUM('IDLE', 'IN_USE', 'IN_MAINTENANCE', 'SCRAPPED', 'IN_STOCK') NOT NULL;

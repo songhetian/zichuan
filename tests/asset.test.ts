@@ -53,9 +53,7 @@ describe("设备实体 CRUD", () => {
 
   describe("createAsset", () => {
     it("可以按模板生成设备并自动分配编号", async () => {
-      const { template, cpu, ram } = await setupTestData();
-      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
-      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+      const { template } = await setupTestData();
 
       const result = await createAsset({
         templateId: template.id,
@@ -68,12 +66,11 @@ describe("设备实体 CRUD", () => {
       expect(unwrap(result).name).toBe("张三的办公电脑");
       expect(unwrap(result).status).toBe("IDLE");
       expect(unwrap(result).templateId).toBe(template.id);
+      // 复制模板 BOM 配件到设备（仅记录配置，不扣减库存）
       expect(unwrap(result).components).toHaveLength(2);
-      expect(unwrap(result).components[0].modelId).toBe(cpu.id);
-      expect(unwrap(result).components[1].quantity).toBe(2);
     });
 
-    it("生成设备时扣减配件库存", async () => {
+    it("生成设备时不扣减配件库存（整机模式，与配件库存解耦）", async () => {
       const { template, cpu, ram } = await setupTestData();
       await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
       await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
@@ -87,14 +84,12 @@ describe("设备实体 CRUD", () => {
         where: { modelId: ram.id },
       });
 
-      expect(cpuStock?.quantity).toBe(9); // 10 - 1
-      expect(ramStock?.quantity).toBe(8); // 10 - 2
+      expect(cpuStock?.quantity).toBe(10); // 不扣减
+      expect(ramStock?.quantity).toBe(10); // 不扣减
     });
 
     it("生成设备时记录生命周期日志", async () => {
-      const { template, cpu, ram } = await setupTestData();
-      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
-      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+      const { template } = await setupTestData();
 
       const result = await createAsset({
         templateId: template.id,
@@ -111,9 +106,7 @@ describe("设备实体 CRUD", () => {
     });
 
     it("多台设备编号自动递增", async () => {
-      const { template, cpu, ram } = await setupTestData();
-      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
-      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+      const { template } = await setupTestData();
 
       const r1 = await createAsset({ templateId: template.id, name: "电脑1", operator: "admin" });
       const r2 = await createAsset({ templateId: template.id, name: "电脑2", operator: "admin" });
@@ -122,9 +115,8 @@ describe("设备实体 CRUD", () => {
       expect(unwrap(r2).assetNo).toBe("DN-0002");
     });
 
-    it("库存不足时生成失败", async () => {
-      const { template, cpu } = await setupTestData();
-      await purchaseStockIn({ modelId: cpu.id, quantity: 0, operator: "admin" });
+    it("配件库存不足时也能创建成功（不校验库存）", async () => {
+      const { template } = await setupTestData();
 
       const result = await createAsset({
         templateId: template.id,
@@ -132,8 +124,8 @@ describe("设备实体 CRUD", () => {
         operator: "admin",
       });
 
-      expect(result.success).toBe(false);
-      expect(unwrapError(result)).toContain("库存不足");
+      expect(result.success).toBe(true);
+      expect(unwrap(result).assetNo).toMatch(/^DN-\d{4}$/);
     });
 
     it("模板不存在时生成失败", async () => {
@@ -239,6 +231,246 @@ describe("设备实体 CRUD", () => {
     it("空数据库返回空数组", async () => {
       const result = await getAssets();
       expect(unwrap(result)).toEqual([]);
+    });
+
+    it("可以按内存容量筛选设备", async () => {
+      // 创建测试数据
+      const assetCat = await prisma.assetCategory.create({
+        data: { name: "计算机设备", code: "DN" },
+      });
+      const cpuCat = await prisma.componentCategory.create({
+        data: { name: "CPU" },
+      });
+      const memoryCat = await prisma.componentCategory.create({
+        data: { name: "内存" },
+      });
+      const diskCat = await prisma.componentCategory.create({
+        data: { name: "硬盘" },
+      });
+
+      const cpu = await prisma.componentModel.create({
+        data: { name: "i5-12400", brand: "Intel", categoryId: cpuCat.id },
+      });
+      const mem8gb = await prisma.componentModel.create({
+        data: { name: "8GB DDR4", brand: "Kingston", categoryId: memoryCat.id },
+      });
+      const mem16gb = await prisma.componentModel.create({
+        data: { name: "16GB DDR4", brand: "ADATA", categoryId: memoryCat.id },
+      });
+      const ssd512 = await prisma.componentModel.create({
+        data: { name: "512GB NVMe SSD", brand: "Samsung", categoryId: diskCat.id },
+      });
+      const ssd1tb = await prisma.componentModel.create({
+        data: { name: "1TB NVMe SSD", brand: "Samsung", categoryId: diskCat.id },
+      });
+
+      // 补充库存
+      await prisma.componentStock.createMany({
+        data: [
+          { modelId: cpu.id, quantity: 10 },
+          { modelId: mem8gb.id, quantity: 20 },
+          { modelId: mem16gb.id, quantity: 10 },
+          { modelId: ssd512.id, quantity: 10 },
+          { modelId: ssd1tb.id, quantity: 10 },
+        ],
+      });
+
+      // 创建模板1：8GB内存 + 512GB硬盘
+      const template1 = await prisma.deviceTemplate.create({
+        data: {
+          name: "低配办公电脑",
+          categoryId: assetCat.id,
+          components: {
+            create: [
+              { modelId: cpu.id, quantity: 1 },
+              { modelId: mem8gb.id, quantity: 1 },
+              { modelId: ssd512.id, quantity: 1 },
+            ],
+          },
+        },
+      });
+
+      // 创建模板2：16GB内存 + 1TB硬盘
+      const template2 = await prisma.deviceTemplate.create({
+        data: {
+          name: "高配办公电脑",
+          categoryId: assetCat.id,
+          components: {
+            create: [
+              { modelId: cpu.id, quantity: 1 },
+              { modelId: mem16gb.id, quantity: 1 },
+              { modelId: ssd1tb.id, quantity: 1 },
+            ],
+          },
+        },
+      });
+
+      // 创建设备
+      await createAsset({ templateId: template1.id, name: "低配电脑", operator: "admin" });
+      await createAsset({ templateId: template2.id, name: "高配电脑", operator: "admin" });
+
+      // 测试：筛选内存 >= 16GB 的设备
+      const result1 = await getAssets({ memoryMinGB: 16 });
+      expect(result1.success).toBe(true);
+      const data1 = unwrap(result1);
+      expect(data1.length).toBe(1);
+      expect(data1[0].name).toBe("高配电脑");
+
+      // 测试：筛选内存 >= 8GB 的设备（应该都满足）
+      const result2 = await getAssets({ memoryMinGB: 8 });
+      expect(result2.success).toBe(true);
+      expect(unwrap(result2).length).toBe(2);
+
+      // 测试：筛选内存 >= 32GB 的设备（应该没有）
+      const result3 = await getAssets({ memoryMinGB: 32 });
+      expect(result3.success).toBe(true);
+      expect(unwrap(result3).length).toBe(0);
+    });
+
+    it("可以按硬盘容量筛选设备", async () => {
+      // 创建测试数据
+      const assetCat = await prisma.assetCategory.create({
+        data: { name: "计算机设备", code: "DN" },
+      });
+      const cpuCat = await prisma.componentCategory.create({
+        data: { name: "CPU" },
+      });
+      const memoryCat = await prisma.componentCategory.create({
+        data: { name: "内存" },
+      });
+      const diskCat = await prisma.componentCategory.create({
+        data: { name: "硬盘" },
+      });
+
+      const cpu = await prisma.componentModel.create({
+        data: { name: "i5-12400", brand: "Intel", categoryId: cpuCat.id },
+      });
+      const mem8gb = await prisma.componentModel.create({
+        data: { name: "8GB DDR4", brand: "Kingston", categoryId: memoryCat.id },
+      });
+      const ssd256 = await prisma.componentModel.create({
+        data: { name: "256GB SATA SSD", brand: "Kingston", categoryId: diskCat.id },
+      });
+      const ssd1tb = await prisma.componentModel.create({
+        data: { name: "1TB NVMe SSD", brand: "Samsung", categoryId: diskCat.id },
+      });
+
+      // 补充库存
+      await prisma.componentStock.createMany({
+        data: [
+          { modelId: cpu.id, quantity: 10 },
+          { modelId: mem8gb.id, quantity: 10 },
+          { modelId: ssd256.id, quantity: 10 },
+          { modelId: ssd1tb.id, quantity: 10 },
+        ],
+      });
+
+      // 创建模板1：256GB硬盘
+      const template1 = await prisma.deviceTemplate.create({
+        data: {
+          name: "低配电脑",
+          categoryId: assetCat.id,
+          components: {
+            create: [
+              { modelId: cpu.id, quantity: 1 },
+              { modelId: mem8gb.id, quantity: 1 },
+              { modelId: ssd256.id, quantity: 1 },
+            ],
+          },
+        },
+      });
+
+      // 创建模板2：1TB硬盘
+      const template2 = await prisma.deviceTemplate.create({
+        data: {
+          name: "高配电脑",
+          categoryId: assetCat.id,
+          components: {
+            create: [
+              { modelId: cpu.id, quantity: 1 },
+              { modelId: mem8gb.id, quantity: 1 },
+              { modelId: ssd1tb.id, quantity: 1 },
+            ],
+          },
+        },
+      });
+
+      // 创建设备
+      await createAsset({ templateId: template1.id, name: "低配电脑", operator: "admin" });
+      await createAsset({ templateId: template2.id, name: "高配电脑", operator: "admin" });
+
+      // 测试：筛选硬盘 >= 500GB 的设备
+      const result1 = await getAssets({ diskMinGB: 500 });
+      expect(result1.success).toBe(true);
+      const data1 = unwrap(result1);
+      expect(data1.length).toBe(1);
+      expect(data1[0].name).toBe("高配电脑");
+
+      // 测试：筛选硬盘 >= 200GB 的设备（应该都满足）
+      const result2 = await getAssets({ diskMinGB: 200 });
+      expect(result2.success).toBe(true);
+      expect(unwrap(result2).length).toBe(2);
+    });
+
+    it("多条内存时按总容量筛选", async () => {
+      // 创建测试数据：两条8GB内存 = 16GB总容量
+      const assetCat = await prisma.assetCategory.create({
+        data: { name: "计算机设备", code: "DN" },
+      });
+      const cpuCat = await prisma.componentCategory.create({
+        data: { name: "CPU" },
+      });
+      const memoryCat = await prisma.componentCategory.create({
+        data: { name: "内存" },
+      });
+
+      const cpu = await prisma.componentModel.create({
+        data: { name: "i5-12400", brand: "Intel", categoryId: cpuCat.id },
+      });
+      const mem8gbKingston = await prisma.componentModel.create({
+        data: { name: "8GB DDR4", brand: "Kingston", categoryId: memoryCat.id },
+      });
+      const mem8gbAdata = await prisma.componentModel.create({
+        data: { name: "8GB DDR4", brand: "ADATA", categoryId: memoryCat.id },
+      });
+
+      // 补充库存
+      await prisma.componentStock.createMany({
+        data: [
+          { modelId: cpu.id, quantity: 10 },
+          { modelId: mem8gbKingston.id, quantity: 10 },
+          { modelId: mem8gbAdata.id, quantity: 10 },
+        ],
+      });
+
+      // 创建模板：两条8GB不同品牌的内存
+      const template = await prisma.deviceTemplate.create({
+        data: {
+          name: "双通道电脑",
+          categoryId: assetCat.id,
+          components: {
+            create: [
+              { modelId: cpu.id, quantity: 1 },
+              { modelId: mem8gbKingston.id, quantity: 1 },
+              { modelId: mem8gbAdata.id, quantity: 1 },
+            ],
+          },
+        },
+      });
+
+      // 创建设备
+      await createAsset({ templateId: template.id, name: "双通道电脑", operator: "admin" });
+
+      // 测试：筛选内存 >= 16GB 的设备（两条8GB = 16GB，应该满足）
+      const result1 = await getAssets({ memoryMinGB: 16 });
+      expect(result1.success).toBe(true);
+      const data1 = unwrap(result1);
+      expect(data1.length).toBe(1);
+
+      // 测试：筛选内存 >= 17GB 的设备（不满足）
+      const result2 = await getAssets({ memoryMinGB: 17 });
+      expect(result2.success).toBe(true);
+      expect(unwrap(result2).length).toBe(0);
     });
   });
 

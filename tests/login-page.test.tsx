@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest"
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { LoginForm } from "@/app/login/login-form"
 
@@ -29,6 +29,10 @@ vi.mock("next/navigation", () => ({
 describe("LoginForm 组件", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it("渲染登录表单，包含用户名和密码输入框", () => {

@@ -8,15 +8,18 @@ How the engineering skills should consume this repo's domain documentation.
 
 - **`domain.md`** at the repo root — the project's domain language, tech stack, table structures, return/error conventions, validation rules, and business constraints.
 
-There is no `CONTEXT.md` / `CONTEXT-MAP.md` / `docs/adr/` in this repo (it is a small desktop app, not a monorepo). `domain.md` absorbs all of those roles. Do not create `CONTEXT.md` unless the user asks.
+Supporting sources include:
+- `CONTEXT.md` — domain language (entities, states, actions)
+- `docs/adr/` — architecture decision records
+- `prisma/schema.prisma` — database schema (authoritative)
 
 ## Before exploring, read `domain.md`
 
 Read `domain.md` (repo root) before any diagnosis, refactor, or optimization. It is the single source of truth for:
 
-- tech stack and layering conventions
-- database table structures (authoritative = on-disk `data/zichan.db` schema)
-- unified return format / interface (DBManager) contract
+- tech stack and layering conventions (Next.js 14 + Prisma + MySQL)
+- database table structures (authoritative = `prisma/schema.prisma`)
+- unified return format / interface (Server Actions with `ActionResult<T>`)
 - validation rules and business constraints
 
 ## Governance rule (highest precedence)
@@ -25,8 +28,8 @@ Read `domain.md` (repo root) before any diagnosis, refactor, or optimization. It
 > 代码与文档冲突时，**以文档为准**。
 > 禁止私自修改：业务逻辑、数据库表结构、接口出入参。
 
-When your output would contradict `domain.md` or the on-disk schema, **surface it explicitly** rather than silently overriding, and do not change business logic / schema / interface signatures without user confirmation.
+When your output would contradict `domain.md` or the Prisma schema, **surface it explicitly** rather than silently overriding, and do not change business logic / schema / interface signatures without user confirmation.
 
 ## Known gaps
 
-`domain.md` §10 lists code-vs-doc inconsistencies for diagnosis. Treat them as findings, not as license to change the documented rules.
+`domain.md` §11 lists code-vs-doc inconsistencies for diagnosis. Treat them as findings, not as license to change the documented rules.

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
+import { generateAssetNo } from "@/lib/asset-numbering";
 import type { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 
@@ -49,9 +50,9 @@ async function getOrCreateAssetCategory(
   tx: Tx,
   name: string,
   code: string
-): Promise<number> {
+): Promise<{ id: number; code: string; numberingRule: string | null }> {
   const existing = await tx.assetCategory.findUnique({ where: { name } });
-  if (existing) return existing.id;
+  if (existing) return { id: existing.id, code: existing.code, numberingRule: existing.numberingRule };
 
   const codeExists = await tx.assetCategory.findUnique({ where: { code } });
   const finalCode = codeExists ? `${code}_${Date.now()}` : code;
@@ -59,7 +60,7 @@ async function getOrCreateAssetCategory(
   const created = await tx.assetCategory.create({
     data: { name, code: finalCode },
   });
-  return created.id;
+  return { id: created.id, code: created.code, numberingRule: created.numberingRule };
 }
 
 async function getOrCreateComponentCategory(
@@ -82,14 +83,14 @@ async function getOrCreateComponentModel(
   brand: string
 ): Promise<number> {
   const existing = await tx.componentModel.findUnique({
-    where: { categoryId_name: { categoryId, name } },
+    where: { categoryId_name_brand: { categoryId, name, brand: brand || "" } },
   });
   if (existing) return existing.id;
 
   const created = await tx.componentModel.create({
     data: {
       name,
-      brand: brand || null,
+      brand: brand || undefined,
       categoryId,
       stock: { create: { quantity: 1 } },
     },
@@ -117,11 +118,10 @@ function generateTemplateName(
   categoryName: string,
   components: HardwareComponent[]
 ): string {
-  const compMap = new Map(components.map((c) => [c.category, c]));
-
   const parts: string[] = [];
 
-  const cpu = compMap.get("CPU");
+  // CPU：取第一个 CPU 的简短型号
+  const cpu = components.find((c) => c.category === "CPU");
   if (cpu) {
     const shortName = cpu.name
       .replace(/12th Gen Intel\(R\) Core\(TM\) /i, "")
@@ -133,18 +133,39 @@ function generateTemplateName(
     if (shortName) parts.push(shortName);
   }
 
-  const memory = compMap.get("内存");
-  if (memory) {
-    const match = memory.name.match(/(\d+GB)/i);
-    if (match) parts.push(match[1]);
+  // 内存：汇总所有内存组件的容量
+  let totalMemoryGB = 0;
+  for (const mem of components) {
+    if (mem.category === "内存") {
+      const match = mem.name.match(/(\d+)\s*GB/i);
+      if (match) totalMemoryGB += parseInt(match[1], 10);
+    }
   }
+  if (totalMemoryGB > 0) parts.push(`${totalMemoryGB}GB`);
 
-  const disk = compMap.get("硬盘");
-  if (disk) {
-    const match = disk.name.match(/(\d+GB|\d+TB)/i);
-    if (match) parts.push(match[1]);
-    if (disk.name.toLowerCase().includes("ssd")) parts.push("SSD");
-    else if (disk.name.toLowerCase().includes("hdd")) parts.push("HDD");
+  // 硬盘：汇总所有硬盘组件的容量
+  let totalDiskGB = 0;
+  let hasSSD = false;
+  let hasHDD = false;
+  for (const disk of components) {
+    if (disk.category === "硬盘") {
+      const gbMatch = disk.name.match(/(\d+)\s*GB/i);
+      if (gbMatch) totalDiskGB += parseInt(gbMatch[1], 10);
+      const tbMatch = disk.name.match(/(\d+)\s*TB/i);
+      if (tbMatch) totalDiskGB += parseInt(tbMatch[1], 10) * 1000;
+
+      if (disk.name.toLowerCase().includes("ssd") || disk.name.toLowerCase().includes("nvme")) hasSSD = true;
+      if (disk.name.toLowerCase().includes("hdd")) hasHDD = true;
+    }
+  }
+  if (totalDiskGB > 0) {
+    if (totalDiskGB >= 1000) {
+      parts.push(`${(totalDiskGB / 1000).toFixed(totalDiskGB % 1000 === 0 ? 0 : 1)}TB`);
+    } else {
+      parts.push(`${totalDiskGB}GB`);
+    }
+    if (hasSSD && !hasHDD) parts.push("SSD");
+    else if (hasHDD && !hasSSD) parts.push("HDD");
   }
 
   if (parts.length === 0) {
@@ -270,33 +291,6 @@ async function getOrCreateEmployee(
   return created.id;
 }
 
-async function generateAssetNo(
-  tx: Tx,
-  categoryId: number
-): Promise<string> {
-  const category = await tx.assetCategory.findUnique({
-    where: { id: categoryId },
-  });
-  if (!category) throw new Error("分类不存在");
-
-  const prefix = category.code;
-
-  const lastAsset = await tx.asset.findFirst({
-    where: { assetNo: { startsWith: prefix + "-" } },
-    orderBy: { assetNo: "desc" },
-  });
-
-  let nextNum = 1;
-  if (lastAsset) {
-    const match = lastAsset.assetNo.match(new RegExp(`^${prefix}-(\\d+)$`));
-    if (match) {
-      nextNum = parseInt(match[1], 10) + 1;
-    }
-  }
-
-  return `${prefix}-${String(nextNum).padStart(4, "0")}`;
-}
-
 // ============================================================
 // 核心导入逻辑
 // ============================================================
@@ -304,7 +298,7 @@ async function generateAssetNo(
 export async function importAssetsAuto(
   input: { assets: HardwareAssetInput[] }
 ): Promise<ActionResult<ImportResult>> {
-  requireAuth();
+  await requireAuth();
 
   if (!input.assets || input.assets.length === 0) {
     return { success: false, error: "没有要导入的设备数据" };
@@ -321,14 +315,14 @@ export async function importAssetsAuto(
     try {
       const result = await prisma.$transaction(async (tx) => {
         // 1. 设备分类（查找或创建）
-        const categoryId = await getOrCreateAssetCategory(
+        const category = await getOrCreateAssetCategory(
           tx,
           row.categoryName,
           row.categoryCode
         );
 
         // 2. 配件分类 + 配件型号 + 库存（查找或创建）
-        const componentMappings: Array<{ modelId: number; quantity: number }> = [];
+        const componentMappingsRaw: Array<{ modelId: number; quantity: number }> = [];
         const componentsCreated: string[] = [];
 
         for (const comp of row.components) {
@@ -339,14 +333,23 @@ export async function importAssetsAuto(
             comp.name,
             comp.brand
           );
-          componentMappings.push({ modelId, quantity: 1 });
+          componentMappingsRaw.push({ modelId, quantity: 1 });
           componentsCreated.push(comp.name);
         }
+
+        // 合并相同 modelId 的映射（避免创建模板时违反唯一约束）
+        const mergedMap = new Map<number, number>();
+        for (const m of componentMappingsRaw) {
+          mergedMap.set(m.modelId, (mergedMap.get(m.modelId) ?? 0) + m.quantity);
+        }
+        const componentMappings = Array.from(mergedMap.entries()).map(
+          ([modelId, quantity]) => ({ modelId, quantity })
+        );
 
         // 3. 设备模板 + BOM（按配件组合查找或创建）
         const templateResult = await findOrCreateDeviceTemplate(
           tx,
-          categoryId,
+          category.id,
           row.categoryName,
           row.components,
           componentMappings
@@ -359,7 +362,7 @@ export async function importAssetsAuto(
         const employeeId = await getOrCreateEmployee(tx, row.employeeName, departmentId);
 
         // 6. 生成编号
-        const assetNo = await generateAssetNo(tx, categoryId);
+        const assetNo = await generateAssetNo(tx, category.code, category.numberingRule);
 
         // 7. 创建设备（默认分配给使用人，状态为 IN_USE）
         const asset = await tx.asset.create({
@@ -372,7 +375,7 @@ export async function importAssetsAuto(
           },
         });
 
-        // 8. 创建设备配件配置（复制BOM）
+        // 7.5 复制模板 BOM 配件到设备（记录配置，不扣减库存）
         if (componentMappings.length > 0) {
           await tx.assetComponent.createMany({
             data: componentMappings.map((c) => ({
@@ -383,7 +386,7 @@ export async function importAssetsAuto(
           });
         }
 
-        // 9. 记录生命周期日志
+        // 8. 记录生命周期日志
         await tx.lifecycleLog.create({
           data: {
             assetId: asset.id,
@@ -462,12 +465,40 @@ interface ExcelAssetRow {
   "主板品牌": string;
   "显卡型号": string;
   "显卡品牌": string;
+  // 多列格式支持
+  [key: string]: string;
+}
+
+// 解析多列格式的配件（如 内存1型号/内存1品牌, 内存2型号/内存2品牌）
+function parseMultiColumnComponents(
+  row: Record<string, string>,
+  category: string
+): HardwareComponent[] {
+  const components: HardwareComponent[] = [];
+
+  // 先检查单列格式
+  const singleModel = String(row[`${category}型号`] ?? "").trim();
+  const singleBrand = String(row[`${category}品牌`] ?? "").trim();
+  if (singleModel) {
+    components.push({ category, name: singleModel, brand: singleBrand });
+  }
+
+  // 再检查多列格式（1, 2, 3...）
+  for (let i = 1; i <= 10; i++) {
+    const model = String(row[`${category}${i}型号`] ?? "").trim();
+    const brand = String(row[`${category}${i}品牌`] ?? "").trim();
+    if (model) {
+      components.push({ category, name: model, brand });
+    }
+  }
+
+  return components;
 }
 
 export async function importAssetsFromExcelAuto(
   input: { buffer: number[] }
 ): Promise<ActionResult<ImportResult>> {
-  requireAuth();
+  await requireAuth();
 
   try {
     const fileBuffer = Buffer.from(input.buffer);
@@ -494,32 +525,26 @@ export async function importAssetsFromExcelAuto(
 
       const components: HardwareComponent[] = [];
 
-      const cpuModel = String(row["CPU型号"] ?? "").trim();
-      const cpuBrand = String(row["CPU品牌"] ?? "").trim();
+      const rowRecord = row as Record<string, string>;
+
+      const cpuModel = String(rowRecord["CPU型号"] ?? "").trim();
+      const cpuBrand = String(rowRecord["CPU品牌"] ?? "").trim();
       if (cpuModel) {
         components.push({ category: "CPU", name: cpuModel, brand: cpuBrand });
       }
 
-      const memoryModel = String(row["内存型号"] ?? "").trim();
-      const memoryBrand = String(row["内存品牌"] ?? "").trim();
-      if (memoryModel) {
-        components.push({ category: "内存", name: memoryModel, brand: memoryBrand });
-      }
+      components.push(...parseMultiColumnComponents(rowRecord, "内存"));
+      components.push(...parseMultiColumnComponents(rowRecord, "硬盘"));
+      components.push(...parseMultiColumnComponents(rowRecord, "显示器"));
 
-      const diskModel = String(row["硬盘型号"] ?? "").trim();
-      const diskBrand = String(row["硬盘品牌"] ?? "").trim();
-      if (diskModel) {
-        components.push({ category: "硬盘", name: diskModel, brand: diskBrand });
-      }
-
-      const mbModel = String(row["主板型号"] ?? "").trim();
-      const mbBrand = String(row["主板品牌"] ?? "").trim();
+      const mbModel = String(rowRecord["主板型号"] ?? "").trim();
+      const mbBrand = String(rowRecord["主板品牌"] ?? "").trim();
       if (mbModel) {
         components.push({ category: "主板", name: mbModel, brand: mbBrand });
       }
 
-      const gpuModel = String(row["显卡型号"] ?? "").trim();
-      const gpuBrand = String(row["显卡品牌"] ?? "").trim();
+      const gpuModel = String(rowRecord["显卡型号"] ?? "").trim();
+      const gpuBrand = String(rowRecord["显卡品牌"] ?? "").trim();
       if (gpuModel) {
         components.push({ category: "显卡", name: gpuModel, brand: gpuBrand });
       }

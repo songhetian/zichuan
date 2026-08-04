@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import {
   exportAssetsToExcel,
@@ -6,6 +6,7 @@ import {
   exportEmployeesToExcel,
 } from "@/actions/excel.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupExcelData() {
   const dept = await prisma.department.create({ data: { name: "技术部" } });
@@ -43,6 +44,14 @@ async function setupExcelData() {
 }
 
 describe("Excel 导出", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("exportAssetsToExcel", () => {
     it("可以导出设备数据为 Excel 格式的 Buffer", async () => {
       await setupExcelData();

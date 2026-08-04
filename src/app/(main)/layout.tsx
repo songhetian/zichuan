@@ -2,12 +2,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import MainLayoutClient from "./layout-client";
 
-export default function MainLayout({
+export default async function MainLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = getCurrentUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");

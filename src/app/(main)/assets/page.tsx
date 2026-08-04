@@ -28,7 +28,16 @@ export default async function AssetsPage() {
 
   const assets = assetsResult.data;
   const templates = templatesResult.success
-    ? templatesResult.data.map((t) => ({ id: t.id, name: t.name }))
+    ? templatesResult.data.map((t) => ({
+        id: t.id,
+        name: t.name,
+        components: t.components.map((c) => ({
+          modelId: c.modelId,
+          modelName: c.modelName,
+          modelBrand: c.modelBrand,
+          quantity: c.quantity,
+        })),
+      }))
     : [];
 
   // 第二轮：用已查询的 employees 补全 departmentName，无需再查数据库

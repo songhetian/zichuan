@@ -1,16 +1,31 @@
 import { cookies } from "next/headers";
+import { getIronSession, SessionOptions } from "iron-session";
 import { prisma } from "./prisma";
-import { randomBytes, createHmac, timingSafeEqual } from "crypto";
 import { ActionResult } from "./types";
 
 const SESSION_COOKIE = "zichuan_session";
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 小时
-const SESSION_SECRET = process.env.SESSION_SECRET || "zichuan-secret-key-change-in-production";
 
-let _testUser: SessionUser | null = null;
+// iron-session 要求密码至少 32 字符
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  "zichuan-secret-key-change-in-production-min-32-chars!!";
 
-export function setTestUser(user: SessionUser | null): void {
-  _testUser = user;
+const sessionOptions: SessionOptions = {
+  password: SESSION_SECRET,
+  cookieName: SESSION_COOKIE,
+  cookieOptions: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+    maxAge: SESSION_MAX_AGE,
+    path: "/",
+  },
+};
+
+export interface SessionData {
+  userId?: number;
+  username?: string;
 }
 
 export interface SessionUser {
@@ -18,103 +33,82 @@ export interface SessionUser {
   username: string;
 }
 
-function sign(value: string): string {
-  const signature = createHmac("sha256", SESSION_SECRET)
-    .update(value)
-    .digest("base64url");
-  return `${value}.${signature}`;
+// ============================================================
+// 测试注入 — 保留原有 API，确保 28 个测试文件无需修改
+// ============================================================
+
+let _testUser: SessionUser | null = null;
+
+export function setTestUser(user: SessionUser | null): void {
+  _testUser = user;
 }
 
-function unsign(signed: string): string | null {
-  const idx = signed.lastIndexOf(".");
-  if (idx === -1) return null;
-  const value = signed.slice(0, idx);
-  const signature = signed.slice(idx + 1);
-  const expected = createHmac("sha256", SESSION_SECRET)
-    .update(value)
-    .digest("base64url");
+// ============================================================
+// Session 核心操作
+// ============================================================
+
+async function getSession() {
+  return getIronSession<SessionData>(cookies(), sessionOptions);
+}
+
+export async function createSession(
+  userId: number,
+  username: string
+): Promise<void> {
   try {
-    if (timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      return value;
-    }
+    const session = await getSession();
+    session.userId = userId;
+    session.username = username;
+    await session.save();
   } catch {
-    return null;
-  }
-  return null;
-}
-
-function encodeToken(userId: number, username: string): string {
-  const payload = JSON.stringify({
-    u: userId,
-    n: username,
-    e: Date.now() + SESSION_MAX_AGE * 1000,
-  });
-  const base64 = Buffer.from(payload).toString("base64url");
-  return sign(base64);
-}
-
-function decodeToken(token: string): SessionUser | null {
-  const unsigned = unsign(token);
-  if (!unsigned) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(unsigned, "base64url").toString());
-    if (payload.e && Date.now() > payload.e) {
-      return null;
-    }
-    return {
-      id: payload.u,
-      username: payload.n,
-    };
-  } catch {
-    return null;
+    // 测试环境或无请求上下文时静默跳过
   }
 }
 
-export async function createSession(userId: number, username: string): Promise<string> {
-  const token = encodeToken(userId, username);
+export async function destroySession(): Promise<void> {
   try {
-    cookies().set(SESSION_COOKIE, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: SESSION_MAX_AGE,
-      path: "/",
-    });
+    const session = await getSession();
+    session.destroy();
   } catch {
-    // 测试环境或无请求上下文时跳过 cookie 设置
+    // 测试环境或无请求上下文时静默跳过
   }
-  return token;
 }
 
-export function verifySession(token: string): SessionUser | null {
-  return decodeToken(token);
-}
+// ============================================================
+// 用户获取 & 认证守卫
+// ============================================================
 
-export function getCurrentUser(): SessionUser | null {
+export async function getCurrentUser(): Promise<SessionUser | null> {
   if (_testUser) {
     return _testUser;
   }
   try {
-    const token = cookies().get(SESSION_COOKIE)?.value;
-    if (!token) return null;
-    return verifySession(token);
+    const session = await getSession();
+    if (!session.userId || !session.username) return null;
+    return { id: session.userId, username: session.username };
   } catch {
     return null;
   }
 }
 
-export function requireAuth(): SessionUser {
-  const user = getCurrentUser();
+export async function requireAuth(): Promise<SessionUser> {
+  const user = await getCurrentUser();
   if (!user) {
     throw new Error("UNAUTHORIZED");
   }
   return user;
 }
 
-export function withAuth<T>(fn: (user: SessionUser) => Promise<ActionResult<T>>): () => Promise<ActionResult<T>> {
+// ============================================================
+// 高阶包装器（保持原有 API）
+// ============================================================
+
+export function withAuth<T>(
+  fn: (user: SessionUser) => Promise<ActionResult<T>>
+): () => Promise<ActionResult<T>> {
   return async () => {
     try {
-      const user = requireAuth();
+      const user = await requireAuth();
       return fn(user);
     } catch (e) {
       if (e instanceof Error && e.message === "UNAUTHORIZED") {
@@ -125,25 +119,23 @@ export function withAuth<T>(fn: (user: SessionUser) => Promise<ActionResult<T>>)
   };
 }
 
-export function requireAuthSafe<T>(fn: (user: SessionUser) => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+export async function requireAuthSafe<T>(
+  fn: (user: SessionUser) => Promise<ActionResult<T>>
+): Promise<ActionResult<T>> {
   try {
-    const user = requireAuth();
+    const user = await requireAuth();
     return fn(user);
   } catch (e) {
     if (e instanceof Error && e.message === "UNAUTHORIZED") {
-      return Promise.resolve({ success: false, error: "请先登录" });
+      return { success: false, error: "请先登录" };
     }
     throw e;
   }
 }
 
-export function destroySession() {
-  try {
-    cookies().delete(SESSION_COOKIE);
-  } catch {
-    // 测试环境或无请求上下文时跳过
-  }
-}
+// ============================================================
+// 密码验证
+// ============================================================
 
 export async function validateCredentials(
   username: string,

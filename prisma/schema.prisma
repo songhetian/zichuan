@@ -31,7 +31,7 @@ model ComponentCategory {
 model ComponentModel {
   id          Int      @id @default(autoincrement())
   name        String   // 型号名称，如 "i7-12700F"
-  brand       String?  // 品牌
+  brand       String   @default("") // 品牌
   categoryId  Int
   category    ComponentCategory @relation(fields: [categoryId], references: [id])
   stock       ComponentStock?
@@ -40,8 +40,8 @@ model ComponentModel {
   templateComponents TemplateComponent[]
   // 设备当前配件关联
   assetComponents    AssetComponent[]
-  // 用于分类+型号的唯一约束
-  @@unique([categoryId, name])
+  // 用于分类+型号+品牌的唯一约束（同型号不同品牌视为不同型号）
+  @@unique([categoryId, name, brand])
 }
 
 // 配件库存（与型号一对一）
@@ -83,7 +83,8 @@ model AssetCategory {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   code        String   @unique  // 编号前缀，如 DN、WL
-  unique      Boolean  @default(false) @map("is_unique")  // 该分类下每人只能拥有一台设备
+  unique         Boolean  @default(false) @map("is_unique")  // 该分类下每人只能拥有一台设备
+  numberingRule  String?  // 编号规则模板，如 "{prefix}-{YYYY}{MM}{DD}-{####}"
   parentId    Int?
   parent      AssetCategory?  @relation("AssetCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children    AssetCategory[] @relation("AssetCategoryTree")
@@ -207,6 +208,7 @@ enum AssetStatus {
   IN_USE          // 在用
   IN_MAINTENANCE  // 维修中
   SCRAPPED        // 报废
+  IN_STOCK        // 库存
 }
 
 enum LifecycleAction {

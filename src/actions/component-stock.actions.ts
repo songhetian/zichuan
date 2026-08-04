@@ -52,7 +52,8 @@ async function checkModelExists(modelId: number): Promise<boolean> {
 export async function purchaseStockIn(
   input: z.infer<typeof stockInSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = stockInSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -107,7 +108,8 @@ export async function purchaseStockIn(
 export async function upgradeReturnStockIn(
   input: z.infer<typeof stockInSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = stockInSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -152,7 +154,8 @@ export async function upgradeReturnStockIn(
 export async function assetBuildStockOut(
   input: z.infer<typeof stockOutSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = stockOutSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -206,7 +209,8 @@ export async function assetBuildStockOut(
 export async function upgradeUseStockOut(
   input: z.infer<typeof stockOutSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = stockOutSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -220,20 +224,20 @@ export async function upgradeUseStockOut(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const stock = await tx.componentStock.findUnique({
-        where: { modelId },
-      });
-
-      const currentQty = stock?.quantity ?? 0;
-      if (currentQty < quantity) {
-        throw new Error("INSUFFICIENT_STOCK");
-      }
-
-      await tx.componentStock.update({
-        where: { modelId },
+      // 原子性扣减库存（防止超卖）
+      const updateResult = await tx.componentStock.updateMany({
+        where: {
+          modelId,
+          quantity: { gte: quantity },
+        },
         data: { quantity: { decrement: quantity } },
       });
 
+      if (updateResult.count === 0) {
+        throw new Error("INSUFFICIENT_STOCK");
+      }
+
+      // 记录流水
       await tx.componentStockLog.create({
         data: {
           modelId,
@@ -244,7 +248,8 @@ export async function upgradeUseStockOut(
         },
       });
 
-      return currentQty - quantity;
+      const stock = await tx.componentStock.findUnique({ where: { modelId } });
+      return stock?.quantity ?? 0;
     });
 
     return { success: true, data: { modelId, quantity: result } };
@@ -265,7 +270,8 @@ export async function batchStockOut(
   operator: string,
   remark?: string
 ): Promise<ActionResult<{ success: true }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = batchOutSchema.safeParse(items);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -286,20 +292,18 @@ export async function batchStockOut(
           throw new Error(`MODEL_NOT_FOUND:${item.modelId}`);
         }
 
-        // 检查库存
-        const stock = await tx.componentStock.findUnique({
-          where: { modelId: item.modelId },
-        });
-        const currentQty = stock?.quantity ?? 0;
-        if (currentQty < item.quantity) {
-          throw new Error("INSUFFICIENT_STOCK");
-        }
-
-        // 扣减库存
-        await tx.componentStock.update({
-          where: { modelId: item.modelId },
+        // 原子性扣减库存（防止超卖）
+        const updateResult = await tx.componentStock.updateMany({
+          where: {
+            modelId: item.modelId,
+            quantity: { gte: item.quantity },
+          },
           data: { quantity: { decrement: item.quantity } },
         });
+
+        if (updateResult.count === 0) {
+          throw new Error("INSUFFICIENT_STOCK");
+        }
 
         // 记录流水
         await tx.componentStockLog.create({
@@ -333,6 +337,8 @@ export async function batchStockOut(
 export async function getStockByModelId(
   modelId: number
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
+  await requireAuth();
+
   if (!(await checkModelExists(modelId))) {
     return { success: false, error: "配件型号不存在" };
   }
@@ -356,6 +362,8 @@ export async function getAllStocks(): Promise<
     }[]
   >
 > {
+  await requireAuth();
+
   const stocks = await prisma.componentStock.findMany({
     include: {
       model: {
@@ -416,6 +424,8 @@ export async function getStockLogs(
     }[]
   >
 > {
+  await requireAuth();
+
   const validated = logQuerySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };

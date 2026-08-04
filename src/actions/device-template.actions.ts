@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
@@ -104,7 +104,8 @@ async function validateComponents(components: { modelId: number }[]): Promise<st
 export async function createDeviceTemplate(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<TemplateWithComponents>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -159,6 +160,8 @@ export async function createDeviceTemplate(
 export async function getDeviceTemplates(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<TemplateWithComponents[]>> {
+  await requireAuth();
+
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };
@@ -185,6 +188,8 @@ export async function getDeviceTemplates(
 export async function getDeviceTemplateById(
   id: number
 ): Promise<ActionResult<TemplateWithComponents>> {
+  await requireAuth();
+
   const template = await prisma.deviceTemplate.findUnique({
     where: { id },
     include: {
@@ -205,7 +210,8 @@ export async function updateDeviceTemplate(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<TemplateWithComponents>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -276,7 +282,8 @@ export async function updateDeviceTemplate(
 export async function deleteDeviceTemplate(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
+
   // 检查模板是否存在
   const existing = await prisma.deviceTemplate.findUnique({ where: { id } });
   if (!existing) {

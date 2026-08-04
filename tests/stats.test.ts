@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import { getAssetStats, getStockStats, getLifecycleTrend } from "@/actions/stats.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupStatsData() {
   const dept = await prisma.department.create({ data: { name: "技术部" } });
@@ -57,6 +58,14 @@ async function setupStatsData() {
 }
 
 describe("统计报表", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("getAssetStats — 按状态统计", () => {
     it("可以按设备状态分组统计", async () => {
       await setupStatsData();

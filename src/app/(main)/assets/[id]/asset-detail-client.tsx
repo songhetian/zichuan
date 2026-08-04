@@ -35,23 +35,24 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Pencil, ArrowUpCircle, Wrench, RotateCcw, Trash2, ArrowRightLeft } from "lucide-react";
+import { Pencil, Wrench, RotateCcw, Trash2, ArrowRightLeft, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
 import {
-  upgradeAssetComponent,
   maintenanceStart,
   scrapAssets,
   returnAssets,
   transferAssets,
 } from "@/actions/lifecycle.actions";
 import { LifecycleTimeline } from "@/components/features/lifecycle-timeline";
+import { ConfigEditor } from "./config-editor";
 
 interface ComponentModel {
   id: number;
   name: string;
   brand: string | null;
   categoryId: number;
+  categoryName: string;
   stock: number;
 }
 
@@ -82,6 +83,7 @@ interface AssetDetailClientProps {
       modelId: number;
       modelName: string;
       modelBrand: string | null;
+      categoryName: string;
       quantity: number;
     }[];
     lifecycleLogs: {
@@ -103,7 +105,7 @@ const actionLabelMap: Record<string, string> = {
   ALLOCATED: "分配",
   RETURNED: "归还",
   TRANSFERRED: "调拨",
-  UPGRADED: "升级",
+  UPGRADED: "升级/配置调整",
   SCRAPPED: "报废",
   MAINTENANCE_START: "送修",
   MAINTENANCE_DONE: "维修完成",
@@ -133,12 +135,8 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
   const [editNotes, setEditNotes] = useState(asset.notes ?? "");
   const [editLoading, setEditLoading] = useState(false);
 
-  // Upgrade dialog state
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [upgradeModelId, setUpgradeModelId] = useState("");
-  const [upgradeNewModelId, setUpgradeNewModelId] = useState("");
-  const [upgradeQuantity, setUpgradeQuantity] = useState("");
-  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  // Config editor dialog state（合并升级和调整配置）
+  const [configEditorOpen, setConfigEditorOpen] = useState(false);
 
   // Confirm dialog state for maintenance/scrap/return
   const [confirmAction, setConfirmAction] = useState<"maintenance" | "scrap" | "return" | null>(null);
@@ -182,34 +180,6 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
       router.refresh();
     } else {
       toast({ title: "更新失败", description: result.error, variant: "destructive" });
-    }
-  };
-
-  const handleUpgrade = async () => {
-    if (!upgradeModelId || !upgradeNewModelId || !upgradeQuantity) return;
-    const qty = Number(upgradeQuantity);
-    if (isNaN(qty) || qty <= 0) {
-      toast({ title: "请输入有效的数量", variant: "destructive" });
-      return;
-    }
-    setUpgradeLoading(true);
-    const result = await upgradeAssetComponent({
-      assetId: asset.id,
-      modelId: Number(upgradeModelId),
-      newModelId: Number(upgradeNewModelId),
-      quantity: qty,
-      operator: "admin",
-    });
-    setUpgradeLoading(false);
-    if (result.success) {
-      toast({ title: "升级成功" });
-      setUpgradeOpen(false);
-      setUpgradeModelId("");
-      setUpgradeNewModelId("");
-      setUpgradeQuantity("");
-      router.refresh();
-    } else {
-      toast({ title: "升级失败", description: result.error, variant: "destructive" });
     }
   };
 
@@ -275,10 +245,6 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
     }
   };
 
-  const selectedUpgradeComponent = asset.components.find(
-    (c) => c.modelId === Number(upgradeModelId)
-  );
-
   return (
     <div className="space-y-4">
       <PageHeader
@@ -287,43 +253,55 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
         showBack
         action={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => handleEditOpen(true)}>
-              <Pencil className="mr-2 h-4 w-4 text-primary" />
+            <Button variant="ghost" size="sm" onClick={() => handleEditOpen(true)} className="text-blue-600 hover:bg-blue-50 hover:text-blue-700">
+              <Pencil className="mr-2 h-4 w-4" />
               编辑
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setUpgradeOpen(true)}
-              disabled={asset.components.length === 0}
+              onClick={() => setConfigEditorOpen(true)}
+              disabled={isScrapped}
+              className="border-violet-200 text-violet-600 hover:bg-violet-50 hover:text-violet-700"
             >
-              <ArrowUpCircle className="mr-2 h-4 w-4" />
-              升级
+              <Package className="mr-2 h-4 w-4" />
+              配置调整
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setConfirmAction("maintenance")}
               disabled={isInMaintenance || isScrapped}
+              className="border-amber-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
             >
               <Wrench className="mr-2 h-4 w-4" />
               送修
             </Button>
             {isInUse && (
-              <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTransferOpen(true)}
+                className="border-cyan-200 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700"
+              >
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
                 调拨
               </Button>
             )}
             {isInUse && (
-              <Button variant="outline" size="sm" onClick={() => setConfirmAction("return")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmAction("return")}
+                className="border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+              >
                 <RotateCcw className="mr-2 h-4 w-4" />
                 归还
               </Button>
             )}
             {!isScrapped && (
-              <Button variant="ghost" size="sm" onClick={() => setConfirmAction("scrap")}>
-                <Trash2 className="mr-2 h-4 w-4 text-destructive" />
+              <Button variant="ghost" size="sm" onClick={() => setConfirmAction("scrap")} className="text-red-600 hover:bg-red-50 hover:text-red-700">
+                <Trash2 className="mr-2 h-4 w-4" />
                 报废
               </Button>
             )}
@@ -379,6 +357,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[100px]">分类</TableHead>
                       <TableHead>名称</TableHead>
                       <TableHead>品牌</TableHead>
                       <TableHead className="text-right">数量</TableHead>
@@ -387,6 +366,9 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
                   <TableBody>
                     {asset.components.map((comp) => (
                       <TableRow key={comp.id}>
+                        <TableCell>
+                          <span className="text-muted-foreground">{comp.categoryName || "-"}</span>
+                        </TableCell>
                         <TableCell className="font-medium">{comp.modelName}</TableCell>
                         <TableCell>{comp.modelBrand ?? "-"}</TableCell>
                         <TableCell className="text-right">{comp.quantity}</TableCell>
@@ -464,85 +446,30 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
         </DialogContent>
       </Dialog>
 
-      {/* Upgrade Dialog */}
-      <Dialog open={upgradeOpen} onOpenChange={(open) => {
-        if (!open) {
-          setUpgradeModelId("");
-          setUpgradeNewModelId("");
-          setUpgradeQuantity("");
-        }
-        setUpgradeOpen(open);
-      }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>配件升级</DialogTitle>
-            <DialogDescription>选择要升级的配件及新配件型号</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>当前配件</Label>
-              <Select value={upgradeModelId} onValueChange={(v) => { setUpgradeModelId(v); setUpgradeNewModelId(""); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择要升级的配件" />
-                </SelectTrigger>
-                <SelectContent>
-                  {asset.components.map((comp) => (
-                    <SelectItem key={comp.modelId} value={comp.modelId.toString()}>
-                      {comp.modelName} ({comp.modelBrand ?? "无品牌"}) - 数量: {comp.quantity}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {upgradeModelId && selectedUpgradeComponent && (
-              <>
-                <div className="rounded-md bg-muted p-3 text-sm">
-                  <p>当前配件: {selectedUpgradeComponent.modelName}</p>
-                  <p>品牌: {selectedUpgradeComponent.modelBrand ?? "-"}</p>
-                  <p>数量: {selectedUpgradeComponent.quantity}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>新配件型号</Label>
-                  <Select value={upgradeNewModelId} onValueChange={setUpgradeNewModelId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择新配件型号" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {componentModels
-                        .filter((m) => m.id !== Number(upgradeModelId))
-                        .map((m) => (
-                          <SelectItem key={m.id} value={m.id.toString()}>
-                            {m.name} ({m.brand ?? "无品牌"}) - 库存: {m.stock}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>升级数量</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max={selectedUpgradeComponent.quantity}
-                    value={upgradeQuantity}
-                    onChange={(e) => setUpgradeQuantity(e.target.value)}
-                    placeholder={`最多 ${selectedUpgradeComponent.quantity}`}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setUpgradeOpen(false)}>取消</Button>
-            <Button
-              onClick={handleUpgrade}
-              disabled={upgradeLoading || !upgradeModelId || !upgradeNewModelId || !upgradeQuantity}
-            >
-              {upgradeLoading ? "升级中..." : "确认升级"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Config Editor Dialog（合并升级和调整配置） */}
+      <ConfigEditor
+        open={configEditorOpen}
+        onOpenChange={setConfigEditorOpen}
+        assetId={asset.id}
+        assetNo={asset.assetNo}
+        assetName={asset.name}
+        currentComponents={asset.components.map((c) => ({
+          modelId: c.modelId,
+          name: c.modelName,
+          brand: c.modelBrand,
+          categoryName: c.categoryName,
+          stock: 0,
+          quantity: c.quantity,
+        }))}
+        componentModels={componentModels.map((m) => ({
+          modelId: m.id,
+          name: m.name,
+          brand: m.brand,
+          categoryName: m.categoryName,
+          stock: m.stock,
+        }))}
+        disabled={isScrapped}
+      />
 
       {/* Confirm Dialogs */}
       <ConfirmDialog

@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 
@@ -27,6 +28,8 @@ type LabelData = {
 export async function generateLabelData(
   input: z.infer<typeof querySchema>
 ): Promise<ActionResult<LabelData[]>> {
+  await requireAuth();
+
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };

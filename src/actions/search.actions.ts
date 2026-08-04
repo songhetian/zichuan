@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const searchSchema = z.object({
@@ -23,6 +24,8 @@ type ActionResult<T> =
 export async function globalSearch(
   input: z.infer<typeof searchSchema>
 ): Promise<ActionResult<SearchResult[]>> {
+  await requireAuth();
+
   const validated = searchSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };

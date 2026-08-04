@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { ActionResult } from "@/lib/types";
 import { z } from "zod";
@@ -44,6 +44,20 @@ const scrapSchema = z.object({
   remark: z.string().optional(),
 });
 
+const adjustComponentsSchema = z.object({
+  assetId: z.number(),
+  adjustments: z
+    .array(
+      z.object({
+        modelId: z.number(),
+        quantityDelta: z.number().int().refine((v) => v !== 0, "数量变化不能为0"),
+      })
+    )
+    .min(1, "调整列表不能为空"),
+  operator: z.string().min(1),
+  remark: z.string().optional(),
+});
+
 // ============================================================
 // 分配
 // ============================================================
@@ -51,7 +65,8 @@ const scrapSchema = z.object({
 export async function allocateAssets(
   input: z.infer<typeof allocateSchema>
 ): Promise<ActionResult<{ allocatedCount: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = allocateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -75,11 +90,11 @@ export async function allocateAssets(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有状态为 IDLE 的设备才会被更新
+      // 原子性更新：只有状态为 IDLE 或 IN_STOCK 的设备才会被更新
       const updateResult = await tx.asset.updateMany({
         where: {
           id: { in: assetIds },
-          status: "IDLE",
+          status: { in: ["IDLE", "IN_STOCK"] },
         },
         data: {
           status: "IN_USE",
@@ -123,11 +138,12 @@ export async function allocateAssets(
       }
 
       // 记录生命周期日志
+      const assetStatusMap = new Map(assets.map((a) => [a.id, a.status]));
       await tx.lifecycleLog.createMany({
         data: assetIds.map((id) => ({
           assetId: id,
           action: "ALLOCATED",
-          fromStatus: "IDLE",
+          fromStatus: assetStatusMap.get(id) ?? "IDLE",
           toStatus: "IN_USE",
           employeeId,
           operator,
@@ -153,7 +169,7 @@ export async function allocateAssets(
   } catch (e) {
     if (e instanceof Error) {
       if (e.message === "STATUS_CONFLICT") {
-        return { success: false, error: "部分设备非闲置状态，无法分配" };
+        return { success: false, error: "部分设备不可分配（非闲置或非库存状态）" };
       }
       if (e.message.startsWith("UNIQUE_VIOLATION")) {
         const categoryNames = e.message.split(":")[1] ?? "";
@@ -171,7 +187,8 @@ export async function allocateAssets(
 export async function returnAssets(
   input: z.infer<typeof returnSchema>
 ): Promise<ActionResult<{ returnedCount: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = returnSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -248,7 +265,8 @@ export async function returnAssets(
 export async function transferAssets(
   input: z.infer<typeof transferSchema>
 ): Promise<ActionResult<{ transferredCount: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = transferSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -362,7 +380,8 @@ export async function transferAssets(
 export async function upgradeAssetComponent(
   input: z.infer<typeof upgradeSchema>
 ): Promise<ActionResult<{ assetId: number; modelId: number; newModelId: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = upgradeSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -483,7 +502,8 @@ export async function upgradeAssetComponent(
 export async function scrapAssets(
   input: z.infer<typeof scrapSchema>
 ): Promise<ActionResult<{ scrappedCount: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = scrapSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -565,7 +585,8 @@ const maintenanceStartSchema = z.object({
 export async function maintenanceStart(
   input: z.infer<typeof maintenanceStartSchema>
 ): Promise<ActionResult<{ startedCount: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = maintenanceStartSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -644,7 +665,8 @@ const maintenanceCompleteSchema = z.object({
 export async function maintenanceComplete(
   input: z.infer<typeof maintenanceCompleteSchema>
 ): Promise<ActionResult<{ completedCount: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = maintenanceCompleteSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -707,5 +729,187 @@ export async function maintenanceComplete(
       return { success: false, error: "部分设备非维修中状态，无法标记完成" };
     }
     return { success: false, error: "维修完成操作失败" };
+  }
+}
+
+// ============================================================
+// 配件配置调整
+// ============================================================
+
+export async function adjustAssetComponents(
+  input: z.infer<typeof adjustComponentsSchema>
+): Promise<ActionResult<{ assetId: number }>> {
+  await requireAuth();
+
+  const validated = adjustComponentsSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
+  }
+
+  const { assetId, adjustments, operator, remark } = validated.data;
+
+  // 检查设备是否存在
+  const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+  if (!asset) {
+    return { success: false, error: "设备不存在" };
+  }
+
+  // 检查所有涉及的配件型号是否存在
+  const modelIds = [...new Set(adjustments.map((a) => a.modelId))];
+  const models = await prisma.componentModel.findMany({
+    where: { id: { in: modelIds } },
+    select: { id: true, name: true },
+  });
+  if (models.length !== modelIds.length) {
+    return { success: false, error: "配件型号不存在" };
+  }
+  const modelMap = new Map(models.map((m) => [m.id, m.name]));
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 获取设备当前配件配置
+      const currentComponents = await tx.assetComponent.findMany({
+        where: { assetId },
+      });
+      const currentMap = new Map(currentComponents.map((c) => [c.modelId, c]));
+
+      for (const adj of adjustments) {
+        if (adj.quantityDelta > 0) {
+          // === 增加配件 ===
+          // 原子性扣减库存
+          const stockUpdate = await tx.componentStock.updateMany({
+            where: {
+              modelId: adj.modelId,
+              quantity: { gte: adj.quantityDelta },
+            },
+            data: { quantity: { decrement: adj.quantityDelta } },
+          });
+
+          if (stockUpdate.count === 0) {
+            throw new Error("STOCK_INSUFFICIENT");
+          }
+
+          // 更新设备配件配置
+          const existing = currentMap.get(adj.modelId);
+          if (existing) {
+            await tx.assetComponent.update({
+              where: { assetId_modelId: { assetId, modelId: adj.modelId } },
+              data: { quantity: { increment: adj.quantityDelta } },
+            });
+          } else {
+            await tx.assetComponent.create({
+              data: { assetId, modelId: adj.modelId, quantity: adj.quantityDelta },
+            });
+          }
+
+          // 库存出库流水
+          await tx.componentStockLog.create({
+            data: {
+              modelId: adj.modelId,
+              type: "UPGRADE_USE",
+              quantity: -adj.quantityDelta,
+              operator,
+              remark: remark ?? null,
+            },
+          });
+        } else {
+          // === 减少配件 ===
+          const existing = currentMap.get(adj.modelId);
+          if (!existing) {
+            throw new Error("COMPONENT_NOT_FOUND");
+          }
+
+          const removeQty = Math.abs(adj.quantityDelta);
+          if (existing.quantity < removeQty) {
+            throw new Error("QUANTITY_INSUFFICIENT");
+          }
+
+          if (existing.quantity === removeQty) {
+            // 全部移除，删除记录
+            await tx.assetComponent.delete({
+              where: { assetId_modelId: { assetId, modelId: adj.modelId } },
+            });
+          } else {
+            // 部分减少
+            await tx.assetComponent.update({
+              where: { assetId_modelId: { assetId, modelId: adj.modelId } },
+              data: { quantity: { decrement: removeQty } },
+            });
+          }
+
+          // 库存回补
+          await tx.componentStock.upsert({
+            where: { modelId: adj.modelId },
+            update: { quantity: { increment: removeQty } },
+            create: { modelId: adj.modelId, quantity: removeQty },
+          });
+
+          // 库存入库流水
+          await tx.componentStockLog.create({
+            data: {
+              modelId: adj.modelId,
+              type: "UPGRADE_RETURN",
+              quantity: removeQty,
+              operator,
+              remark: remark ?? null,
+            },
+          });
+        }
+      }
+
+      // 生成变更摘要
+      const summaryParts = adjustments.map((adj) => {
+        const name = modelMap.get(adj.modelId) ?? String(adj.modelId);
+        if (adj.quantityDelta > 0) {
+          return `+${adj.quantityDelta} ${name}`;
+        }
+        return `${adj.quantityDelta} ${name}`;
+      });
+      const changeSummary = summaryParts.join("；");
+
+      // 生命周期日志
+      await tx.lifecycleLog.create({
+        data: {
+          assetId,
+          action: "UPGRADED",
+          fromStatus: asset.status,
+          toStatus: asset.status,
+          operator,
+          remark: remark
+            ? `${remark}（${changeSummary}）`
+            : `配置调整：${changeSummary}`,
+        },
+      });
+    });
+
+    // 系统日志（事务外写入）
+    const changeSummary = adjustments.map((adj) => {
+      const name = modelMap.get(adj.modelId) ?? String(adj.modelId);
+      return adj.quantityDelta > 0 ? `+${adj.quantityDelta} ${name}` : `${adj.quantityDelta} ${name}`;
+    }).join("；");
+
+    await prisma.systemLog.create({
+      data: {
+        module: "配置变更",
+        action: "调整设备配件",
+        detail: `设备 ${asset.assetNo}：${changeSummary}`,
+        operator,
+      },
+    });
+
+    return { success: true, data: { assetId } };
+  } catch (e) {
+    if (e instanceof Error) {
+      if (e.message === "STOCK_INSUFFICIENT") {
+        return { success: false, error: "库存不足" };
+      }
+      if (e.message === "COMPONENT_NOT_FOUND") {
+        return { success: false, error: "设备上不存在该配件" };
+      }
+      if (e.message === "QUANTITY_INSUFFICIENT") {
+        return { success: false, error: "设备上该配件数量不足" };
+      }
+    }
+    return { success: false, error: "配置调整失败" };
   }
 }

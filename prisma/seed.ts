@@ -7,16 +7,33 @@ async function seed() {
 
   const existingCategories = await prisma.assetCategory.count();
   if (existingCategories === 0) {
-    const computerCat = await prisma.assetCategory.create({ data: { name: "计算机设备", code: "DN" } });
-    await prisma.assetCategory.create({ data: { name: "台式机", code: "DT", parentId: computerCat.id } });
-    await prisma.assetCategory.create({ data: { name: "笔记本", code: "NB", parentId: computerCat.id } });
+    // 默认编号规则：前缀 + 6 位随机字符（排除易混淆字符，冲突概率极低）
+    const defaultRule = "{prefix}-{R6}";
 
-    const networkCat = await prisma.assetCategory.create({ data: { name: "网络设备", code: "WL" } });
-    await prisma.assetCategory.create({ data: { name: "交换机", code: "SW", parentId: networkCat.id } });
+    const computerCat = await prisma.assetCategory.create({
+      data: { name: "计算机设备", code: "DN", numberingRule: defaultRule },
+    });
+    await prisma.assetCategory.create({
+      data: { name: "台式机", code: "DT", parentId: computerCat.id, numberingRule: defaultRule },
+    });
+    await prisma.assetCategory.create({
+      data: { name: "笔记本", code: "NB", parentId: computerCat.id, numberingRule: defaultRule },
+    });
 
-    const officeCat = await prisma.assetCategory.create({ data: { name: "办公设备", code: "BG" } });
-    await prisma.assetCategory.create({ data: { name: "打印机", code: "PR", parentId: officeCat.id } });
-    console.log("创建设备分类完成");
+    const networkCat = await prisma.assetCategory.create({
+      data: { name: "网络设备", code: "WL", numberingRule: defaultRule },
+    });
+    await prisma.assetCategory.create({
+      data: { name: "交换机", code: "SW", parentId: networkCat.id, numberingRule: defaultRule },
+    });
+
+    const officeCat = await prisma.assetCategory.create({
+      data: { name: "办公设备", code: "BG", numberingRule: defaultRule },
+    });
+    await prisma.assetCategory.create({
+      data: { name: "打印机", code: "PR", parentId: officeCat.id, numberingRule: defaultRule },
+    });
+    console.log("创建设备分类完成（默认编号规则：{prefix}-{R6}）");
   } else {
     console.log("设备分类已存在，跳过创建");
   }

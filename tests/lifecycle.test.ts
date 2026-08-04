@@ -158,7 +158,7 @@ describe("分配", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(unwrapError(result)).toContain("非闲置");
+      expect(unwrapError(result)).toContain("不可分配");
     });
 
     it("已报废的设备不能分配", async () => {
@@ -176,7 +176,7 @@ describe("分配", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(unwrapError(result)).toContain("非闲置");
+      expect(unwrapError(result)).toContain("不可分配");
     });
 
     it("员工不存在时分配失败", async () => {
@@ -227,6 +227,35 @@ describe("分配", () => {
       });
 
       expect(result.success).toBe(false);
+    });
+
+    it("可以分配库存（IN_STOCK）状态的设备", async () => {
+      const { emp, template } = await setupFullData();
+      // 创建 IN_STOCK 状态的设备
+      const cat = await prisma.assetCategory.findUnique({
+        where: { id: template.categoryId },
+      });
+      const prefix = cat!.code;
+      const assetNo = `${prefix}-STOCK-001`;
+      const asset = await prisma.asset.create({
+        data: {
+          assetNo,
+          name: "库存设备",
+          templateId: template.id,
+          status: "IN_STOCK",
+        },
+      });
+
+      const result = await allocateAssets({
+        assetIds: [asset.id],
+        employeeId: unwrap(emp).id,
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(true);
+      const updated = await prisma.asset.findUnique({ where: { id: asset.id } });
+      expect(updated?.status).toBe("IN_USE");
+      expect(updated?.employeeId).toBe(unwrap(emp).id);
     });
   });
 });

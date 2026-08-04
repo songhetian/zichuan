@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { unwrap, unwrapError } from "./helpers";
 import { generateLabelData } from "@/actions/label.actions";
 import { prisma } from "@/lib/prisma";
+import { setTestUser } from "@/lib/auth";
 
 async function setupLabelData() {
   const dept = await prisma.department.create({ data: { name: "技术部" } });
@@ -47,6 +48,14 @@ async function setupLabelData() {
 }
 
 describe("标签打印", () => {
+  beforeEach(() => {
+    setTestUser({ id: 1, username: "admin" });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
   describe("generateLabelData — 生成标签数据", () => {
     it("可以生成单台设备的标签数据", async () => {
       const { asset } = await setupLabelData();

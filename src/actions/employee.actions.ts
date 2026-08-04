@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
@@ -65,7 +65,7 @@ function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
 export async function createEmployee(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<EmployeeWithDept>> {
-  requireAuth();
+  await requireAuth();
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -100,6 +100,8 @@ export async function createEmployee(
 export async function getEmployees(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<EmployeeWithDept[]>> {
+  await requireAuth();
+
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: "参数错误" };
@@ -133,6 +135,8 @@ export async function getEmployees(
 export async function getEmployeeById(
   id: number
 ): Promise<ActionResult<EmployeeWithDept>> {
+  await requireAuth();
+
   const emp = await prisma.employee.findUnique({
     where: { id },
     include: { department: { select: { name: true } } },
@@ -147,7 +151,7 @@ export async function updateEmployee(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<EmployeeWithDept>> {
-  requireAuth();
+  await requireAuth();
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -193,6 +197,8 @@ export type EmployeeAsset = {
 export async function getEmployeeAssets(
   employeeId: number
 ): Promise<ActionResult<EmployeeAsset[]>> {
+  await requireAuth();
+
   const assets = await prisma.asset.findMany({
     where: { employeeId },
     select: {
@@ -221,7 +227,7 @@ export async function getEmployeeAssets(
 export async function deleteEmployee(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
 
   const existing = await prisma.employee.findUnique({ where: { id } });
   if (!existing) {

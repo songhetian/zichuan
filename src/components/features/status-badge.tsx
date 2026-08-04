@@ -5,6 +5,7 @@ const statusConfig: Record<string, { label: string; dotColor: string }> = {
   IN_USE: { label: "在用", dotColor: "bg-primary" },
   IN_MAINTENANCE: { label: "维修中", dotColor: "bg-amber-500" },
   SCRAPPED: { label: "报废", dotColor: "bg-red-500" },
+  IN_STOCK: { label: "库存", dotColor: "bg-blue-500" },
 }
 
 interface StatusBadgeProps {

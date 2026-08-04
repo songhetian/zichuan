@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
@@ -27,7 +27,8 @@ const updateSchema = z.object({
 export async function createComponentCategory(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -64,6 +65,8 @@ type ComponentCategoryTree = { id: number; name: string; parentId: number | null
 export async function getComponentCategories(): Promise<
   ActionResult<ComponentCategoryTree[]>
 > {
+  await requireAuth();
+
   const categories = await prisma.componentCategory.findMany({
     orderBy: { id: "asc" },
     select: { id: true, name: true, parentId: true },
@@ -74,6 +77,8 @@ export async function getComponentCategories(): Promise<
 export async function getComponentCategoryById(
   id: number
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
+  await requireAuth();
+
   const category = await prisma.componentCategory.findUnique({
     where: { id },
     select: { id: true, name: true, parentId: true },
@@ -88,7 +93,8 @@ export async function updateComponentCategory(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -120,7 +126,8 @@ export async function updateComponentCategory(
 export async function deleteComponentCategory(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
+
   // 检查分类是否存在
   const existing = await prisma.componentCategory.findUnique({ where: { id } });
   if (!existing) {

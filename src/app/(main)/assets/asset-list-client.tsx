@@ -65,6 +65,58 @@ import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.acti
 import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
 
 // ============================================================
+// Helpers
+// ============================================================
+
+function extractCapacityGB(name: string): number | null {
+  if (!name) return null;
+  const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
+  if (gbMatch) {
+    return parseFloat(gbMatch[1]);
+  }
+  const tbMatch = name.match(/(\d+(?:\.\d+)?)\s*TB/i);
+  if (tbMatch) {
+    return parseFloat(tbMatch[1]) * 1000;
+  }
+  return null;
+}
+
+// 生成配置摘要：提取 CPU 型号、内存总容量、硬盘总容量
+function getConfigSummary(components: AssetComponent[]): { cpu: string; memory: string; disk: string } {
+  let cpu = "";
+  let memoryTotal = 0;
+  let diskTotal = 0;
+
+  for (const comp of components) {
+    const cat = comp.categoryName;
+    const name = comp.modelName ?? "";
+
+    if (cat === "CPU" || /i[35779]-\d|ryzen|intel core|amd/i.test(name)) {
+      if (!cpu) {
+        // 提取 CPU 简短型号：Intel i7-13700K / AMD Ryzen 7 5800X
+        const intelMatch = name.match(/(i[35779]-\d{4,5}[A-Z]*)/i);
+        const amdMatch = name.match(/(Ryzen \d \w+)/i);
+        cpu = intelMatch ? intelMatch[1]
+            : amdMatch ? amdMatch[1]
+            : name.length > 12 ? name.substring(0, 12) + "…" : name;
+      }
+    } else if (cat === "内存" || /内存|ddr|ram/i.test(name)) {
+      const cap = extractCapacityGB(name);
+      if (cap != null) memoryTotal += cap * comp.quantity;
+    } else if (cat === "硬盘" || /硬盘|ssd|hdd|nvme/i.test(name)) {
+      const cap = extractCapacityGB(name);
+      if (cap != null) diskTotal += cap * comp.quantity;
+    }
+  }
+
+  return {
+    cpu: cpu || "-",
+    memory: memoryTotal > 0 ? `${memoryTotal}GB` : "-",
+    disk: diskTotal > 0 ? (diskTotal >= 1000 ? `${(diskTotal / 1000).toFixed(diskTotal % 1000 === 0 ? 0 : 1)}TB` : `${diskTotal}GB`) : "-",
+  };
+}
+
+// ============================================================
 // Hover Preview Hook (300ms delay)
 // ============================================================
 
@@ -117,7 +169,10 @@ function AssetPreviewContent({ asset }: { asset: AssetItem }) {
           <div className="space-y-0.5">
             {asset.components.map((comp) => (
               <div key={comp.id} className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-muted/50">
-                <span className="truncate">{comp.modelName}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-muted-foreground shrink-0 w-12 text-right">{comp.categoryName}</span>
+                  <span className="truncate">{comp.modelName}</span>
+                </div>
                 <div className="flex items-center gap-2 ml-2 shrink-0">
                   {comp.modelBrand && (
                     <span className="text-muted-foreground">{comp.modelBrand}</span>
@@ -142,6 +197,7 @@ interface AssetComponent {
   modelId: number;
   modelName: string;
   modelBrand: string | null;
+  categoryName: string;
   quantity: number;
 }
 
@@ -177,7 +233,7 @@ interface AssetItem {
 
 interface AssetListClientProps {
   assets: AssetItem[];
-  templates: { id: number; name: string }[];
+  templates: { id: number; name: string; components: { modelId: number; modelName: string; modelBrand: string | null; quantity: number }[] }[];
   categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   employees: { id: number; name: string; departmentName: string }[];
   departments: { id: number; name: string }[];
@@ -386,20 +442,20 @@ function ActionButtons({
 
   return (
     <>
-      <div className="flex items-center gap-0.5 justify-center flex-wrap">
+      <div className="flex items-center gap-0.5 justify-center">
         <Popover open={preview.isOpen} onOpenChange={() => {}}>
           <PopoverTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
               title="查看配置"
               onClick={() => router.push(`/assets/${asset.id}`)}
               onMouseEnter={preview.handleMouseEnter}
               onMouseLeave={preview.handleMouseLeave}
             >
-              <Eye className="h-3.5 w-3.5" />
+              <Eye className="h-4 w-4" />
             </Button>
           </PopoverTrigger>
           <PopoverContent
@@ -412,37 +468,37 @@ function ActionButtons({
             <AssetPreviewContent asset={asset} />
           </PopoverContent>
         </Popover>
-        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="编辑" onClick={() => setEditOpen(true)}>
-          <Pencil className="h-3.5 w-3.5 text-primary" />
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600" title="编辑" onClick={() => setEditOpen(true)}>
+          <Pencil className="h-4 w-4" />
         </Button>
         {asset.status === "IDLE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="分配" onClick={() => setAllocateOpen(true)}>
-            <UserPlus className="h-3.5 w-3.5 text-blue-500" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="分配" onClick={() => setAllocateOpen(true)}>
+            <UserPlus className="h-4 w-4" />
           </Button>
         )}
         {asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="归还" onClick={() => setReturnOpen(true)}>
-            <RotateCcw className="h-3.5 w-3.5 text-orange-500" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="归还" onClick={() => setReturnOpen(true)}>
+            <RotateCcw className="h-4 w-4" />
           </Button>
         )}
         {asset.status === "IN_MAINTENANCE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
+            <CheckCircle2 className="h-4 w-4" />
           </Button>
         )}
         {asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="调拨" onClick={() => setTransferOpen(true)}>
-            <ArrowRightLeft className="h-3.5 w-3.5 text-purple-500" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-cyan-500 hover:bg-cyan-50 hover:text-cyan-600" title="调拨" onClick={() => setTransferOpen(true)}>
+            <ArrowRightLeft className="h-4 w-4" />
           </Button>
         )}
         {(asset.status === "IDLE" || asset.status === "IN_USE") && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="送修" onClick={() => setMaintenanceOpen(true)}>
-            <Wrench className="h-3.5 w-3.5 text-yellow-500" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-amber-500 hover:bg-amber-50 hover:text-amber-600" title="送修" onClick={() => setMaintenanceOpen(true)}>
+            <Wrench className="h-4 w-4" />
           </Button>
         )}
         {asset.status !== "SCRAPPED" && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="报废" onClick={() => setScrapOpen(true)}>
-            <Trash2 className="h-3.5 w-3.5 text-red-500" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" title="报废" onClick={() => setScrapOpen(true)}>
+            <Trash2 className="h-4 w-4" />
           </Button>
         )}
       </div>
@@ -597,6 +653,7 @@ function getColumns(
   return [
     {
       id: "select",
+      meta: { align: "center" as const },
       header: ({ table }) => (
         <Checkbox
           checked={
@@ -622,20 +679,45 @@ function getColumns(
     },
     {
       accessorKey: "assetNo",
+      meta: { align: "left" as const },
       header: "编号/名称",
       cell: ({ row }) => <AssetNoCell asset={row.original} />,
     },
     {
       accessorKey: "categoryName",
+      meta: { align: "left" as const },
       header: "分类",
     },
     {
+      id: "config",
+      meta: { align: "left" as const },
+      header: "配置",
+      enableSorting: false,
+      size: 180,
+      minSize: 160,
+      cell: ({ row }) => {
+        const summary = getConfigSummary(row.original.components);
+        const hasConfig = summary.cpu !== "-" || summary.memory !== "-" || summary.disk !== "-";
+        if (!hasConfig) {
+          return <span className="text-muted-foreground text-xs">-</span>;
+        }
+        return (
+          <div className="text-xs text-left whitespace-nowrap overflow-hidden text-ellipsis">
+            <span className="text-foreground/80">{summary.cpu}</span>
+            <span className="text-muted-foreground"> / {summary.memory} / {summary.disk}</span>
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: "status",
+      meta: { align: "center" as const },
       header: "状态",
       cell: ({ row }) => <StatusCell asset={row.original} />,
     },
     {
       accessorKey: "employeeName",
+      meta: { align: "center" as const },
       header: "使用人",
       cell: ({ row }) => {
         const asset = row.original;
@@ -651,9 +733,10 @@ function getColumns(
     },
     {
       id: "actions",
+      meta: { align: "center" as const },
       header: "操作",
-      size: 120,
-      minSize: 120,
+      size: 200,
+      minSize: 180,
       cell: ({ row }) => {
         const asset = row.original;
         return <ActionButtons asset={asset} employees={employees} />;
@@ -679,6 +762,9 @@ export function AssetListClient({
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [employeeFilter, setEmployeeFilter] = useState<string>("all");
   const [keyword, setKeyword] = useState("");
+  const [memoryMinGB, setMemoryMinGB] = useState<string>("");
+  const [diskMinGB, setDiskMinGB] = useState<string>("");
+  const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -701,7 +787,7 @@ export function AssetListClient({
   // 从 URL 参数初始化筛选状态
   useEffect(() => {
     const status = searchParams.get("status");
-    if (status && ["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED"].includes(status)) {
+    if (status && ["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED", "IN_STOCK"].includes(status)) {
       setStatusFilter(status);
     }
   }, [searchParams]);
@@ -730,7 +816,51 @@ export function AssetListClient({
         (c.modelName ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
         (c.modelBrand ?? "").toLowerCase().includes(keyword.toLowerCase())
       );
-    return matchStatus && matchDepartment && matchCategory && matchEmployee && matchKeyword;
+    
+    // 内存容量筛选
+    let matchMemory = true;
+    if (memoryMinGB) {
+      const minGB = parseFloat(memoryMinGB);
+      if (!isNaN(minGB)) {
+        let totalMemory = 0;
+        let hasMemory = false;
+        for (const comp of asset.components) {
+          // 简单判断：型号名称包含"内存"或"RAM"或"DDR"等关键词
+          const name = (comp.modelName ?? "").toLowerCase();
+          if (name.includes("内存") || name.includes("ram") || name.includes("ddr") || name.includes("so-dimm")) {
+            const cap = extractCapacityGB(comp.modelName ?? "");
+            if (cap != null) {
+              totalMemory += cap * comp.quantity;
+              hasMemory = true;
+            }
+          }
+        }
+        matchMemory = hasMemory && totalMemory >= minGB;
+      }
+    }
+    
+    // 硬盘容量筛选
+    let matchDisk = true;
+    if (diskMinGB) {
+      const minGB = parseFloat(diskMinGB);
+      if (!isNaN(minGB)) {
+        let totalDisk = 0;
+        let hasDisk = false;
+        for (const comp of asset.components) {
+          const name = (comp.modelName ?? "").toLowerCase();
+          if (name.includes("硬盘") || name.includes("ssd") || name.includes("hdd") || name.includes("nvme")) {
+            const cap = extractCapacityGB(comp.modelName ?? "");
+            if (cap != null) {
+              totalDisk += cap * comp.quantity;
+              hasDisk = true;
+            }
+          }
+        }
+        matchDisk = hasDisk && totalDisk >= minGB;
+      }
+    }
+    
+    return matchStatus && matchDepartment && matchCategory && matchEmployee && matchKeyword && matchMemory && matchDisk;
   });
 
   const handleExport = async (selectedFields: string[]) => {
@@ -1072,8 +1202,8 @@ export function AssetListClient({
           </div>
         </div>
       )}
-      {/* 筛选栏 - 单行 */}
-      <div className="flex items-center gap-3 flex-wrap">
+      {/* 筛选栏 - 主行：搜索 + 状态 + 分类 + 高级筛选 */}
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -1096,48 +1226,99 @@ export function AssetListClient({
           value={statusFilter}
           onValueChange={setStatusFilter}
           placeholder="全部状态"
-          triggerClassName="w-[130px]"
+          triggerClassName="w-[120px]"
           options={[
             { value: "all", label: "全部状态" },
             { value: "IDLE", label: "闲置" },
             { value: "IN_USE", label: "在用" },
             { value: "IN_MAINTENANCE", label: "维修中" },
             { value: "SCRAPPED", label: "报废" },
-          ]}
-        />
-        <SearchableSelect
-          value={departmentFilter}
-          onValueChange={setDepartmentFilter}
-          placeholder="全部部门"
-          triggerClassName="w-[150px]"
-          options={[
-            { value: "all", label: "全部部门" },
-            { value: "none", label: "未分配部门" },
-            ...departments.map((d) => ({ value: d.id.toString(), label: d.name })),
+            { value: "IN_STOCK", label: "库存" },
           ]}
         />
         <SearchableSelect
           value={categoryFilter}
           onValueChange={setCategoryFilter}
           placeholder="全部分类"
-          triggerClassName="w-[150px]"
+          triggerClassName="w-[140px]"
           options={[
             { value: "all", label: "全部分类" },
             ...categories.map((c) => ({ value: c.id.toString(), label: c.name })),
           ]}
         />
-        <SearchableSelect
-          value={employeeFilter}
-          onValueChange={setEmployeeFilter}
-          placeholder="全部员工"
-          triggerClassName="w-[160px]"
-          options={[
-            { value: "all", label: "全部员工" },
-            { value: "none", label: "未分配" },
-            ...employees.map((e) => ({ value: e.id.toString(), label: `${e.name}（${e.departmentName}）` })),
-          ]}
-        />
+        <Button
+          variant={advancedFilterOpen ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setAdvancedFilterOpen(!advancedFilterOpen)}
+          className="h-9"
+        >
+          <MoreHorizontal className="mr-1 h-4 w-4" />
+          高级筛选
+          {(departmentFilter !== "all" || employeeFilter !== "all" || memoryMinGB || diskMinGB) && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-normal">
+              {[departmentFilter !== "all", employeeFilter !== "all", memoryMinGB, diskMinGB].filter(Boolean).length}
+            </span>
+          )}
+        </Button>
       </div>
+      {/* 高级筛选折叠区 */}
+      {advancedFilterOpen && (
+        <div className="flex items-center gap-2 flex-wrap p-3 rounded-lg border bg-muted/30">
+          <SearchableSelect
+            value={departmentFilter}
+            onValueChange={setDepartmentFilter}
+            placeholder="全部部门"
+            triggerClassName="w-[140px]"
+            options={[
+              { value: "all", label: "全部部门" },
+              { value: "none", label: "未分配部门" },
+              ...departments.map((d) => ({ value: d.id.toString(), label: d.name })),
+            ]}
+          />
+          <SearchableSelect
+            value={employeeFilter}
+            onValueChange={setEmployeeFilter}
+            placeholder="全部员工"
+            triggerClassName="w-[150px]"
+            options={[
+              { value: "all", label: "全部员工" },
+              { value: "none", label: "未分配" },
+              ...employees.map((e) => ({ value: e.id.toString(), label: `${e.name}（${e.departmentName}）` })),
+            ]}
+          />
+          <Input
+            type="number"
+            placeholder="内存≥ GB"
+            value={memoryMinGB}
+            onChange={(e) => setMemoryMinGB(e.target.value)}
+            className="w-[120px]"
+            min="0"
+          />
+          <Input
+            type="number"
+            placeholder="硬盘≥ GB"
+            value={diskMinGB}
+            onChange={(e) => setDiskMinGB(e.target.value)}
+            className="w-[120px]"
+            min="0"
+          />
+          {(departmentFilter !== "all" || employeeFilter !== "all" || memoryMinGB || diskMinGB) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDepartmentFilter("all");
+                setEmployeeFilter("all");
+                setMemoryMinGB("");
+                setDiskMinGB("");
+              }}
+            >
+              <X className="h-4 w-4 mr-1" />
+              清除筛选
+            </Button>
+          )}
+        </div>
+      )}
       <DataTable
         columns={columns}
         data={filteredAssets}

@@ -58,15 +58,15 @@ export async function login(
 }
 
 export async function logout(): Promise<ActionResult<{ success: true }>> {
-  requireAuth();
-  destroySession();
+  await requireAuth();
+  await destroySession();
   return { success: true, data: { success: true } };
 }
 
 export async function changePassword(
   input: z.infer<typeof changePasswordSchema>
 ): Promise<ActionResult<{ success: true }>> {
-  requireAuth();
+  await requireAuth();
   const validated = changePasswordSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };

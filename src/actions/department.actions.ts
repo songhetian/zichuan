@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
@@ -17,7 +17,8 @@ const updateSchema = z.object({
 export async function createDepartment(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -37,6 +38,8 @@ export async function createDepartment(
 export async function getDepartments(): Promise<
   ActionResult<{ id: number; name: string }[]>
 > {
+  await requireAuth();
+
   const depts = await prisma.department.findMany({
     orderBy: { id: "asc" },
     select: { id: true, name: true },
@@ -47,6 +50,8 @@ export async function getDepartments(): Promise<
 export async function getDepartmentById(
   id: number
 ): Promise<ActionResult<{ id: number; name: string }>> {
+  await requireAuth();
+
   const dept = await prisma.department.findUnique({
     where: { id },
     select: { id: true, name: true },
@@ -61,7 +66,8 @@ export async function updateDepartment(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<{ id: number; name: string }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -87,7 +93,8 @@ export async function updateDepartment(
 export async function deleteDepartment(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const existing = await prisma.department.findUnique({ where: { id } });
   if (!existing) {
     return { success: false, error: "部门不存在" };

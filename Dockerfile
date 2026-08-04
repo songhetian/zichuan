@@ -66,8 +66,10 @@ COPY --from=builder /app/node_modules/xlsx ./node_modules/xlsx
 # 复制 bcryptjs 依赖（seed.ts 需要）
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
-# 安装 tsx 和 prisma（db-init 运行迁移和种子需要，版本需与项目一致）
-RUN npm install -g tsx prisma@5
+# 复制 tsx 依赖（db-init 运行 seed.ts 需要）
+COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
+COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
+COPY --from=builder /app/node_modules/@esbuild ./node_modules/@esbuild
 
 USER nextjs
 

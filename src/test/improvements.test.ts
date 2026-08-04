@@ -3,7 +3,7 @@ import { PrismaClient, StockLogType } from '@prisma/client';
 import { z } from 'zod';
 
 // 使用独立测试数据库，避免污染真实数据
-process.env.DATABASE_URL = 'mysql://root:root@localhost:3306/asset_manager_test';
+process.env.DATABASE_URL = 'mysql://root:root@localhost:3308/asset_manager_test';
 
 const prisma = new PrismaClient();
 

@@ -26,12 +26,13 @@ import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { deleteDeviceTemplate } from "@/actions/device-template.actions";
 import { TemplateFormDialog, type TemplateData } from "./template-form-dialog";
-import type { ComponentModelOption, TemplateOption } from "./bom-table";
+import type { ComponentModelOption, TemplateOption, ComponentCategoryOption } from "./bom-table";
 
 interface TemplateListClientProps {
   templates: TemplateData[];
   categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   componentModels: ComponentModelOption[];
+  componentCategories: ComponentCategoryOption[];
 }
 
 // ============================================================
@@ -43,9 +44,10 @@ interface RowActionProps {
   categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   componentModels: ComponentModelOption[];
   allTemplates: TemplateOption[];
+  componentCategories: ComponentCategoryOption[];
 }
 
-function RowActions({ template, categories, componentModels, allTemplates }: RowActionProps) {
+function RowActions({ template, categories, componentModels, allTemplates, componentCategories }: RowActionProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -100,6 +102,7 @@ function RowActions({ template, categories, componentModels, allTemplates }: Row
         categories={categories}
         componentModels={componentModels}
         templates={otherTemplates}
+        componentCategories={componentCategories}
       />
 
       {/* 详情弹窗 */}
@@ -141,7 +144,7 @@ function RowActions({ template, categories, componentModels, allTemplates }: Row
 // 主组件
 // ============================================================
 
-export function TemplateListClient({ templates, categories, componentModels }: TemplateListClientProps) {
+export function TemplateListClient({ templates, categories, componentModels, componentCategories }: TemplateListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
 
   // 转换为 BomTable 需要的格式
@@ -193,6 +196,7 @@ export function TemplateListClient({ templates, categories, componentModels }: T
                 categories={categories}
                 componentModels={componentModels}
                 allTemplates={templateOptions}
+                componentCategories={componentCategories}
               />
             ),
           },
@@ -208,6 +212,7 @@ export function TemplateListClient({ templates, categories, componentModels }: T
         categories={categories}
         componentModels={componentModels}
         templates={templateOptions}
+        componentCategories={componentCategories}
       />
     </div>
   );

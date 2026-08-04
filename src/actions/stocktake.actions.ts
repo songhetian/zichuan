@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -23,7 +23,8 @@ const updateRecordSchema = z.object({
 export async function createStocktakeSession(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string; description: string | null; status: string }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -80,6 +81,8 @@ export async function createStocktakeSession(
 export async function getStocktakeSessions(): Promise<
   ActionResult<{ id: number; name: string; description: string | null; status: string; startedAt: Date; completedAt: Date | null }[]>
 > {
+  await requireAuth();
+
   const sessions = await prisma.stocktakeSession.findMany({
     orderBy: { id: "desc" },
   });
@@ -106,6 +109,8 @@ export async function getStocktakeSessionById(
     }[];
   }>
 > {
+  await requireAuth();
+
   const session = await prisma.stocktakeSession.findUnique({
     where: { id },
   });
@@ -144,7 +149,8 @@ export async function updateStocktakeRecord(
   recordId: number,
   input: z.infer<typeof updateRecordSchema>
 ): Promise<ActionResult<{ id: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const validated = updateRecordSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -176,7 +182,8 @@ export async function updateStocktakeRecord(
 export async function completeStocktakeSession(
   sessionId: number
 ): Promise<ActionResult<{ id: number; normal: number; missing: number; extra: number }>> {
-  requireAuth();
+  await requireAuth();
+
   const session = await prisma.stocktakeSession.findUnique({ where: { id: sessionId } });
   if (!session) {
     return { success: false, error: "盘点任务不存在" };
