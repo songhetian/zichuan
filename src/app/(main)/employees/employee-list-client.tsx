@@ -1,5 +1,7 @@
 "use client";
 
+import { downloadExcelFile } from "@/lib/excel-download";
+
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -484,15 +486,7 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
     try {
       const result = await exportEmployeesToExcel();
       if (result.success) {
-        const blob = new Blob([result.data.buffer as BlobPart], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = result.data.fileName;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadExcelFile(result.data.fileName, result.data.buffer);
         toast({ title: "导出成功" });
       } else {
         toast({ title: "导出失败", description: result.error, variant: "destructive" });

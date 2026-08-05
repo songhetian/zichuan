@@ -8,7 +8,7 @@ import { requireAuth } from "@/lib/auth";
 
 export async function exportAssetsToExcel(
   selectedFields?: string[]
-): Promise<ActionResult<{ buffer: Buffer; fileName: string }>> {
+): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
   await requireAuth();
 
   const assets = await prisma.asset.findMany({
@@ -75,14 +75,14 @@ export async function exportAssetsToExcel(
   return {
     success: true,
     data: {
-      buffer: Buffer.from(buf),
+      buffer: Array.from(buf),
       fileName: `设备档案_${formatDate()}.xlsx`,
     },
   };
 }
 
 export async function exportComponentsToExcel(): Promise<
-  ActionResult<{ buffer: Buffer; fileName: string }>
+  ActionResult<{ buffer: number[]; fileName: string }>
 > {
   await requireAuth();
 
@@ -110,14 +110,14 @@ export async function exportComponentsToExcel(): Promise<
   return {
     success: true,
     data: {
-      buffer: Buffer.from(buf),
+      buffer: Array.from(buf),
       fileName: `配件型号_${formatDate()}.xlsx`,
     },
   };
 }
 
 export async function exportEmployeesToExcel(): Promise<
-  ActionResult<{ buffer: Buffer; fileName: string }>
+  ActionResult<{ buffer: number[]; fileName: string }>
 > {
   await requireAuth();
 
@@ -145,7 +145,7 @@ export async function exportEmployeesToExcel(): Promise<
   return {
     success: true,
     data: {
-      buffer: Buffer.from(buf),
+      buffer: Array.from(buf),
       fileName: `员工列表_${formatDate()}.xlsx`,
     },
   };

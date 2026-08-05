@@ -1,5 +1,7 @@
 "use client";
 
+import { downloadExcelFile } from "@/lib/excel-download";
+
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
@@ -910,15 +912,7 @@ export function AssetListClient({
     try {
       const result = await exportAssetsToExcel(selectedFields);
       if (result.success) {
-        const blob = new Blob([result.data.buffer as BlobPart], {
-          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = result.data.fileName;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadExcelFile(result.data.fileName, result.data.buffer);
         toast({ title: "导出成功" });
         setExportPreviewOpen(false);
       } else {
