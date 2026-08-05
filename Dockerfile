@@ -71,6 +71,9 @@ COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
 COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
 COPY --from=builder /app/node_modules/@esbuild ./node_modules/@esbuild
 
+# 复制数据库初始化脚本（db-init 容器内运行，避免依赖宿主机 bind mount）
+COPY scripts/docker-init.cjs ./scripts/docker-init.cjs
+
 USER nextjs
 
 EXPOSE 3000
