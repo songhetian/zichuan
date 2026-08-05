@@ -7,11 +7,13 @@ import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
 
 export async function exportAssetsToExcel(
-  selectedFields?: string[]
+  selectedFields?: string[],
+  assetIds?: number[]
 ): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
   await requireAuth();
 
   const assets = await prisma.asset.findMany({
+    where: assetIds && assetIds.length > 0 ? { id: { in: assetIds } } : undefined,
     orderBy: { assetNo: "asc" },
     include: {
       template: {

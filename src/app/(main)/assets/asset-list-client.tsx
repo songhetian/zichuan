@@ -642,10 +642,10 @@ function getColumns(
       header: ({ table }) => (
         <Checkbox
           checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
+            table.getIsAllRowsSelected() ||
+            (table.getIsSomeRowsSelected() && "indeterminate")
           }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          onCheckedChange={(value) => table.toggleAllRowsSelected(!!value)}
           aria-label="全选"
         />
       ),
@@ -836,6 +836,7 @@ export function AssetListClient({
   const [diskMinGB, setDiskMinGB] = useState<string>("");
   const [exportLoading, setExportLoading] = useState(false);
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<"all" | "selected">("all");
   const [importLoading, setImportLoading] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<AssetItem[]>([]);
   const [batchAllocateOpen, setBatchAllocateOpen] = useState(false);
@@ -910,7 +911,9 @@ export function AssetListClient({
   const handleExport = async (selectedFields: string[]) => {
     setExportLoading(true);
     try {
-      const result = await exportAssetsToExcel(selectedFields);
+      const assetIds =
+        exportMode === "selected" ? selectedAssets.map((a) => a.id) : undefined;
+      const result = await exportAssetsToExcel(selectedFields, assetIds);
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
         toast({ title: "导出成功" });
@@ -924,8 +927,9 @@ export function AssetListClient({
     setExportLoading(false);
   };
 
-  // 准备导出数据
-  const exportData = filteredAssets.map((asset) => ({
+  // 准备导出数据（按导出模式决定范围：全部筛选结果 or 仅选中）
+  const exportSource = exportMode === "selected" ? selectedAssets : filteredAssets;
+  const exportData = exportSource.map((asset) => ({
     assetNo: asset.assetNo,
     name: asset.name,
     categoryName: asset.categoryName,
@@ -1136,12 +1140,24 @@ export function AssetListClient({
             />
             <Button
               variant="outline"
-              onClick={() => setExportPreviewOpen(true)}
+              onClick={() => { setExportMode("all"); setExportPreviewOpen(true); }}
               disabled={exportLoading}
             >
               <Download className="mr-2 h-4 w-4" />
               {exportLoading ? "导出中..." : "导出 Excel"}
             </Button>
+            {selectedAssets.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => { setExportMode("selected"); setExportPreviewOpen(true); }}
+                disabled={exportLoading}
+                className="border-primary text-primary hover:bg-primary/5"
+                title="仅导出当前选中的设备"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {exportLoading ? "导出中..." : `导出选中 (${selectedAssets.length})`}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
