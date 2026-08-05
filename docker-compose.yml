@@ -59,7 +59,7 @@ services:
     volumes:
       - ./scripts/docker-init.cjs:/app/scripts/docker-init.cjs:ro
     command: >
-      sh -c "node scripts/docker-init.cjs && sleep 10 && node node_modules/prisma/build/index.js migrate deploy && node node_modules/tsx/dist/cli.mjs prisma/seed.ts"
+      sh -c "node scripts/docker-init.cjs && node node_modules/prisma/build/index.js migrate deploy && node node_modules/tsx/dist/cli.mjs prisma/seed.ts"
     restart: "no"
 
   # Nginx 反向代理

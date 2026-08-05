@@ -36,7 +36,6 @@ import {
   UserPlus,
   Wrench,
   CheckCircle2,
-  MoreHorizontal,
   ArrowRightLeft,
 } from "lucide-react";
 import {
@@ -63,29 +62,16 @@ import {
 } from "@/actions/lifecycle.actions";
 import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.actions";
 import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
+import { getMemoryGB, getDiskGB } from "@/lib/asset-filter";
 
 // ============================================================
 // Helpers
 // ============================================================
 
-function extractCapacityGB(name: string): number | null {
-  if (!name) return null;
-  const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
-  if (gbMatch) {
-    return parseFloat(gbMatch[1]);
-  }
-  const tbMatch = name.match(/(\d+(?:\.\d+)?)\s*TB/i);
-  if (tbMatch) {
-    return parseFloat(tbMatch[1]) * 1000;
-  }
-  return null;
-}
-
 // 生成配置摘要：提取 CPU 型号、内存总容量、硬盘总容量
+// 内存 / 硬盘容量统计复用 @/lib/asset-filter，与列表筛选口径一致
 function getConfigSummary(components: AssetComponent[]): { cpu: string; memory: string; disk: string } {
   let cpu = "";
-  let memoryTotal = 0;
-  let diskTotal = 0;
 
   for (const comp of components) {
     const cat = comp.categoryName;
@@ -100,14 +86,11 @@ function getConfigSummary(components: AssetComponent[]): { cpu: string; memory: 
             : amdMatch ? amdMatch[1]
             : name.length > 12 ? name.substring(0, 12) + "…" : name;
       }
-    } else if (cat === "内存" || /内存|ddr|ram/i.test(name)) {
-      const cap = extractCapacityGB(name);
-      if (cap != null) memoryTotal += cap * comp.quantity;
-    } else if (cat === "硬盘" || /硬盘|ssd|hdd|nvme/i.test(name)) {
-      const cap = extractCapacityGB(name);
-      if (cap != null) diskTotal += cap * comp.quantity;
     }
   }
+
+  const memoryTotal = getMemoryGB(components);
+  const diskTotal = getDiskGB(components);
 
   return {
     cpu: cpu || "-",
@@ -746,6 +729,91 @@ function getColumns(
 }
 
 // ============================================================
+// 高级筛选栏（始终展示，不再折叠）
+// ============================================================
+
+interface AdvancedFilterBarProps {
+  departmentFilter: string;
+  employeeFilter: string;
+  memoryMinGB: string;
+  diskMinGB: string;
+  onDepartmentChange: (v: string) => void;
+  onEmployeeChange: (v: string) => void;
+  onMemoryChange: (v: string) => void;
+  onDiskChange: (v: string) => void;
+  onClear: () => void;
+  departments: { id: number; name: string }[];
+  employees: { id: number; name: string; departmentName: string }[];
+}
+
+export function AdvancedFilterBar({
+  departmentFilter,
+  employeeFilter,
+  memoryMinGB,
+  diskMinGB,
+  onDepartmentChange,
+  onEmployeeChange,
+  onMemoryChange,
+  onDiskChange,
+  onClear,
+  departments,
+  employees,
+}: AdvancedFilterBarProps) {
+  return (
+    <>
+      <SearchableSelect
+        value={departmentFilter}
+        onValueChange={onDepartmentChange}
+        placeholder="全部部门"
+        triggerClassName="w-[140px]"
+        options={[
+          { value: "all", label: "全部部门" },
+          { value: "none", label: "未分配部门" },
+          ...departments.map((d) => ({ value: d.id.toString(), label: d.name })),
+        ]}
+      />
+      <SearchableSelect
+        value={employeeFilter}
+        onValueChange={onEmployeeChange}
+        placeholder="全部员工"
+        triggerClassName="w-[150px]"
+        options={[
+          { value: "all", label: "全部员工" },
+          { value: "none", label: "未分配" },
+          ...employees.map((e) => ({ value: e.id.toString(), label: `${e.name}（${e.departmentName}）` })),
+        ]}
+      />
+      <Input
+        type="number"
+        placeholder="内存≥ GB"
+        value={memoryMinGB}
+        onChange={(e) => onMemoryChange(e.target.value)}
+        className="w-[120px]"
+        min="0"
+      />
+      <Input
+        type="number"
+        placeholder="硬盘≥ GB"
+        value={diskMinGB}
+        onChange={(e) => onDiskChange(e.target.value)}
+        className="w-[120px]"
+        min="0"
+      />
+      {(departmentFilter !== "all" || employeeFilter !== "all" || memoryMinGB || diskMinGB) && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClear}
+        >
+          <X className="h-4 w-4 mr-1" />
+          清除筛选
+        </Button>
+      )}
+    </>
+  );
+}
+
+// ============================================================
 // Main Component
 // ============================================================
 
@@ -764,7 +832,6 @@ export function AssetListClient({
   const [keyword, setKeyword] = useState("");
   const [memoryMinGB, setMemoryMinGB] = useState<string>("");
   const [diskMinGB, setDiskMinGB] = useState<string>("");
-  const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -817,46 +884,21 @@ export function AssetListClient({
         (c.modelBrand ?? "").toLowerCase().includes(keyword.toLowerCase())
       );
     
-    // 内存容量筛选
+    // 内存容量筛选（按配件分类名判定，与配置摘要口径一致）
     let matchMemory = true;
     if (memoryMinGB) {
       const minGB = parseFloat(memoryMinGB);
       if (!isNaN(minGB)) {
-        let totalMemory = 0;
-        let hasMemory = false;
-        for (const comp of asset.components) {
-          // 简单判断：型号名称包含"内存"或"RAM"或"DDR"等关键词
-          const name = (comp.modelName ?? "").toLowerCase();
-          if (name.includes("内存") || name.includes("ram") || name.includes("ddr") || name.includes("so-dimm")) {
-            const cap = extractCapacityGB(comp.modelName ?? "");
-            if (cap != null) {
-              totalMemory += cap * comp.quantity;
-              hasMemory = true;
-            }
-          }
-        }
-        matchMemory = hasMemory && totalMemory >= minGB;
+        matchMemory = getMemoryGB(asset.components) >= minGB;
       }
     }
-    
+
     // 硬盘容量筛选
     let matchDisk = true;
     if (diskMinGB) {
       const minGB = parseFloat(diskMinGB);
       if (!isNaN(minGB)) {
-        let totalDisk = 0;
-        let hasDisk = false;
-        for (const comp of asset.components) {
-          const name = (comp.modelName ?? "").toLowerCase();
-          if (name.includes("硬盘") || name.includes("ssd") || name.includes("hdd") || name.includes("nvme")) {
-            const cap = extractCapacityGB(comp.modelName ?? "");
-            if (cap != null) {
-              totalDisk += cap * comp.quantity;
-              hasDisk = true;
-            }
-          }
-        }
-        matchDisk = hasDisk && totalDisk >= minGB;
+        matchDisk = getDiskGB(asset.components) >= minGB;
       }
     }
     
@@ -1202,8 +1244,8 @@ export function AssetListClient({
           </div>
         </div>
       )}
-      {/* 筛选栏 - 主行：搜索 + 状态 + 分类 + 高级筛选 */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* 筛选栏：搜索 + 状态 + 分类 + 高级筛选（同一行） */}
+      <div data-testid="filter-toolbar" className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -1246,79 +1288,25 @@ export function AssetListClient({
             ...categories.map((c) => ({ value: c.id.toString(), label: c.name })),
           ]}
         />
-        <Button
-          variant={advancedFilterOpen ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => setAdvancedFilterOpen(!advancedFilterOpen)}
-          className="h-9"
-        >
-          <MoreHorizontal className="mr-1 h-4 w-4" />
-          高级筛选
-          {(departmentFilter !== "all" || employeeFilter !== "all" || memoryMinGB || diskMinGB) && (
-            <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-normal">
-              {[departmentFilter !== "all", employeeFilter !== "all", memoryMinGB, diskMinGB].filter(Boolean).length}
-            </span>
-          )}
-        </Button>
+        <AdvancedFilterBar
+          departmentFilter={departmentFilter}
+          employeeFilter={employeeFilter}
+          memoryMinGB={memoryMinGB}
+          diskMinGB={diskMinGB}
+          onDepartmentChange={setDepartmentFilter}
+          onEmployeeChange={setEmployeeFilter}
+          onMemoryChange={setMemoryMinGB}
+          onDiskChange={setDiskMinGB}
+          onClear={() => {
+            setDepartmentFilter("all");
+            setEmployeeFilter("all");
+            setMemoryMinGB("");
+            setDiskMinGB("");
+          }}
+          departments={departments}
+          employees={employees}
+        />
       </div>
-      {/* 高级筛选折叠区 */}
-      {advancedFilterOpen && (
-        <div className="flex items-center gap-2 flex-wrap p-3 rounded-lg border bg-muted/30">
-          <SearchableSelect
-            value={departmentFilter}
-            onValueChange={setDepartmentFilter}
-            placeholder="全部部门"
-            triggerClassName="w-[140px]"
-            options={[
-              { value: "all", label: "全部部门" },
-              { value: "none", label: "未分配部门" },
-              ...departments.map((d) => ({ value: d.id.toString(), label: d.name })),
-            ]}
-          />
-          <SearchableSelect
-            value={employeeFilter}
-            onValueChange={setEmployeeFilter}
-            placeholder="全部员工"
-            triggerClassName="w-[150px]"
-            options={[
-              { value: "all", label: "全部员工" },
-              { value: "none", label: "未分配" },
-              ...employees.map((e) => ({ value: e.id.toString(), label: `${e.name}（${e.departmentName}）` })),
-            ]}
-          />
-          <Input
-            type="number"
-            placeholder="内存≥ GB"
-            value={memoryMinGB}
-            onChange={(e) => setMemoryMinGB(e.target.value)}
-            className="w-[120px]"
-            min="0"
-          />
-          <Input
-            type="number"
-            placeholder="硬盘≥ GB"
-            value={diskMinGB}
-            onChange={(e) => setDiskMinGB(e.target.value)}
-            className="w-[120px]"
-            min="0"
-          />
-          {(departmentFilter !== "all" || employeeFilter !== "all" || memoryMinGB || diskMinGB) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setDepartmentFilter("all");
-                setEmployeeFilter("all");
-                setMemoryMinGB("");
-                setDiskMinGB("");
-              }}
-            >
-              <X className="h-4 w-4 mr-1" />
-              清除筛选
-            </Button>
-          )}
-        </div>
-      )}
       <DataTable
         columns={columns}
         data={filteredAssets}

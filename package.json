@@ -54,7 +54,8 @@
     "docker:seed": "docker compose run --rm db-init npx tsx prisma/seed.ts",
     "docker:reinit": "docker compose down -v && npm run docker:deploy",
     "docker:reset": "docker compose down -v && docker rmi zichuan-app zichuan-db-init 2>$null; npm run docker:deploy",
-    "docker:clean": "docker system prune -f"
+    "docker:clean": "docker system prune -f",
+    "test:frontend": "vitest run --config vitest.frontend.config.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

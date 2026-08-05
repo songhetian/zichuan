@@ -53,11 +53,14 @@ export function SearchableSelect({
           <Search className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+      <PopoverContent
+        className="p-0 min-w-[var(--radix-popover-trigger-width)] max-w-[min(90vw,360px)]"
+        align="start"
+      >
         <CommandPrimitive>
           <div className="flex items-center border-b px-3">
             <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <input
+            <CommandPrimitive.Input
               className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
               placeholder={`${placeholder}（搜索）`}
             />
