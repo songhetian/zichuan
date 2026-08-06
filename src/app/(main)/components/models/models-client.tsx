@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PackagePlus, Pencil, Trash2, Download, Upload } from "lucide-react";
+import { PackagePlus, Pencil, Trash2, Download, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   purchaseStockIn,
@@ -430,6 +430,21 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
           options={brandOptions}
           triggerClassName="w-[160px]"
         />
+        {(search || categoryFilter || brandFilter) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearch("");
+              setCategoryFilter("");
+              setBrandFilter("");
+            }}
+          >
+            <X className="h-4 w-4 mr-1" />
+            重置
+          </Button>
+        )}
       </div>
       <DataTable columns={columns} data={dataWithCategories} />
 

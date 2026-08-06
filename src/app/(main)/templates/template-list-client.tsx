@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { deleteDeviceTemplate } from "@/actions/device-template.actions";
 import { TemplateFormDialog, type TemplateData } from "./template-form-dialog";
@@ -203,6 +203,20 @@ export function TemplateListClient({ templates, categories, componentModels, com
           options={categoryOptions}
           triggerClassName="w-[160px]"
         />
+        {(search || categoryFilter) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearch("");
+              setCategoryFilter("");
+            }}
+          >
+            <X className="h-4 w-4 mr-1" />
+            重置
+          </Button>
+        )}
       </div>
       <DataTable
         columns={[

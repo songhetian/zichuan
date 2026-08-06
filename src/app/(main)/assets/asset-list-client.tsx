@@ -29,6 +29,7 @@ import {
   Eye,
   Pencil,
   Trash2,
+  Ban,
   Plus,
   Search,
   X,
@@ -39,6 +40,7 @@ import {
   Wrench,
   CheckCircle2,
   ArrowRightLeft,
+  MoreVertical,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,7 +55,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { updateAsset } from "@/actions/asset.actions";
+import { updateAsset, deleteAsset } from "@/actions/asset.actions";
 import {
   returnAssets,
   scrapAssets,
@@ -314,6 +316,7 @@ function ActionButtons({
   const router = useRouter();
   const { toast } = useToast();
   const [scrapOpen, setScrapOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [allocateOpen, setAllocateOpen] = useState(false);
@@ -340,6 +343,17 @@ function ActionButtons({
       toast({ title: "报废失败", description: result.error, variant: "destructive" });
     }
     setScrapOpen(false);
+  };
+
+  const handleDelete = async () => {
+    const result = await deleteAsset(asset.id);
+    if (result.success) {
+      toast({ title: "删除成功" });
+      router.refresh();
+    } else {
+      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    }
+    setDeleteOpen(false);
   };
 
   const handleReturn = async () => {
@@ -436,6 +450,7 @@ function ActionButtons({
               size="icon"
               className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
               title="查看配置"
+              aria-label="查看配置"
               onClick={() => router.push(`/assets/${asset.id}`)}
               onMouseEnter={preview.handleMouseEnter}
               onMouseLeave={preview.handleMouseLeave}
@@ -453,39 +468,51 @@ function ActionButtons({
             <AssetPreviewContent asset={asset} />
           </PopoverContent>
         </Popover>
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600" title="编辑" onClick={() => setEditOpen(true)}>
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
           <Pencil className="h-4 w-4" />
         </Button>
-        {asset.status === "IDLE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="分配" onClick={() => setAllocateOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-          </Button>
-        )}
-        {asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="归还" onClick={() => setReturnOpen(true)}>
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        )}
-        {asset.status === "IN_MAINTENANCE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
-            <CheckCircle2 className="h-4 w-4" />
-          </Button>
-        )}
-        {asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-cyan-500 hover:bg-cyan-50 hover:text-cyan-600" title="调拨" onClick={() => setTransferOpen(true)}>
-            <ArrowRightLeft className="h-4 w-4" />
-          </Button>
-        )}
-        {(asset.status === "IDLE" || asset.status === "IN_USE") && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-amber-500 hover:bg-amber-50 hover:text-amber-600" title="送修" onClick={() => setMaintenanceOpen(true)}>
-            <Wrench className="h-4 w-4" />
-          </Button>
-        )}
-        {asset.status !== "SCRAPPED" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" title="报废" onClick={() => setScrapOpen(true)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        )}
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="更多操作" aria-label="更多操作">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-32">
+            {asset.status === "IDLE" && (
+              <DropdownMenuItem onSelect={() => setAllocateOpen(true)}>
+                <UserPlus className="mr-2 h-4 w-4 text-emerald-500" />分配
+              </DropdownMenuItem>
+            )}
+            {asset.status === "IN_USE" && (
+              <DropdownMenuItem onSelect={() => setReturnOpen(true)}>
+                <RotateCcw className="mr-2 h-4 w-4 text-emerald-500" />归还
+              </DropdownMenuItem>
+            )}
+            {asset.status === "IN_MAINTENANCE" && (
+              <DropdownMenuItem onSelect={() => setMaintenanceCompleteOpen(true)}>
+                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />维修完成
+              </DropdownMenuItem>
+            )}
+            {asset.status === "IN_USE" && (
+              <DropdownMenuItem onSelect={() => setTransferOpen(true)}>
+                <ArrowRightLeft className="mr-2 h-4 w-4 text-cyan-500" />调拨
+              </DropdownMenuItem>
+            )}
+            {(asset.status === "IDLE" || asset.status === "IN_USE") && (
+              <DropdownMenuItem onSelect={() => setMaintenanceOpen(true)}>
+                <Wrench className="mr-2 h-4 w-4 text-amber-500" />送修
+              </DropdownMenuItem>
+            )}
+            {asset.status !== "SCRAPPED" && (
+              <DropdownMenuItem onSelect={() => setScrapOpen(true)} className="text-orange-600 focus:text-orange-700">
+                <Ban className="mr-2 h-4 w-4" />报废
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <EditAssetDialog open={editOpen} onOpenChange={setEditOpen} asset={asset} />
       <ConfirmDialog
@@ -504,6 +531,15 @@ function ActionButtons({
         confirmText="报废"
         variant="destructive"
         onConfirm={handleScrap}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="确认删除"
+        description={`确定要永久删除设备「${asset.assetNo}」吗？该操作将同时删除其全部配件与生命周期记录，不可恢复！`}
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={handleDelete}
       />
       <ConfirmDialog
         open={maintenanceOpen}
@@ -844,6 +880,7 @@ export function AssetListClient({
   const [batchScrapOpen, setBatchScrapOpen] = useState(false);
   const [batchTransferOpen, setBatchTransferOpen] = useState(false);
   const [batchMaintenanceOpen, setBatchMaintenanceOpen] = useState(false);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchAllocateEmployeeId, setBatchAllocateEmployeeId] = useState("");
   const [batchTransferEmployeeId, setBatchTransferEmployeeId] = useState("");
   const [batchLoading, setBatchLoading] = useState(false);
@@ -1124,6 +1161,28 @@ export function AssetListClient({
     }
   };
 
+  // 批量删除（真删，不可恢复）
+  const handleBatchDelete = async () => {
+    if (selectedAssets.length === 0) return;
+    setBatchLoading(true);
+    let ok = 0;
+    let fail = 0;
+    for (const a of selectedAssets) {
+      const r = await deleteAsset(a.id);
+      if (r.success) ok++;
+      else fail++;
+    }
+    setBatchLoading(false);
+    if (fail === 0) {
+      toast({ title: `批量删除成功，共 ${ok} 台` });
+    } else {
+      toast({ title: `删除完成：${ok} 成功，${fail} 失败`, variant: "destructive" });
+    }
+    setBatchDeleteOpen(false);
+    setSelectedAssets([]);
+    router.refresh();
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -1241,8 +1300,18 @@ export function AssetListClient({
               onClick={() => setBatchScrapOpen(true)}
               disabled={batchLoading}
             >
-              <Trash2 className="mr-1 h-3 w-3" />
+              <Ban className="mr-1 h-3 w-3" />
               批量报废
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchDeleteOpen(true)}
+              disabled={batchLoading}
+              className="border-red-200 text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="mr-1 h-3 w-3" />
+              批量删除
             </Button>
             <Button
               variant="ghost"
@@ -1412,6 +1481,17 @@ export function AssetListClient({
         confirmText="批量报废"
         variant="destructive"
         onConfirm={handleBatchScrap}
+      />
+
+      {/* 批量删除确认对话框 */}
+      <ConfirmDialog
+        open={batchDeleteOpen}
+        onOpenChange={setBatchDeleteOpen}
+        title="确认批量删除"
+        description={`确定要永久删除选中的 ${selectedAssets.length} 台设备吗？将同时删除其全部配件与生命周期记录，不可恢复！`}
+        confirmText="批量删除"
+        variant="destructive"
+        onConfirm={handleBatchDelete}
       />
 
       {/* 导出预览对话框 */}

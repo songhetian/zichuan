@@ -10,6 +10,19 @@
 - **筛选**: 多个列表页已加可搜索下拉(SearchableSelect)与文本搜索叠加取交集;缺统一的「重置筛选」按钮。
 - **a11y**: 按钮有 focus ring;但表格行内 icon-only 操作按钮(详情/编辑/删除)仅用 title 提示,建议补 aria-label。
 
+## 删除 vs 报废 语义 (2026-08-06 厘清)
+- **`deleteAsset` = 真正的硬删除**(`prisma.asset.delete`,级联删配件/生命周期记录,不可逆)；此前界面无此入口,垃圾桶图标被「报废」占用,造成语义混乱。
+- **「报废」= 状态变更**(`SCRAPPED` 枚举,`scrapAssets` 动作,保留记录与历史),非删除。
+- **修复后**: 垃圾桶 `Trash2` 专指「删除」(调 deleteAsset,红色破坏性确认);「报废」改用 `Ban` 图标(橙色)。资产行操作列:查看/编辑/删除内联,其余生命周期动作(分配/归还/调拨/送修/维修完成/报废)收进「更多」DropdownMenu。批量栏新增「批量删除」。
+
+## 状态语义色 (2026-08-06 升级)
+- `src/components/features/status-badge.tsx` 抽出纯函数 `getStatusStyle(status)` → 带底色语义胶囊: IDLE=中性灰、IN_USE=成功绿(emerald)、IN_MAINTENANCE=警告琥珀、SCRAPPED=危险红、IN_STOCK=信息蓝。替换原小圆点样式。
+
+## 表格打磨 (2026-08-06)
+- DataTable 表头行加 `group`(排序箭头 hover 可见);行 map 用 `<Fragment key>` 修 React key 警告;单元格 `align-top`→`align-middle`。
+- DataTable 移除未使用的 `searchKey` 内置搜索分支(无页面使用),收敛为页面级搜索单一机制。
+- 模板/型号/库存流水三页筛选栏新增「重置」按钮(任意筛选生效时显示,一键清空)。
+
 ## 部署约定 (Debian 局域网服务器 192.168.110.145)
 - 仅代码改动: `git pull` + `npm run docker:update`(重建 app+nginx,不动库)。
 - 含 DB 迁移: `npm run docker:deploy`。

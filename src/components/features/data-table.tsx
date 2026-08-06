@@ -21,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { PagePagination } from "@/components/ui/page-pagination"
 import {
@@ -31,14 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useState, useEffect } from "react"
-import { Search, Inbox, ArrowUpDown, X } from "lucide-react"
+import { useState, useEffect, Fragment } from "react"
+import { Search, Inbox, ArrowUpDown } from "lucide-react"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
-  searchKey?: string
-  searchPlaceholder?: string
   enableRowSelection?: boolean
   onRowSelectionChange?: (selectedRows: TData[]) => void
   renderExpandedRow?: (row: TData) => React.ReactNode
@@ -47,8 +44,6 @@ interface DataTableProps<TData, TValue> {
 export function DataTable<TData, TValue>({
   columns,
   data,
-  searchKey,
-  searchPlaceholder = "搜索...",
   enableRowSelection = false,
   onRowSelectionChange,
   renderExpandedRow,
@@ -87,30 +82,6 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-      {searchKey && (
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <div className="relative max-w-sm w-full">
-            <Input
-              placeholder={searchPlaceholder}
-              value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-              onChange={(e) =>
-                table.getColumn(searchKey)?.setFilterValue(e.target.value)
-              }
-              className="pr-8"
-            />
-            {(table.getColumn(searchKey)?.getFilterValue() as string) && (
-              <button
-                type="button"
-                onClick={() => table.getColumn(searchKey)?.setFilterValue("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4 text-muted-foreground" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
       <div className="rounded-lg border border-border overflow-hidden">
         <Table>
           <TableHeader>
@@ -143,7 +114,7 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row, rowIndex) => (
-                <>
+                <Fragment key={row.id}>
                   <TableRow
                     key={`row-${row.id}`}
                     data-state={row.getIsSelected() && "selected"}
@@ -154,7 +125,7 @@ export function DataTable<TData, TValue>({
                       const align = (cell.column.columnDef.meta as { align?: string } | undefined)?.align
                       const alignClass = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"
                       return (
-                      <TableCell key={cell.id} className={`py-2.5 align-top ${alignClass}`}>
+                      <TableCell key={cell.id} className={`py-2.5 align-middle ${alignClass}`}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
                       )
@@ -167,7 +138,7 @@ export function DataTable<TData, TValue>({
                       </TableCell>
                     </TableRow>
                   )}
-                </>
+                </Fragment>
               ))
             ) : (
               <TableRow>

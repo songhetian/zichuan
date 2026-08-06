@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { ListSearchInput } from "@/components/ui/list-search-input";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
 import { filterItemsByText } from "@/lib/list-search";
@@ -193,6 +193,21 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
           options={typeOptions}
           triggerClassName="w-[160px]"
         />
+        {(search || modelFilter || typeFilter) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearch("");
+              setModelFilter("");
+              setTypeFilter("");
+            }}
+          >
+            <X className="h-4 w-4 mr-1" />
+            重置
+          </Button>
+        )}
       </div>
       <DataTable columns={columns} data={filteredLogs} />
 
