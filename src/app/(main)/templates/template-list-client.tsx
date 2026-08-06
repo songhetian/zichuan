@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
@@ -26,6 +26,9 @@ import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { deleteDeviceTemplate } from "@/actions/device-template.actions";
 import { TemplateFormDialog, type TemplateData } from "./template-form-dialog";
+import { ListSearchInput } from "@/components/ui/list-search-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { filterItemsByText } from "@/lib/list-search";
 import type { ComponentModelOption, TemplateOption, ComponentCategoryOption } from "./bom-table";
 
 interface TemplateListClientProps {
@@ -146,6 +149,10 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
 
 export function TemplateListClient({ templates, categories, componentModels, componentCategories }: TemplateListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+
+  const categoryName = (categoryId: number) => categories.find((c) => c.id === categoryId)?.name ?? "";
 
   // 转换为 BomTable 需要的格式
   const templateOptions: TemplateOption[] = templates.map((t) => ({
@@ -159,6 +166,18 @@ export function TemplateListClient({ templates, categories, componentModels, com
     })),
   }));
 
+  const categoryOptions = useMemo(
+    () => categories.map((c) => ({ value: c.id.toString(), label: c.name })),
+    [categories],
+  );
+
+  // 按模板名称或分类名称过滤，再叠加分类下拉筛选
+  const filteredTemplates = useMemo(() => {
+    const base = filterItemsByText(templates, search, (t) => [t.name, categoryName(t.categoryId)]);
+    if (!categoryFilter) return base;
+    return base.filter((t) => t.categoryId.toString() === categoryFilter);
+  }, [templates, search, categories, categoryFilter]);
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -171,6 +190,20 @@ export function TemplateListClient({ templates, categories, componentModels, com
           </Button>
         }
       />
+      <div className="flex items-center gap-2 flex-wrap">
+        <ListSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="搜索模板名称或分类"
+        />
+        <SearchableSelect
+          value={categoryFilter}
+          onValueChange={setCategoryFilter}
+          placeholder="选择分类"
+          options={categoryOptions}
+          triggerClassName="w-[160px]"
+        />
+      </div>
       <DataTable
         columns={[
           { accessorKey: "name", header: "模板名称" },
@@ -201,7 +234,7 @@ export function TemplateListClient({ templates, categories, componentModels, com
             ),
           },
         ]}
-        data={templates}
+        data={filteredTemplates}
       />
 
       {/* 创建弹窗 */}

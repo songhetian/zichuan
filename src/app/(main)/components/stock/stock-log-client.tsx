@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { ColumnDef } from "@tanstack/react-table";
@@ -18,9 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { ListSearchInput } from "@/components/ui/list-search-input";
 import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
+import { filterItemsByText } from "@/lib/list-search";
 
 interface StockLogItem {
   id: number;
@@ -100,6 +102,24 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
   const [quantity, setQuantity] = useState("");
   const [remark, setRemark] = useState("");
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [modelFilter, setModelFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+
+  // 按配件型号 / 类型(中文标签) / 操作员 / 备注过滤，再叠加型号 + 类型下拉筛选
+  const filteredLogs = useMemo(() => {
+    const base = filterItemsByText(logs, search, (l) => [
+      l.modelName,
+      typeMap[l.type] ?? l.type,
+      l.operator,
+      l.remark ?? "",
+    ]);
+    return base.filter((l) => {
+      if (modelFilter && l.modelId.toString() !== modelFilter) return false;
+      if (typeFilter && l.type !== typeFilter) return false;
+      return true;
+    });
+  }, [logs, search, modelFilter, typeFilter]);
 
   const handlePurchaseIn = async () => {
     if (!selectedModelId || !quantity) {
@@ -139,6 +159,8 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
     label: m.brand ? `${m.name}（${m.brand}）` : m.name,
   }));
 
+  const typeOptions = Object.entries(typeMap).map(([value, label]) => ({ value, label }));
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -151,7 +173,28 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
           </Button>
         }
       />
-      <DataTable columns={columns} data={logs} />
+      <div className="flex items-center gap-2 flex-wrap">
+        <ListSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="搜索配件型号、类型、操作员或备注"
+        />
+        <SearchableSelect
+          value={modelFilter}
+          onValueChange={setModelFilter}
+          placeholder="选择型号"
+          options={modelOptions}
+          triggerClassName="w-[180px]"
+        />
+        <SearchableSelect
+          value={typeFilter}
+          onValueChange={setTypeFilter}
+          placeholder="选择类型"
+          options={typeOptions}
+          triggerClassName="w-[160px]"
+        />
+      </div>
+      <DataTable columns={columns} data={filteredLogs} />
 
       <Dialog open={purchaseInOpen} onOpenChange={setPurchaseInOpen}>
         <DialogContent className="max-w-md">

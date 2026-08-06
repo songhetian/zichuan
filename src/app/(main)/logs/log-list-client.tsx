@@ -8,6 +8,7 @@ import { DataTable } from "@/components/features/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { moduleLabel } from "@/lib/system-log-labels";
 import {
   Select,
   SelectContent,
@@ -185,7 +186,7 @@ const systemColumns: ColumnDef<SystemLog>[] = [
     accessorKey: "module",
     header: "模块",
     cell: ({ row }) => (
-      <Badge variant="secondary">{row.original.module}</Badge>
+      <Badge variant="secondary">{moduleLabel(row.original.module)}</Badge>
     ),
   },
   {
@@ -349,7 +350,7 @@ export function LogListClient({
                           <SelectItem value="all">全部模块</SelectItem>
                           {moduleOptions.map((mod) => (
                             <SelectItem key={mod} value={mod}>
-                              {mod}
+                              {moduleLabel(mod)}
                             </SelectItem>
                           ))}
                         </SelectContent>
