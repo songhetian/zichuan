@@ -11,7 +11,8 @@ class ResizeObserverMock {
 globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
 
 // jsdom 不实现 scrollIntoView，cmdk 在选中/过滤时会调用
-if (!Element.prototype.scrollIntoView) {
+// node 环境（纯导入测试）下 Element 不存在，需保护
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 

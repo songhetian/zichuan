@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getIronSession, SessionOptions } from "iron-session";
 import { prisma } from "./prisma";
 import { ActionResult } from "./types";
@@ -48,7 +48,16 @@ export function setTestUser(user: SessionUser | null): void {
 // ============================================================
 
 async function getSession() {
-  return getIronSession<SessionData>(cookies(), sessionOptions);
+  // 根据真实代理协议动态决定 secure，为将来上 HTTPS 兜底（当前局域网 HTTP 下为 false）
+  const proto = (await headers()).get("x-forwarded-proto") ?? "http";
+  const opts: SessionOptions = {
+    ...sessionOptions,
+    cookieOptions: {
+      ...sessionOptions.cookieOptions,
+      secure: proto === "https",
+    },
+  };
+  return getIronSession<SessionData>(cookies(), opts);
 }
 
 export async function createSession(
@@ -85,6 +94,13 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   try {
     const session = await getSession();
     if (!session.userId || !session.username) return null;
+    // 滑动过期：在可写上下文（Server Action / Route Handler）里刷新 Max-Age，
+    // 让活跃用户不会在固定 8h 后被踢。只读上下文（如布局服务端渲染）调用 save 会抛错，静默跳过。
+    try {
+      await session.save();
+    } catch {
+      // 只读上下文不可写 cookie，忽略
+    }
     return { id: session.userId, username: session.username };
   } catch {
     return null;

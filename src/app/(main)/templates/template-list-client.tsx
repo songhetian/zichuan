@@ -143,6 +143,47 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
   );
 }
 
+export function createTemplateColumns(
+  categories: RowActionProps["categories"],
+  componentModels: RowActionProps["componentModels"],
+  allTemplates: RowActionProps["allTemplates"],
+  componentCategories: RowActionProps["componentCategories"]
+): ColumnDef<TemplateData>[] {
+  return [
+    { accessorKey: "name", header: "模板名称", size: 260 },
+    {
+      id: "categoryId",
+      header: "分类",
+      size: 140,
+      cell: ({ row }) => {
+        const cat = categories.find((c) => c.id === row.original.categoryId);
+        return cat?.name ?? "-";
+      },
+    },
+    {
+      id: "componentCount",
+      header: "配件数量",
+      size: 100,
+      meta: { align: "right" as const },
+      cell: ({ row }) => row.original.components.length,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      size: 120,
+      cell: ({ row }) => (
+        <RowActions
+          template={row.original}
+          categories={categories}
+          componentModels={componentModels}
+          allTemplates={allTemplates}
+          componentCategories={componentCategories}
+        />
+      ),
+    },
+  ];
+}
+
 // ============================================================
 // 主组件
 // ============================================================
@@ -219,35 +260,7 @@ export function TemplateListClient({ templates, categories, componentModels, com
         )}
       </div>
       <DataTable
-        columns={[
-          { accessorKey: "name", header: "模板名称" },
-          {
-            id: "categoryId",
-            header: "分类",
-            cell: ({ row }) => {
-              const cat = categories.find((c) => c.id === row.original.categoryId);
-              return cat?.name ?? "-";
-            },
-          },
-          {
-            id: "componentCount",
-            header: "配件数量",
-            cell: ({ row }) => row.original.components.length,
-          },
-          {
-            id: "actions",
-            header: "操作",
-            cell: ({ row }) => (
-              <RowActions
-                template={row.original}
-                categories={categories}
-                componentModels={componentModels}
-                allTemplates={templateOptions}
-                componentCategories={componentCategories}
-              />
-            ),
-          },
-        ]}
+        columns={createTemplateColumns(categories, componentModels, templateOptions, componentCategories)}
         data={filteredTemplates}
       />
 

@@ -68,27 +68,31 @@ interface EmployeeListClientProps {
   departments: { id: number; name: string }[];
 }
 
-const columns: ColumnDef<Employee & { _departments: { id: number; name: string }[] }>[] = [
-  { accessorKey: "employeeNo", header: "工号" },
-  { accessorKey: "name", header: "姓名" },
+export const columns: ColumnDef<Employee & { _departments: { id: number; name: string }[] }>[] = [
+  { accessorKey: "employeeNo", header: "工号", size: 100 },
+  { accessorKey: "name", header: "姓名", size: 100 },
   {
     accessorKey: "departmentName",
     header: "部门",
+    size: 140,
     cell: ({ row }) => row.original.departmentName ?? "-",
   },
   {
     accessorKey: "phone",
     header: "电话",
+    size: 140,
     cell: ({ row }) => row.getValue("phone") ?? "-",
   },
   {
     accessorKey: "email",
     header: "邮箱",
+    size: 220,
     cell: ({ row }) => row.getValue("email") ?? "-",
   },
   {
     id: "assetCount",
     header: "在用设备数",
+    size: 100,
     cell: ({ row }) => {
       const count = row.original.assetCount ?? 0;
       return (
@@ -101,6 +105,7 @@ const columns: ColumnDef<Employee & { _departments: { id: number; name: string }
   {
     id: "actions",
     header: "操作",
+    size: 100,
     cell: ({ row }) => {
       const emp = row.original;
       return (

@@ -53,19 +53,23 @@ const typeMap: Record<string, string> = {
   UPGRADE_USE: "升级使用",
 };
 
-const columns: ColumnDef<StockLogItem>[] = [
+export const columns: ColumnDef<StockLogItem>[] = [
   {
     accessorKey: "modelName",
     header: "配件型号",
+    size: 220,
   },
   {
     accessorKey: "type",
     header: "类型",
+    size: 100,
     cell: ({ row }) => typeMap[row.getValue("type") as string] ?? row.getValue("type"),
   },
   {
     accessorKey: "quantity",
     header: "数量",
+    size: 80,
+    meta: { align: "right" as const },
     cell: ({ row }) => {
       const qty = row.getValue("quantity") as number;
       return (
@@ -78,15 +82,18 @@ const columns: ColumnDef<StockLogItem>[] = [
   {
     accessorKey: "operator",
     header: "操作员",
+    size: 100,
   },
   {
     accessorKey: "remark",
     header: "备注",
+    size: 200,
     cell: ({ row }) => row.getValue("remark") ?? "-",
   },
   {
     accessorKey: "createdAt",
     header: "时间",
+    size: 160,
     cell: ({ row }) => {
       const date = new Date(row.getValue("createdAt"));
       return date.toLocaleString("zh-CN");

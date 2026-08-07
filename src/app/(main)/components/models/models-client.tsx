@@ -60,21 +60,25 @@ function getCategoryName(categoryId: number, categories: { id: number; name: str
   return cat?.name ?? "-";
 }
 
-const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: string }[] }>[] = [
+export const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: string }[] }>[] = [
   {
     id: "category",
     header: "分类",
+    size: 100,
     cell: ({ row }) => getCategoryName(row.original.categoryId, row.original._categories),
   },
-  { accessorKey: "name", header: "型号名称" },
+  { accessorKey: "name", header: "型号名称", size: 320 },
   {
     accessorKey: "brand",
     header: "品牌",
+    size: 140,
     cell: ({ row }) => row.getValue("brand") ?? "-",
   },
   {
     accessorKey: "stock",
     header: "库存数量",
+    size: 100,
+    meta: { align: "right" as const },
     cell: ({ row }) => (
       <span className={row.original.stock > 0 ? "text-green-600 font-medium" : "text-muted-foreground"}>
         {row.original.stock}
@@ -84,6 +88,7 @@ const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: str
   {
     id: "actions",
     header: "操作",
+    size: 120,
     cell: ({ row }) => {
       const model = row.original;
       return (

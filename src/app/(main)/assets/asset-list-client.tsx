@@ -716,6 +716,7 @@ function getColumns(
       enableSorting: false,
       size: 180,
       minSize: 160,
+      maxSize: 240,
       cell: ({ row }) => {
         const summary = getConfigSummary(row.original.components);
         const hasConfig = summary.cpu !== "-" || summary.memory !== "-" || summary.disk !== "-";
