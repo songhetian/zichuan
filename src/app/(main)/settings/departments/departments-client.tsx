@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
+import { ListSearchInput } from "@/components/ui/list-search-input";
 import {
   Table,
   TableBody,
@@ -22,6 +23,7 @@ import {
 } from "@/actions/department.actions";
 import { ActionButtons } from "@/components/features/action-buttons";
 import { SimpleCrudDialog } from "@/components/features/simple-crud-dialog";
+import { filterItemsByText } from "@/lib/list-search";
 
 type Department = { id: number; name: string };
 
@@ -31,10 +33,17 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
   const [departments, setDepartments] = useState(initialDepartments);
   const [currentPage, setCurrentPage] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const router = useRouter();
 
-  const totalPages = Math.ceil(departments.length / PAGE_SIZE);
-  const paginatedDepartments = departments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  // 按部门名称过滤
+  const filteredDepartments = useMemo(
+    () => filterItemsByText(departments, search, (d) => d.name),
+    [departments, search],
+  );
+
+  const totalPages = Math.ceil(filteredDepartments.length / PAGE_SIZE);
+  const paginatedDepartments = filteredDepartments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleCreate = async (name: string) => {
     const result = await createDepartment({ name });
@@ -65,6 +74,15 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
       <PageHeader
         title="部门管理"
         description="管理部门信息"
+      />
+
+      <ListSearchInput
+        value={search}
+        onChange={(v) => {
+          setSearch(v);
+          setCurrentPage(1);
+        }}
+        placeholder="搜索部门名称"
       />
 
       <Card>
@@ -103,7 +121,7 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
           </Table>
 
           <Pagination
-            total={departments.length}
+            total={filteredDepartments.length}
             current={currentPage}
             pageSize={PAGE_SIZE}
             onPageChange={setCurrentPage}

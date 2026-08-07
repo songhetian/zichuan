@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { TreeTable, type TreeNode } from "@/components/features/tree-table";
@@ -15,6 +15,8 @@ import {
 } from "@/actions/asset-category.actions";
 import { ActionButtons } from "@/components/features/action-buttons";
 import { SimpleCrudDialog, type FieldConfig } from "@/components/features/simple-crud-dialog";
+import { ListSearchInput } from "@/components/ui/list-search-input";
+import { filterTreeByText } from "@/lib/list-search";
 import { Badge } from "@/components/ui/badge";
 
 interface Category extends TreeNode {
@@ -30,9 +32,16 @@ export function AssetCategoriesClient({
 }) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const { toast } = useToast();
 
   const handleRefresh = () => router.refresh();
+
+  // 按分类名称过滤（命中节点的祖先一并保留，保证树结构完整）
+  const filteredCategories = useMemo(
+    () => filterTreeByText(initialCategories, search),
+    [initialCategories, search],
+  );
 
   const handleDragEnd = async (draggedId: number, targetId: number, position: 'before' | 'after' | 'inside') => {
     if (position === 'inside') {
@@ -147,8 +156,13 @@ export function AssetCategoriesClient({
           </Button>
         }
       />
+      <ListSearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="搜索分类名称"
+      />
       <TreeTable
-        data={initialCategories}
+        data={filteredCategories}
         columns={columns}
         actions={(node) => (
           <ActionButtons

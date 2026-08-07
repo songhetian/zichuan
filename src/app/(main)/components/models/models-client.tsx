@@ -1,8 +1,11 @@
 "use client";
 
 import { downloadExcelFile } from "@/lib/excel-download";
+import { ListSearchInput } from "@/components/ui/list-search-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { filterItemsByText } from "@/lib/list-search";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
@@ -264,6 +267,9 @@ function ComponentActionButtons({
 
 export function ModelsClient({ models, categories }: ModelsClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
@@ -274,7 +280,36 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
   const router = useRouter();
   const { toast } = useToast();
 
-  const dataWithCategories = models.map((m) => ({
+  const categoryOptions = useMemo(
+    () => categories.map((c) => ({ value: c.id.toString(), label: c.name })),
+    [categories],
+  );
+
+  const brandOptions = useMemo(() => {
+    const set = new Set<string>();
+    models.forEach((m) => {
+      if (m.brand) set.add(m.brand);
+    });
+    return Array.from(set)
+      .sort()
+      .map((b) => ({ value: b, label: b }));
+  }, [models]);
+
+  // 按型号名称 / 品牌 / 分类名称文本过滤，再叠加分类 + 品牌下拉筛选
+  const filteredModels = useMemo(() => {
+    const base = filterItemsByText(models, search, (m) => [
+      m.name,
+      m.brand ?? "",
+      getCategoryName(m.categoryId, categories),
+    ]);
+    return base.filter((m) => {
+      if (categoryFilter && m.categoryId.toString() !== categoryFilter) return false;
+      if (brandFilter && (m.brand ?? "") !== brandFilter) return false;
+      return true;
+    });
+  }, [models, search, categories, categoryFilter, brandFilter]);
+
+  const dataWithCategories = filteredModels.map((m) => ({
     ...m,
     _categories: categories,
   }));
@@ -375,6 +410,27 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
           </div>
         }
       />
+      <div className="flex items-center gap-2 flex-wrap">
+        <ListSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="搜索型号名称、品牌或分类"
+        />
+        <SearchableSelect
+          value={categoryFilter}
+          onValueChange={setCategoryFilter}
+          placeholder="选择分类"
+          options={categoryOptions}
+          triggerClassName="w-[160px]"
+        />
+        <SearchableSelect
+          value={brandFilter}
+          onValueChange={setBrandFilter}
+          placeholder="选择品牌"
+          options={brandOptions}
+          triggerClassName="w-[160px]"
+        />
+      </div>
       <DataTable columns={columns} data={dataWithCategories} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
