@@ -93,7 +93,7 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
           </Button>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead>部门名称</TableHead>
@@ -104,7 +104,7 @@ export function DepartmentsClient({ initialDepartments }: { initialDepartments: 
               {paginatedDepartments.map((dept) => (
                 <TableRow key={dept.id}>
                   <TableCell>{dept.name}</TableCell>
-                  <TableCell>
+                  <TableCell className="w-[120px]">
                     <ActionButtons
                       id={dept.id}
                       name={dept.name}

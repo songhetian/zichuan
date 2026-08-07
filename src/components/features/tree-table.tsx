@@ -176,14 +176,13 @@ export function TreeTable<T extends TreeNode>({
   return (
     <div className="space-y-2">
       <div className="rounded-md border">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">
               <TableHead className="w-10" />
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={col.width ? `w-${col.width}` : ""}
                   style={{ width: col.width, textAlign: col.align || "left" }}
                 >
                   {col.header}
@@ -247,7 +246,7 @@ export function TreeTable<T extends TreeNode>({
                     {columns.map((col, idx) => (
                       <TableCell
                         key={col.key}
-                        style={{ textAlign: col.align || "left" }}
+                        style={{ width: col.width, textAlign: col.align || "left" }}
                       >
                         <span
                           style={{ paddingLeft: `${idx === 0 ? row._depth * 24 : 0}px` }}
@@ -263,7 +262,7 @@ export function TreeTable<T extends TreeNode>({
                       </TableCell>
                     ))}
                     {actions && (
-                      <TableCell className="text-center">
+                      <TableCell className="w-24 text-center">
                         {actions(row)}
                       </TableCell>
                     )}

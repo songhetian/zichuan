@@ -105,10 +105,11 @@ function formatRelativeTime(date: Date): string {
 // Column definitions
 // ---------------------------------------------------------------------------
 
-const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
+export const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   {
     accessorKey: "createdAt",
     header: "时间",
+    size: 120,
     cell: ({ row }) => {
       const date = new Date(row.original.createdAt);
       return (
@@ -128,6 +129,7 @@ const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   {
     accessorKey: "action",
     header: "动作",
+    size: 100,
     cell: ({ row }) => {
       const action = row.original.action;
       return (
@@ -140,6 +142,7 @@ const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   {
     accessorKey: "assetNo",
     header: "设备编号",
+    size: 160,
     cell: ({ row }) => (
       <span className="text-sm font-mono">{row.original.assetNo ?? "-"}</span>
     ),
@@ -147,6 +150,7 @@ const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   {
     accessorKey: "remark",
     header: "备注",
+    size: 240,
     cell: ({ row }) => (
       <span className="text-sm max-w-[300px] truncate block">
         {row.original.remark ?? "-"}
@@ -156,16 +160,18 @@ const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   {
     accessorKey: "operator",
     header: "操作人",
+    size: 100,
     cell: ({ row }) => (
       <span className="text-sm">{row.original.operator}</span>
     ),
   },
 ];
 
-const systemColumns: ColumnDef<SystemLog>[] = [
+export const systemColumns: ColumnDef<SystemLog>[] = [
   {
     accessorKey: "createdAt",
     header: "时间",
+    size: 120,
     cell: ({ row }) => {
       const date = new Date(row.original.createdAt);
       return (
@@ -185,6 +191,7 @@ const systemColumns: ColumnDef<SystemLog>[] = [
   {
     accessorKey: "module",
     header: "模块",
+    size: 100,
     cell: ({ row }) => (
       <Badge variant="secondary">{moduleLabel(row.original.module)}</Badge>
     ),
@@ -192,6 +199,7 @@ const systemColumns: ColumnDef<SystemLog>[] = [
   {
     accessorKey: "action",
     header: "动作",
+    size: 100,
     cell: ({ row }) => (
       <Badge variant="outline">
         {ACTION_LABEL_MAP[row.original.action] ?? row.original.action}
@@ -201,6 +209,7 @@ const systemColumns: ColumnDef<SystemLog>[] = [
   {
     accessorKey: "detail",
     header: "详情",
+    size: 260,
     cell: ({ row }) => (
       <span className="text-sm max-w-[300px] truncate block">
         {row.original.detail}
@@ -210,6 +219,7 @@ const systemColumns: ColumnDef<SystemLog>[] = [
   {
     accessorKey: "operator",
     header: "操作员",
+    size: 100,
     cell: ({ row }) => (
       <span className="text-sm">{row.original.operator}</span>
     ),

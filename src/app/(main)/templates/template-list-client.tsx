@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { deleteDeviceTemplate } from "@/actions/device-template.actions";
 import { TemplateFormDialog, type TemplateData } from "./template-form-dialog";
@@ -143,6 +143,47 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
   );
 }
 
+export function createTemplateColumns(
+  categories: RowActionProps["categories"],
+  componentModels: RowActionProps["componentModels"],
+  allTemplates: RowActionProps["allTemplates"],
+  componentCategories: RowActionProps["componentCategories"]
+): ColumnDef<TemplateData>[] {
+  return [
+    { accessorKey: "name", header: "模板名称", size: 260 },
+    {
+      id: "categoryId",
+      header: "分类",
+      size: 140,
+      cell: ({ row }) => {
+        const cat = categories.find((c) => c.id === row.original.categoryId);
+        return cat?.name ?? "-";
+      },
+    },
+    {
+      id: "componentCount",
+      header: "配件数量",
+      size: 100,
+      meta: { align: "right" as const },
+      cell: ({ row }) => row.original.components.length,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      size: 120,
+      cell: ({ row }) => (
+        <RowActions
+          template={row.original}
+          categories={categories}
+          componentModels={componentModels}
+          allTemplates={allTemplates}
+          componentCategories={componentCategories}
+        />
+      ),
+    },
+  ];
+}
+
 // ============================================================
 // 主组件
 // ============================================================
@@ -203,37 +244,23 @@ export function TemplateListClient({ templates, categories, componentModels, com
           options={categoryOptions}
           triggerClassName="w-[160px]"
         />
+        {(search || categoryFilter) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearch("");
+              setCategoryFilter("");
+            }}
+          >
+            <X className="h-4 w-4 mr-1" />
+            重置
+          </Button>
+        )}
       </div>
       <DataTable
-        columns={[
-          { accessorKey: "name", header: "模板名称" },
-          {
-            id: "categoryId",
-            header: "分类",
-            cell: ({ row }) => {
-              const cat = categories.find((c) => c.id === row.original.categoryId);
-              return cat?.name ?? "-";
-            },
-          },
-          {
-            id: "componentCount",
-            header: "配件数量",
-            cell: ({ row }) => row.original.components.length,
-          },
-          {
-            id: "actions",
-            header: "操作",
-            cell: ({ row }) => (
-              <RowActions
-                template={row.original}
-                categories={categories}
-                componentModels={componentModels}
-                allTemplates={templateOptions}
-                componentCategories={componentCategories}
-              />
-            ),
-          },
-        ]}
+        columns={createTemplateColumns(categories, componentModels, templateOptions, componentCategories)}
         data={filteredTemplates}
       />
 
