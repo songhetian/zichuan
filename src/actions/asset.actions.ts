@@ -5,24 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { generateAssetNo } from "@/lib/asset-numbering";
+import { computeAssetCapacities } from "@/lib/asset-capacity";
 import { requireAuth } from "@/lib/auth";
-
-// ============================================================
-// 容量提取工具
-// ============================================================
-
-function extractCapacityGB(name: string): number | null {
-  if (!name) return null;
-  const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
-  if (gbMatch) {
-    return parseFloat(gbMatch[1]);
-  }
-  const tbMatch = name.match(/(\d+(?:\.\d+)?)\s*TB/i);
-  if (tbMatch) {
-    return parseFloat(tbMatch[1]) * 1000;
-  }
-  return null;
-}
 
 // ============================================================
 // Schema 校验
@@ -371,38 +355,14 @@ export async function getAssets(
     let filtered = formatted;
     if (memoryMinGB != null) {
       filtered = filtered.filter((asset) => {
-        let totalMemory = 0;
-        let hasMemory = false;
-        const comps = (asset as any)._templateComponents ?? [];
-        for (const comp of comps) {
-          const name = (comp.modelName ?? "").toLowerCase();
-          if (name.includes("内存") || name.includes("ram") || name.includes("ddr") || name.includes("so-dimm")) {
-            const cap = extractCapacityGB(comp.modelName ?? "");
-            if (cap != null) {
-              totalMemory += cap * comp.quantity;
-              hasMemory = true;
-            }
-          }
-        }
-        return hasMemory && totalMemory >= memoryMinGB;
+        const caps = computeAssetCapacities((asset as any)._templateComponents ?? []);
+        return caps.memoryGB >= memoryMinGB;
       });
     }
     if (diskMinGB != null) {
       filtered = filtered.filter((asset) => {
-        let totalDisk = 0;
-        let hasDisk = false;
-        const comps = (asset as any)._templateComponents ?? [];
-        for (const comp of comps) {
-          const name = (comp.modelName ?? "").toLowerCase();
-          if (name.includes("硬盘") || name.includes("ssd") || name.includes("hdd") || name.includes("nvme")) {
-            const cap = extractCapacityGB(comp.modelName ?? "");
-            if (cap != null) {
-              totalDisk += cap * comp.quantity;
-              hasDisk = true;
-            }
-          }
-        }
-        return hasDisk && totalDisk >= diskMinGB;
+        const caps = computeAssetCapacities((asset as any)._templateComponents ?? []);
+        return caps.diskGB >= diskMinGB;
       });
     }
 

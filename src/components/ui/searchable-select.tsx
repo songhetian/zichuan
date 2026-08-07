@@ -82,7 +82,7 @@ export function SearchableSelect({
                   value === option.value && "bg-accent"
                 )}
               >
-                {option.label}
+                <span className="truncate">{option.label}</span>
               </CommandPrimitive.Item>
             ))}
           </CommandPrimitive.List>
