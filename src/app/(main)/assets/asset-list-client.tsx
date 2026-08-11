@@ -67,6 +67,7 @@ import {
 import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.actions";
 import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
 import { getMemoryGB, getDiskGB } from "@/lib/asset-filter";
+import { filterByImportDate } from "@/lib/filter-by-import-date";
 
 // ============================================================
 // Helpers
@@ -210,6 +211,7 @@ interface AssetItem {
   employeeId: number | null;
   employeeName: string | null;
   departmentName: string | null;
+  createdAt: Date | string;
   purchaseDate: Date | null;
   warrantyMonths: number | null;
   location: string | null;
@@ -871,6 +873,8 @@ export function AssetListClient({
   const [keyword, setKeyword] = useState("");
   const [memoryMinGB, setMemoryMinGB] = useState<string>("");
   const [diskMinGB, setDiskMinGB] = useState<string>("");
+  const [importFrom, setImportFrom] = useState<string>("");
+  const [importTo, setImportTo] = useState<string>("");
   const [exportLoading, setExportLoading] = useState(false);
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
   const [exportMode, setExportMode] = useState<"all" | "selected">("all");
@@ -942,8 +946,23 @@ export function AssetListClient({
         matchDisk = getDiskGB(asset.components) >= minGB;
       }
     }
-    
-    return matchStatus && matchDepartment && matchCategory && matchEmployee && matchKeyword && matchMemory && matchDisk;
+
+    // 导入时间筛选（createdAt 在 [importFrom, importTo] 闭区间）
+    const matchImportDate = filterByImportDate([asset], {
+      from: importFrom || null,
+      to: importTo || null,
+    }).length > 0;
+
+    return (
+      matchStatus &&
+      matchDepartment &&
+      matchCategory &&
+      matchEmployee &&
+      matchKeyword &&
+      matchMemory &&
+      matchDisk &&
+      matchImportDate
+    );
   });
 
   const handleExport = async (selectedFields: string[]) => {
@@ -1368,6 +1387,24 @@ export function AssetListClient({
             ...categories.map((c) => ({ value: c.id.toString(), label: c.name })),
           ]}
         />
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">导入时间</span>
+          <Input
+            type="date"
+            value={importFrom}
+            onChange={(e) => setImportFrom(e.target.value)}
+            className="w-[150px]"
+            aria-label="导入时间起"
+          />
+          <span className="text-sm text-muted-foreground">至</span>
+          <Input
+            type="date"
+            value={importTo}
+            onChange={(e) => setImportTo(e.target.value)}
+            className="w-[150px]"
+            aria-label="导入时间止"
+          />
+        </div>
         <AdvancedFilterBar
           departmentFilter={departmentFilter}
           employeeFilter={employeeFilter}

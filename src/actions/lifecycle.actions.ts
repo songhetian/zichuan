@@ -99,6 +99,8 @@ export async function allocateAssets(
         data: {
           status: "IN_USE",
           employeeId,
+          // 分配完成后设备名改为使用人姓名
+          name: employee.name,
         },
       });
 
@@ -215,6 +217,8 @@ export async function returnAssets(
         data: {
           status: "IDLE",
           employeeId: null,
+          // 归还后设备名改回「闲置」
+          name: "闲置",
         },
       });
 
@@ -296,7 +300,11 @@ export async function transferAssets(
           id: { in: assetIds },
           status: "IN_USE",
         },
-        data: { employeeId: toEmployeeId },
+        data: {
+          employeeId: toEmployeeId,
+          // 调拨后设备名改为新使用人姓名
+          name: toEmployee.name,
+        },
       });
 
       if (updateResult.count !== assetIds.length) {

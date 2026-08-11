@@ -16,13 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createAsset } from "@/actions/asset.actions";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
@@ -106,21 +100,16 @@ export function CreateAssetDialog({ open, onOpenChange, templates }: CreateAsset
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
           <div className="space-y-2">
             <Label>设备模板</Label>
-            <Select
+            <SearchableSelect
               value={form.watch("templateId")?.toString() ?? ""}
-              onValueChange={(v) => form.setValue("templateId", Number(v))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="选择设备模板" />
-              </SelectTrigger>
-              <SelectContent>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id.toString()}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onValueChange={(v) => {
+                // SearchableSelect 点选已选项会回传空串（toggle-off），模板为必填项，忽略空串保持原选中
+                if (v) form.setValue("templateId", Number(v));
+              }}
+              placeholder="选择设备模板"
+              triggerClassName="w-full"
+              options={templates.map((t) => ({ value: t.id.toString(), label: t.name }))}
+            />
             {form.formState.errors.templateId && (
               <p className="text-sm text-destructive">{form.formState.errors.templateId.message}</p>
             )}

@@ -2,12 +2,14 @@
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
+import { generateEmployeeNo } from "@/lib/employee-no";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 
 const createSchema = z.object({
-  employeeNo: z.string().min(1, "工号不能为空"),
+  // 工号可选：不传时自动生成（如 EMP0001），传了则使用自定义工号
+  employeeNo: z.string().min(1, "工号不能为空").optional(),
   name: z.string().min(1, "姓名不能为空"),
   departmentId: z.number(),
   phone: z.string().optional(),
@@ -72,12 +74,19 @@ export async function createEmployee(
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
   }
 
-  const { employeeNo, name, departmentId, phone, email } = validated.data;
+  const { employeeNo: inputNo, name, departmentId, phone, email } = validated.data;
 
   // 检查部门是否存在
   const dept = await prisma.department.findUnique({ where: { id: departmentId } });
   if (!dept) {
     return { success: false, error: "部门不存在" };
+  }
+
+  // 未提供工号时自动生成（EMP + 4 位序号）
+  let employeeNo = inputNo;
+  if (!employeeNo) {
+    const existingNos = await prisma.employee.findMany({ select: { employeeNo: true } });
+    employeeNo = generateEmployeeNo(existingNos.map((e) => e.employeeNo));
   }
 
   try {

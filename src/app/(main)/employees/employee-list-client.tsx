@@ -43,7 +43,8 @@ import { exportEmployeesToExcel, importEmployeesFromExcel } from "@/actions/exce
 import { getSystemLogs } from "@/actions/system-log.actions";
 
 const employeeSchema = z.object({
-  employeeNo: z.string().min(1, "工号不能为空"),
+  // 新建员工时工号自动生成，无需手动填写
+  employeeNo: z.string().optional(),
   name: z.string().min(1, "姓名不能为空"),
   departmentId: z.string().min(1, "请选择部门"),
   email: z.string().email("邮箱格式不正确").optional().or(z.literal("")),
@@ -325,7 +326,7 @@ function EmployeeActionButtons({
   const handleEdit = async (values: EmployeeFormValues) => {
     setEditLoading(true);
     const result = await updateEmployee(employee.id, {
-      employeeNo: values.employeeNo.trim(),
+      employeeNo: values.employeeNo?.trim() || employee.employeeNo,
       name: values.name.trim(),
       departmentId: Number(values.departmentId),
       phone: values.phone?.trim() || undefined,
@@ -469,7 +470,7 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
   const handleCreate = async (values: EmployeeFormValues) => {
     setLoading(true);
     const result = await createEmployee({
-      employeeNo: values.employeeNo.trim(),
+      // 工号由后端自动生成（EMP0001…）
       name: values.name.trim(),
       departmentId: Number(values.departmentId),
       phone: values.phone?.trim() || undefined,
@@ -627,10 +628,8 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>工号</Label>
-                <Input {...createForm.register("employeeNo")} placeholder="请输入工号" />
-                {createForm.formState.errors.employeeNo && (
-                  <p className="text-sm text-destructive">{createForm.formState.errors.employeeNo.message}</p>
-                )}
+                <Input value="自动生成" disabled className="text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">保存后自动生成（如 EMP0001）</p>
               </div>
               <div className="space-y-2">
                 <Label>姓名</Label>

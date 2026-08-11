@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { prisma } from "@/lib/prisma";
 import { DashboardClient } from "./dashboard-client";
-import { getStockStats, getLifecycleTrend } from "@/actions/stats.actions";
+import { buildCategoryByDepartmentData } from "@/lib/category-by-department";
 
 export default async function DashboardPage() {
   // 并行执行所有独立查询，避免串行等待
@@ -15,21 +15,24 @@ export default async function DashboardPage() {
     lowStockItems,
     recentLogs,
     allAssetsWithWarranty,
-    stockResult,
-    trendResult,
   ] = await Promise.all([
     // 获取设备统计数据
     prisma.asset.groupBy({
       by: ["status"],
       _count: { id: true },
     }),
-    // 获取分类分布
+    // 获取分类分布 + 部门维度（用于「部门 × 分类」堆叠柱状图）
     prisma.asset.findMany({
       include: {
         template: {
           select: {
             categoryId: true,
             category: { select: { name: true } },
+          },
+        },
+        employee: {
+          select: {
+            department: { select: { name: true } },
           },
         },
       },
@@ -62,10 +65,6 @@ export default async function DashboardPage() {
         warrantyMonths: true,
       },
     }),
-    // 配件库存统计
-    getStockStats(),
-    // 生命周期趋势
-    getLifecycleTrend({ months: 6 }),
   ]);
 
   const byStatus: Record<string, number> = {
@@ -79,21 +78,13 @@ export default async function DashboardPage() {
   }
   const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
 
-  const catMap = new Map<number, { name: string; count: number }>();
-  for (const a of assetsWithCategory) {
-    const catId = a.template?.categoryId;
-    const catName = a.template?.category?.name ?? "未知";
-    if (catId != null) {
-      const existing = catMap.get(catId) ?? { name: catName, count: 0 };
-      existing.count++;
-      catMap.set(catId, existing);
-    }
-  }
-  const byCategory = Array.from(catMap.entries()).map(([id, v]) => ({
-    categoryId: id,
-    categoryName: v.name,
-    count: v.count,
-  }));
+  // 「部门 × 分类」设备分布（供堆叠柱状图）
+  const categoryByDepartment = buildCategoryByDepartmentData(
+    assetsWithCategory.map((a) => ({
+      categoryName: a.template?.category?.name ?? null,
+      departmentName: a.employee?.department?.name ?? null,
+    }))
+  );
 
   // 构建待办任务
   const pendingTasks: {
@@ -155,12 +146,7 @@ export default async function DashboardPage() {
       data={{
         total,
         byStatus,
-        byCategory,
-        lowStockItems: lowStockItems.map((s) => ({
-          modelId: s.modelId,
-          modelName: s.model?.name ?? "",
-          quantity: s.quantity,
-        })),
+        categoryByDepartment,
         recentLogs: recentLogs.map((log) => ({
           id: log.id,
           action: log.action,
@@ -169,8 +155,6 @@ export default async function DashboardPage() {
           createdAt: log.createdAt,
         })),
         pendingTasks,
-        stockStats: stockResult.success ? stockResult.data : [],
-        trendData: trendResult.success ? trendResult.data : [],
       }}
     />
   );

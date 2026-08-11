@@ -56,6 +56,7 @@ type AssetDetail = {
   purchaseDate: Date | null;
   warrantyMonths: number | null;
   notes: string | null;
+  createdAt: Date;
   components: {
     id: number;
     modelId: number;
@@ -96,6 +97,7 @@ type PrismaAsset = {
   purchaseDate: Date | null;
   warrantyMonths: number | null;
   notes: string | null;
+  createdAt: Date;
   components: {
     id: number;
     modelId: number;
@@ -130,6 +132,7 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
       purchaseDate: null,
       warrantyMonths: null,
       notes: null,
+      createdAt: new Date(),
       components: [],
       lifecycleLogs: [],
     };
@@ -149,6 +152,7 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
     purchaseDate: asset.purchaseDate ?? null,
     warrantyMonths: asset.warrantyMonths ?? null,
     notes: asset.notes ?? null,
+    createdAt: asset.createdAt,
     components: asset.components.map((c) => ({
       id: c.id,
       modelId: c.modelId,

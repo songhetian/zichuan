@@ -9,12 +9,14 @@ import { Clock, AlertCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CategoryByDepartmentChart } from "@/components/features/category-by-department-chart";
+import type { CategoryByDepartmentData } from "@/lib/category-by-department";
+import { getStatusLabel } from "@/lib/status-labels";
 
 interface DashboardData {
   total: number;
   byStatus: Record<string, number>;
-  byCategory: { categoryId: number; categoryName: string; count: number }[];
-  lowStockItems: { modelId: number; modelName: string; quantity: number }[];
+  categoryByDepartment: CategoryByDepartmentData;
   recentLogs: {
     id: number;
     action: string;
@@ -28,26 +30,18 @@ interface DashboardData {
     description: string;
     count?: number;
   }[];
-  stockStats: { modelId: number; modelName: string; brand: string | null; categoryName: string; quantity: number }[];
-  trendData: { month: string; allocated: number; returned: number; transferred: number; scrapped: number }[];
 }
 
 interface DashboardClientProps {
   data: DashboardData;
 }
 
-const STATUS_LABEL_MAP: Record<string, string> = {
-  IDLE: "闲置",
-  IN_USE: "在用",
-  IN_MAINTENANCE: "维修中",
-  SCRAPPED: "报废",
-};
-
 const STATUS_COLOR_MAP: Record<string, string> = {
   IDLE: "#78716c",
   IN_USE: "#0d9488",
   IN_MAINTENANCE: "#d97706",
   SCRAPPED: "#dc2626",
+  IN_STOCK: "#3b82f6",
 };
 
 // 卡片左侧竖条颜色（Tailwind 类名）
@@ -58,6 +52,16 @@ const CARD_BAR_CLASS: Record<string, string> = {
   IN_MAINTENANCE: "bg-amber-500",
   SCRAPPED: "bg-red-500",
 };
+
+type DashboardSectionId = "tasks" | "status" | "deptCategory" | "logs";
+
+// 首页信息模块（一次只显示一个，避免平铺需逐个关闭）
+const DASHBOARD_SECTIONS: { id: DashboardSectionId; label: string }[] = [
+  { id: "tasks", label: "待办任务" },
+  { id: "status", label: "设备状态分布" },
+  { id: "deptCategory", label: "各部门设备分类分布" },
+  { id: "logs", label: "最近操作" },
+];
 
 const ACTION_LABEL_MAP: Record<string, string> = {
   CREATED: "创建",
@@ -74,7 +78,7 @@ function PieChart({ data }: { data: DashboardData }) {
   const chartData = Object.entries(data.byStatus)
     .filter(([, value]) => value > 0)
     .map(([key, value]) => ({
-      name: STATUS_LABEL_MAP[key] ?? key,
+      name: getStatusLabel(key),
       value,
       itemStyle: { color: STATUS_COLOR_MAP[key] ?? "#3b82f6" },
     }));
@@ -136,217 +140,6 @@ function PieChart({ data }: { data: DashboardData }) {
           },
         },
         data: chartData,
-      },
-    ],
-  };
-
-  return <ReactECharts option={option} style={{ height: 250 }} />;
-}
-
-function BarChart({ data }: { data: DashboardData }) {
-  if (data.byCategory.length === 0) {
-    return (
-      <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">
-        暂无数据
-      </div>
-    );
-  }
-
-  const option = {
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      backgroundColor: "rgba(255, 255, 255, 0.95)",
-      borderColor: "#e5e7eb",
-      borderWidth: 1,
-      textStyle: { color: "#1f2937" },
-      padding: [12, 16],
-      borderRadius: 8,
-    },
-    grid: {
-      left: "3%",
-      right: "4%",
-      bottom: "3%",
-      top: "10%",
-      containLabel: true,
-    },
-    xAxis: {
-      type: "category",
-      data: data.byCategory.map((c) => c.categoryName),
-      axisLabel: {
-        interval: 0,
-        rotate: data.byCategory.length > 5 ? 30 : 0,
-        color: "#6b7280",
-        fontSize: 11,
-      },
-      axisLine: { lineStyle: { color: "#e5e7eb" } },
-      axisTick: { show: false },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: "#6b7280", fontSize: 11 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
-    },
-    series: [
-      {
-        type: "bar",
-        data: data.byCategory.map((c) => c.count),
-        itemStyle: {
-          color: "#0d9488",
-          borderRadius: [4, 4, 0, 0],
-        },
-        barWidth: "45%",
-      },
-    ],
-  };
-
-  return <ReactECharts option={option} style={{ height: 250 }} />;
-}
-
-function TrendLineChart({ trendData }: { trendData: DashboardData["trendData"] }) {
-  if (trendData.length === 0) {
-    return (
-      <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">
-        暂无数据
-      </div>
-    );
-  }
-
-  const option = {
-    tooltip: { 
-      trigger: "axis",
-      backgroundColor: "rgba(255, 255, 255, 0.95)",
-      borderColor: "#e5e7eb",
-      borderWidth: 1,
-      textStyle: { color: "#1f2937" },
-      padding: [12, 16],
-      borderRadius: 8,
-    },
-    legend: {
-      data: ["分配", "归还", "调拨", "报废"],
-      bottom: "0%",
-      itemWidth: 12,
-      itemHeight: 6,
-      itemGap: 16,
-      textStyle: { color: "#6b7280", fontSize: 11 },
-    },
-    grid: {
-      left: "3%",
-      right: "4%",
-      bottom: "15%",
-      top: "10%",
-      containLabel: true,
-    },
-    xAxis: {
-      type: "category",
-      boundaryGap: false,
-      data: trendData.map((d) => d.month),
-      axisLabel: { color: "#6b7280", fontSize: 11 },
-      axisLine: { lineStyle: { color: "#e5e7eb" } },
-      axisTick: { show: false },
-    },
-    yAxis: { 
-      type: "value",
-      axisLabel: { color: "#6b7280", fontSize: 11 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
-    },
-    series: [
-      { 
-        name: "分配", 
-        type: "line", 
-        smooth: true, 
-        data: trendData.map((d) => d.allocated), 
-        itemStyle: { color: "#0d9488" },
-        lineStyle: { width: 2 },
-        symbol: "circle",
-        symbolSize: 5,
-      },
-      { 
-        name: "归还", 
-        type: "line", 
-        smooth: true, 
-        data: trendData.map((d) => d.returned), 
-        itemStyle: { color: "#78716c" },
-        lineStyle: { width: 2 },
-        symbol: "circle",
-        symbolSize: 5,
-      },
-      { 
-        name: "调拨", 
-        type: "line", 
-        smooth: true, 
-        data: trendData.map((d) => d.transferred), 
-        itemStyle: { color: "#d97706" },
-        lineStyle: { width: 2 },
-        symbol: "circle",
-        symbolSize: 5,
-      },
-      { 
-        name: "报废", 
-        type: "line", 
-        smooth: true, 
-        data: trendData.map((d) => d.scrapped), 
-        itemStyle: { color: "#dc2626" },
-        lineStyle: { width: 2 },
-        symbol: "circle",
-        symbolSize: 5,
-      },
-    ],
-  };
-
-  return <ReactECharts option={option} style={{ height: 250 }} />;
-}
-
-function StockBarChart({ stockStats }: { stockStats: DashboardData["stockStats"] }) {
-  if (stockStats.length === 0) {
-    return (
-      <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">
-        暂无数据
-      </div>
-    );
-  }
-
-  const sorted = [...stockStats].sort((a, b) => b.quantity - a.quantity).slice(0, 10);
-
-  const option = {
-    tooltip: { 
-      trigger: "axis", 
-      axisPointer: { type: "shadow" },
-      backgroundColor: "rgba(255, 255, 255, 0.95)",
-      borderColor: "#e5e7eb",
-      borderWidth: 1,
-      textStyle: { color: "#1f2937" },
-      padding: [12, 16],
-      borderRadius: 8,
-    },
-    grid: { left: "3%", right: "4%", bottom: "3%", top: "10%", containLabel: true },
-    xAxis: { 
-      type: "value",
-      axisLabel: { color: "#6b7280", fontSize: 11 },
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: "#f3f4f6", type: "dashed" } },
-    },
-    yAxis: {
-      type: "category",
-      data: sorted.map((s) => s.modelName).reverse(),
-      axisLabel: { interval: 0, color: "#6b7280", fontSize: 11 },
-      axisLine: { lineStyle: { color: "#e5e7eb" } },
-      axisTick: { show: false },
-    },
-    series: [
-      {
-        type: "bar",
-        data: sorted.map((s) => s.quantity).reverse(),
-        itemStyle: {
-          color: "#0d9488",
-          borderRadius: [0, 4, 4, 0],
-        },
-        barWidth: "45%",
       },
     ],
   };
@@ -417,6 +210,8 @@ export function DashboardClient({ data }: DashboardClientProps) {
 
   const visibleLogs = data.recentLogs.slice(0, 5);
 
+  const [activeSection, setActiveSection] = useState<DashboardSectionId>("tasks");
+
   return (
     <div className="space-y-4">
       <PageHeader title="首页概览" description="资产管理系统概览" />
@@ -449,9 +244,24 @@ export function DashboardClient({ data }: DashboardClientProps) {
         ))}
       </div>
 
-      {/* 待办任务和最近操作 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 待办任务 */}
+      {/* 模块切换条：一次只显示一个模块，想看哪项点一下即可 */}
+      <div className="flex flex-wrap gap-2" data-testid="section-switcher">
+        {DASHBOARD_SECTIONS.map((s) => (
+          <Button
+            key={s.id}
+            type="button"
+            size="sm"
+            variant={activeSection === s.id ? "default" : "outline"}
+            onClick={() => setActiveSection(s.id)}
+            aria-pressed={activeSection === s.id}
+          >
+            {s.label}
+          </Button>
+        ))}
+      </div>
+
+      {/* 待办任务 */}
+      {activeSection === "tasks" && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -494,8 +304,34 @@ export function DashboardClient({ data }: DashboardClientProps) {
             )}
           </CardContent>
         </Card>
+      )}
 
-        {/* 最近操作 */}
+      {/* 设备状态分布 */}
+      {activeSection === "status" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>设备状态分布</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PieChart data={data} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 各部门设备分类分布 */}
+      {activeSection === "deptCategory" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>各部门设备分类分布</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CategoryByDepartmentChart data={data.categoryByDepartment} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 最近操作 */}
+      {activeSection === "logs" && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -531,43 +367,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
             )}
           </CardContent>
         </Card>
-      </div>
-
-      {/* 图表区域 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>设备状态分布</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PieChart data={data} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>分类分布</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <BarChart data={data} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>生命周期趋势（近6个月）</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TrendLineChart trendData={data.trendData} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>配件库存概览（Top 10）</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StockBarChart stockStats={data.stockStats} />
-          </CardContent>
-        </Card>
-      </div>
+      )}
     </div>
   );
 }
