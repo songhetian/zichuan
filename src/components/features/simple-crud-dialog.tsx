@@ -57,7 +57,11 @@ export function SimpleCrudDialog({
     if (open) {
       setValues({ ...initialValues });
     }
-  }, [open, initialValues]);
+    // 注意：initialValues 每次渲染都是新对象引用，绝不能放进依赖数组，
+    // 否则打字 → setState → 重渲染 → effect 重跑 → setValues 新对象 → 无限循环，输入被重置。
+    // 只在弹窗打开时初始化一次即可。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleOpenChange = (v: boolean) => {
     if (!v) {
