@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Plus, Pencil, Trash2, Download, Upload, ChevronRight, Loader2, Monitor, History, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -389,21 +390,16 @@ function EmployeeActionButtons({
             </div>
             <div className="space-y-2">
               <Label>部门</Label>
-              <Select
+              <SearchableSelect
                 value={editForm.watch("departmentId")}
-                onValueChange={(v) => editForm.setValue("departmentId", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="选择部门" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(departments ?? []).map((d) => (
-                    <SelectItem key={d.id} value={d.id.toString()}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onValueChange={(v) => {
+                  // 部门为必填，忽略 toggle-off 空串保持原选中
+                  if (v) editForm.setValue("departmentId", v);
+                }}
+                placeholder="选择部门"
+                triggerClassName="w-full"
+                options={(departments ?? []).map((d) => ({ value: d.id.toString(), label: d.name }))}
+              />
               {editForm.formState.errors.departmentId && (
                 <p className="text-sm text-destructive">{editForm.formState.errors.departmentId.message}</p>
               )}
@@ -641,21 +637,16 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
             </div>
             <div className="space-y-2">
               <Label>部门</Label>
-              <Select
+              <SearchableSelect
                 value={createForm.watch("departmentId")}
-                onValueChange={(v) => createForm.setValue("departmentId", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="选择部门" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={d.id.toString()}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                onValueChange={(v) => {
+                  // 部门为必填，忽略 toggle-off 空串保持原选中
+                  if (v) createForm.setValue("departmentId", v);
+                }}
+                placeholder="选择部门"
+                triggerClassName="w-full"
+                options={departments.map((d) => ({ value: d.id.toString(), label: d.name }))}
+              />
               {createForm.formState.errors.departmentId && (
                 <p className="text-sm text-destructive">{createForm.formState.errors.departmentId.message}</p>
               )}
