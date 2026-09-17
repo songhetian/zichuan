@@ -48,7 +48,7 @@ function checkPrismaClientHealth() {
 
   if (isFileLocked(PRISMA_ENGINE_PATH)) {
     console.log("[health-check] ⚠️  Prisma 引擎文件被锁定，可能有残留进程");
-    console.log("[health-check] 💡 请运行: npm run kill-node");
+    console.log("[health-check] 💡 请运行: npm run free-port 3000（释放 3000 端口）");
     return false;
   }
 
@@ -92,9 +92,8 @@ async function main() {
 
   if (!prismaHealth) {
     console.log("\n💡 建议操作:");
-    console.log("  1. npm run kill-node    # 清理残留进程");
-    console.log("  2. npm run prisma:gen   # 重新生成 Prisma Client");
-    console.log("  3. npm run dev          # 启动开发服务器");
+    console.log("  1. npm run free-port 3000   # 释放被占用的 3000 端口（清理残留进程）");
+    console.log("  2. FORCE_PRISMA_GENERATE=1 npm run dev   # 强制重新生成 Prisma Client 后启动");
     process.exit(1);
   }
 }

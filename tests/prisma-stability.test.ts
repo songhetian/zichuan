@@ -98,12 +98,12 @@ describe("Prisma 稳定性测试 - 防止DLL锁定导致空白页面", () => {
       expect(fs.existsSync(scriptPath)).toBe(true)
     })
 
-    it("kill-node.js 脚本应该存在", () => {
+    it("free-port.js 脚本应该存在（原 kill-node.js 已合并入此脚本）", () => {
       const scriptPath = path.resolve(
         __dirname,
         "..",
         "scripts",
-        "kill-node.js"
+        "free-port.js"
       )
       expect(fs.existsSync(scriptPath)).toBe(true)
     })
@@ -123,11 +123,11 @@ describe("Prisma 稳定性测试 - 防止DLL锁定导致空白页面", () => {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
       const requiredScripts = [
         "dev",
-        "predev",
         "build",
-        "setup",
-        "dev:start",
-        "prod",
+        "start",
+        "test",
+        "db",
+        "docker",
       ]
       requiredScripts.forEach((script) => {
         expect(pkg.scripts[script]).toBeDefined()

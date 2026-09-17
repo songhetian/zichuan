@@ -1,7 +1,8 @@
 /**
  * 初始化测试库（asset-manage-test）
  *
- *   npm run test:db:init
+ *   npm run db test:init
+ *   （等价于 npm run test 前的必要准备；测试库不存在时先跑这个）
  *
  * 测试库与开发库同实例、不同库名；测试会清空所有表，所以必须与真实库隔离。
  * 数据库来源由 .env.dev 的 DB_MODE 决定（local = 本机 MySQL / docker = 独立容器）。

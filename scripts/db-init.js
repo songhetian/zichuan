@@ -26,7 +26,7 @@ if (!match) {
 
 const [, user, password, host, port, dbName] = match;
 
-/** DB_INIT_DROP=1 时先删库再建（仅 dev:db:reset 使用，会清空该库数据） */
+/** DB_INIT_DROP=1 时先删库再建（仅 `npm run db reset` 使用，会清空该库数据） */
 const drop = process.env.DB_INIT_DROP === "1";
 
 console.log("[db-init] 数据库配置:");

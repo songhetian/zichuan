@@ -1,9 +1,8 @@
 # 资产管理系统 - Docker Compose 配置
 # 环境变量从 .env 文件读取
-# 常规一键启动：npm run docker:deploy
-# 生产安全一键部署（app 容器默认 production + 迁移先于应用启动 + 有数据跳过种子）：npm run docker:deploy:safe
-# 停止服务：npm run docker:down
-# 查看日志：npm run docker:logs
+# 一键部署（构建 + 迁移 + 启动，幂等）：npm run docker deploy
+# 仅更新应用代码（不动数据库）：npm run docker update
+# 停止服务：npm run docker down      实时日志：npm run docker logs      状态：npm run docker ps
 
 services:
   # MySQL 数据库

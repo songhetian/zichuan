@@ -32,8 +32,8 @@ export function assertSafeTestDb(): void {
       "",
       "  请改用：",
       "    npm run test          全量测试（自动指向 asset-manage-test）",
-      "    npm run test:frontend 仅前端 UI 测试",
-      "  若测试库还不存在： npm run test:db:init",
+      "    npm run test:ui       仅 UI 组件测试（不连库）",
+      "  若测试库还不存在： npm run db test:init",
       "",
     ].join("\n")
   );

@@ -304,7 +304,8 @@ type ActionResult<T> =
 
 ### 10.1 Docker 部署
 ```
-docker compose up -d --build   # 一键部署
+npm run docker deploy   # 构建镜像 → 启动 MySQL → 迁移 + 种子(仅空库) → 启动 app/nginx
+npm run docker update   # 仅重建 app + nginx（不动数据库）
 ```
 
 服务组成：
@@ -323,9 +324,16 @@ docker compose up -d --build   # 一键部署
 
 ### 10.3 本地开发
 ```
-npm run dev:full    # 初始化数据库 + 启动开发服务器
-npm run dev         # 启动开发服务器（需要已有数据库）
+npm run dev             # 一键启动：建/迁移开发库 → 种子 → 启动前端（隔离开发库，不碰真实数据）
+npm run db status       # 查看开发库状态
+npm run db reset        # 重置开发库（只删 asset-manage-dev）
+npm run db test:init    # 初始化隔离测试库
+npm run test            # 全量测试（指向隔离测试库）
+npm run test:ui         # 仅 UI 组件测试（不连库）
 ```
+
+> 真实数据在 Docker `zichuan-mysql`(3308) / 库 `asset-manage`；开发库在
+> 本机 MySQL 3306 / 库 `asset-manage-dev`。`.env` = 生产配置，`.env.dev` = 开发配置。
 
 ---
 

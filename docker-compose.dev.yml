@@ -14,10 +14,10 @@
 # 所以这个文件不需要构建镜像，只 pull mysql:8.0。
 #
 # 用法（需先把 .env.dev 的 DB_MODE 设为 docker）：
-#   一键启动开发环境      npm run dev:start
-#   只起开发库            npm run dev:db
-#   停掉开发库            npm run dev:db:down
-#   重置开发库(删数据卷)  npm run dev:db:reset
+#   一键启动开发环境      npm run dev
+#   只起开发库            npm run db up
+#   停掉开发库            npm run db down
+#   重置开发库(删数据卷)  npm run db reset
 #
 # 注意：真实数据的 docker-compose.yml 不受本文件任何影响。
 # ============================================================

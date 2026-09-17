@@ -9,7 +9,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 //    与真实库（Docker 3308 / asset-manage）物理隔离，测试清空表也伤不到真实数据。
 //    另见 tests/db-guard.ts —— 即使这里的配置被改错，闸门也会把运行拦下来。
 //
-// 测试库不存在时先执行：npm run test:db:init
+// 测试库不存在时先执行：npm run db test:init
 export default defineConfig({
   plugins: [react(), tsconfigPaths()],
   test: {
