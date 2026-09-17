@@ -1,0 +1,46 @@
+# ============================================================
+# 开发环境专用 Docker Compose（仅 MySQL，不含 app/nginx）
+# ------------------------------------------------------------
+# ⚠️ 这是【备选方案】：默认开发环境走你本机的 MySQL（.env.dev 里 DB_MODE=local），
+#    不需要本文件。只有想用容器跑开发库时，才把 DB_MODE 改成 docker。
+#
+# 与 docker-compose.yml（真实数据）完全隔离：
+#   - compose 项目名 zichuan-dev  → 容器 zichuan-mysql-dev
+#   - 端口 3309（真实库在 3308）
+#   - 数据卷 mysql_dev_data（真实库是 mysql_data）
+#   - 库名 asset-manage-dev（真实库是 asset-manage）
+#
+# 开发时前端跑在宿主机（next dev，带 HMR），只有数据库用容器。
+# 所以这个文件不需要构建镜像，只 pull mysql:8.0。
+#
+# 用法（需先把 .env.dev 的 DB_MODE 设为 docker）：
+#   一键启动开发环境      npm run dev:start
+#   只起开发库            npm run dev:db
+#   停掉开发库            npm run dev:db:down
+#   重置开发库(删数据卷)  npm run dev:db:reset
+#
+# 注意：真实数据的 docker-compose.yml 不受本文件任何影响。
+# ============================================================
+
+services:
+  mysql-dev:
+    image: mysql:8.0
+    container_name: zichuan-mysql-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: asset-manage-dev
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    ports:
+      - "${MYSQL_DEV_HOST_PORT:-3309}:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mysql_dev_data:

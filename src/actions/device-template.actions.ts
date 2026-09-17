@@ -39,12 +39,14 @@ type TemplateWithComponents = {
   id: number;
   name: string;
   categoryId: number;
+  createdAt: string;
   components: {
     id: number;
     modelId: number;
     quantity: number;
     modelName: string;
     modelBrand: string | null;
+    categoryId: number;
   }[];
 };
 
@@ -52,28 +54,31 @@ type PrismaTemplate = {
   id: number;
   name: string;
   categoryId: number;
+  createdAt: Date;
   components: {
     id: number;
     modelId: number;
     quantity: number;
-    model: { name: string; brand: string | null } | null;
+    model: { name: string; brand: string | null; categoryId: number | null } | null;
   }[];
 };
 
 function formatTemplate(template: PrismaTemplate | null): TemplateWithComponents {
   if (!template) {
-    return { id: 0, name: "", categoryId: 0, components: [] };
+    return { id: 0, name: "", categoryId: 0, createdAt: "", components: [] };
   }
   return {
     id: template.id,
     name: template.name,
     categoryId: template.categoryId,
+    createdAt: template.createdAt.toISOString(),
     components: template.components.map((c) => ({
       id: c.id,
       modelId: c.modelId,
       quantity: c.quantity,
       modelName: c.model?.name ?? "",
       modelBrand: c.model?.brand ?? null,
+      categoryId: c.model?.categoryId ?? 0,
     })),
   };
 }
@@ -145,7 +150,7 @@ export async function createDeviceTemplate(
         where: { id: created.id },
         include: {
           components: {
-            include: { model: { select: { name: true, brand: true } } },
+            include: { model: { select: { name: true, brand: true, categoryId: true } } },
           },
         },
       });
@@ -174,10 +179,10 @@ export async function getDeviceTemplates(
 
   const templates = await prisma.deviceTemplate.findMany({
     where,
-    orderBy: { id: "asc" },
+    orderBy: { createdAt: "desc" },
     include: {
       components: {
-        include: { model: { select: { name: true, brand: true } } },
+        include: { model: { select: { name: true, brand: true, categoryId: true } } },
       },
     },
   });
@@ -194,7 +199,7 @@ export async function getDeviceTemplateById(
     where: { id },
     include: {
       components: {
-        include: { model: { select: { name: true, brand: true } } },
+        include: { model: { select: { name: true, brand: true, categoryId: true } } },
       },
     },
   });
@@ -267,7 +272,7 @@ export async function updateDeviceTemplate(
         where: { id },
         include: {
           components: {
-            include: { model: { select: { name: true, brand: true } } },
+            include: { model: { select: { name: true, brand: true, categoryId: true } } },
           },
         },
       });

@@ -60,6 +60,7 @@ interface DataTableProps<TData, TValue> {
   enableRowSelection?: boolean
   onRowSelectionChange?: (selectedRows: TData[]) => void
   renderExpandedRow?: (row: TData) => React.ReactNode
+  defaultSorting?: SortingState
 }
 
 export function DataTable<TData, TValue>({
@@ -68,8 +69,9 @@ export function DataTable<TData, TValue>({
   enableRowSelection = false,
   onRowSelectionChange,
   renderExpandedRow,
+  defaultSorting = [],
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([])
+  const [sorting, setSorting] = useState<SortingState>(defaultSorting)
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [rowSelection, setRowSelection] = useState({})
   const [expanded, setExpanded] = useState<ExpandedState>({})

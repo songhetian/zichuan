@@ -119,6 +119,7 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>类型</TableHead>
                   <TableHead>配件名称</TableHead>
                   <TableHead>品牌</TableHead>
                   <TableHead className="text-right">数量</TableHead>
@@ -127,6 +128,9 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
               <TableBody>
                 {template.components.map((c) => (
                   <TableRow key={c.id}>
+                    <TableCell className="text-muted-foreground">
+                      {componentCategories.find((cc) => cc.id === c.categoryId)?.name ?? "未分类"}
+                    </TableCell>
                     <TableCell className="font-medium">{c.modelName}</TableCell>
                     <TableCell>{c.modelBrand ?? "-"}</TableCell>
                     <TableCell className="text-right">{c.quantity}</TableCell>
@@ -153,6 +157,7 @@ export function createTemplateColumns(
     { accessorKey: "name", header: "模板名称", size: 260 },
     {
       id: "categoryId",
+      accessorFn: (row) => row.categoryId,
       header: "分类",
       size: 140,
       cell: ({ row }) => {
@@ -166,6 +171,13 @@ export function createTemplateColumns(
       size: 100,
       meta: { align: "right" as const },
       cell: ({ row }) => row.original.components.length,
+    },
+    {
+      accessorKey: "createdAt",
+      header: "创建时间",
+      size: 170,
+      cell: ({ row }) =>
+        row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN") : "-",
     },
     {
       id: "actions",
@@ -262,6 +274,7 @@ export function TemplateListClient({ templates, categories, componentModels, com
       <DataTable
         columns={createTemplateColumns(categories, componentModels, templateOptions, componentCategories)}
         data={filteredTemplates}
+        defaultSorting={[{ id: "createdAt", desc: true }]}
       />
 
       {/* 创建弹窗 */}

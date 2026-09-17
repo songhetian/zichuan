@@ -8,3 +8,8 @@ Dockerfile
 docker-compose*.yml
 nginx*
 *.log
+
+# 环境变量文件：含 SESSION_SECRET 等密钥，绝不能进构建上下文，否则会留在镜像层里
+# （构建不需要它们：Dockerfile 里已显式 ENV DATABASE_URL，compose 在运行时注入真实值）
+.env
+.env.*

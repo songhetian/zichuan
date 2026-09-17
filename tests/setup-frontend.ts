@@ -1,6 +1,10 @@
 import "@testing-library/jest-dom/vitest"
 import { cleanup } from "@testing-library/react"
 import { afterEach } from "vitest"
+import { assertSafeTestDb } from "./db-guard"
+
+// 安全闸门：防止误把写库测试跑到真实库上（真实数据不可碰）
+assertSafeTestDb()
 
 // jsdom 不提供 ResizeObserver，而 cmdk / Radix Popper 依赖它
 class ResizeObserverMock {

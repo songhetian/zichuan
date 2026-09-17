@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { assertSafeTestDb } from "./db-guard";
+
+// 最先执行：确认连的是测试库，否则整个测试运行直接失败
+assertSafeTestDb();
 
 beforeAll(async () => {
   await prisma.$connect();

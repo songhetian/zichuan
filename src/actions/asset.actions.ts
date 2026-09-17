@@ -311,7 +311,7 @@ export async function getAssets(
   try {
     const queryOptions: any = {
       where,
-      orderBy: { id: "asc" as const },
+      orderBy: { createdAt: "desc" as const },
       include: {
         template: {
           select: {

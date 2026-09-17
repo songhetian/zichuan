@@ -124,7 +124,7 @@ export async function getComponentModels(
   const models = await prisma.componentModel.findMany({
     where,
     include: { stock: true, category: { select: { name: true } } },
-    orderBy: { id: "asc" },
+    orderBy: { id: "desc" },
   });
 
   return { success: true, data: models.map(formatModel) };

@@ -38,12 +38,14 @@ export interface TemplateData {
   id: number;
   name: string;
   categoryId: number;
+  createdAt: string;
   components: {
     id: number;
     modelId: number;
     quantity: number;
     modelName: string;
     modelBrand: string | null;
+    categoryId: number;
   }[];
 }
 

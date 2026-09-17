@@ -63,6 +63,7 @@ interface Employee {
   phone: string | null;
   email: string | null;
   assetCount?: number;
+  createdAt: string;
 }
 
 interface EmployeeListClientProps {
@@ -90,6 +91,13 @@ export const columns: ColumnDef<Employee & { _departments: { id: number; name: s
     header: "邮箱",
     size: 220,
     cell: ({ row }) => row.getValue("email") ?? "-",
+  },
+  {
+    accessorKey: "createdAt",
+    header: "创建时间",
+    size: 170,
+    cell: ({ row }) =>
+      row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN") : "-",
   },
   {
     id: "assetCount",
@@ -606,6 +614,7 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
       <DataTable
         columns={columns}
         data={dataWithDepartments}
+        defaultSorting={[{ id: "createdAt", desc: true }]}
         renderExpandedRow={(employee) =>
           (employee.assetCount ?? 0) > 0 ? <ExpandedEmployeeRow employee={employee} /> : null
         }

@@ -10,14 +10,21 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .prisma/
-# 本地开发辅助脚本（不纳入部署）
-scripts/db-empty.js
-scripts/db-init.js
-scripts/health-check.js
-scripts/kill-node.js
-scripts/prisma-generate.js
-scripts/test-db.js
-tests/
 .workbuddy/*
-scripts/*
 .agent/*
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 临时/草稿文件（下划线开头）
+scripts/_*
+tests/_*
+
+# 工具产物
+vitest.config.ts.timestamp-*.mjs
+
+# ⚠️ 不要把 scripts/ 或 tests/ 整目录忽略。
+# 它们是项目源码：package.json 的 scripts 与 vitest 配置都依赖其中的文件。
+# 整目录忽略会让新增的脚本/测试静默不进版本控制，
+# 换机器或 clone 后直接报 "Cannot find module '.../scripts/xxx.js'"。

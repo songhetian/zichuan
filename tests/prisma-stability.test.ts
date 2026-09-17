@@ -126,7 +126,7 @@ describe("Prisma 稳定性测试 - 防止DLL锁定导致空白页面", () => {
         "predev",
         "build",
         "setup",
-        "dev:full",
+        "dev:start",
         "prod",
       ]
       requiredScripts.forEach((script) => {

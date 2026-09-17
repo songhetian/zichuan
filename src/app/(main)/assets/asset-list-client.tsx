@@ -756,6 +756,14 @@ function getColumns(
       },
     },
     {
+      accessorKey: "createdAt",
+      meta: { align: "left" as const },
+      header: "创建时间",
+      size: 170,
+      cell: ({ row }) =>
+        row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN") : "-",
+    },
+    {
       id: "actions",
       meta: { align: "center" as const },
       header: "操作",
@@ -1429,6 +1437,7 @@ export function AssetListClient({
         data={filteredAssets}
         enableRowSelection={true}
         onRowSelectionChange={setSelectedAssets}
+        defaultSorting={[{ id: "createdAt", desc: true }]}
       />
       <CreateAssetDialog open={createOpen} onOpenChange={setCreateOpen} templates={templates} />
 

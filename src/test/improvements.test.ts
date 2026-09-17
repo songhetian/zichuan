@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient, StockLogType } from '@prisma/client';
 import { z } from 'zod';
+import { assertSafeTestDb } from '../../tests/db-guard';
 
-// 使用独立测试数据库，避免污染真实数据
-process.env.DATABASE_URL = 'mysql://root:root@localhost:3308/asset_manager_test';
+// 安全闸门：本文件会清空所有表，绝不允许连真实库。
+// DATABASE_URL 由 vitest 配置统一提供（隔离测试库 asset-manage-test@本机3306），
+// 切勿在此硬编码 —— 一旦写死错误地址会污染单进程内所有测试。
+assertSafeTestDb();
 
 const prisma = new PrismaClient();
 

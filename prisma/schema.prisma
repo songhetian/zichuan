@@ -40,7 +40,8 @@ model ComponentModel {
   templateComponents TemplateComponent[]
   // 设备当前配件关联
   assetComponents    AssetComponent[]
-  // 用于分类+型号+品牌的唯一约束（同型号不同品牌视为不同型号）
+  // 同分类下「型号 + 品牌」唯一：保留品牌维度，允许同规格不同品牌并存
+  // （历史遗留的伪品牌分身已由 scripts/dedupe-data.mjs 清理，此约束不会放过真分身）
   @@unique([categoryId, name, brand])
 }
 

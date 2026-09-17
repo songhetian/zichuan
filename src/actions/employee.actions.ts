@@ -38,6 +38,7 @@ type EmployeeWithDept = {
   phone: string | null;
   email: string | null;
   assetCount: number;
+  createdAt: string;
 };
 
 type PrismaEmployee = {
@@ -45,6 +46,7 @@ type PrismaEmployee = {
   employeeNo: string;
   name: string;
   departmentId: number;
+  createdAt: Date;
   department: { name: string } | null;
   phone: string | null;
   email: string | null;
@@ -61,6 +63,7 @@ function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
     phone: emp.phone ?? null,
     email: emp.email ?? null,
     assetCount: emp._count?.assets ?? 0,
+    createdAt: emp.createdAt.toISOString(),
   };
 }
 
@@ -131,7 +134,7 @@ export async function getEmployees(
 
   const emps = await prisma.employee.findMany({
     where,
-    orderBy: { id: "asc" },
+    orderBy: { createdAt: "desc" },
     include: {
       department: { select: { name: true } },
       _count: { select: { assets: true } },

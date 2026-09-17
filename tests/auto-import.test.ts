@@ -199,7 +199,7 @@ describe("自动导入设备", () => {
     expect(data.details[1].templateIsNew).toBe(false);
   });
 
-  it("模板名称相同时自动加序号区分", async () => {
+  it("模板名称相同时用区分性短码命名（不再产生 (2) 后缀）", async () => {
     // 先创建一个同名模板但BOM不同
     const cat = await prisma.assetCategory.create({
       data: { name: "电脑主机", code: "PC" },
@@ -241,9 +241,15 @@ describe("自动导入设备", () => {
 
     expect(result.success).toBe(true);
     expect(unwrap(result).importedCount).toBe(1);
-    // 新模板名应该带 (2) 后缀（因为同名模板已存在但BOM不同）
+
+    // 同名但 BOM 不同 → 不再用 " (2)" 后缀：DeviceTemplate 上的 normalizedName 生成列
+    // 会剥掉 " (数字)" 后缀，重名的 (2) 模板会被唯一约束拒绝。改为追加由 BOM 派生的
+    // 确定性短码 —— 同一配置重复导入仍收敛到同一个模板，不会每次新建。
     const data = unwrap(result);
-    expect(data.details[0].templateName).toContain("(2)");
+    const newName = data.details[0].templateName;
+    expect(newName).not.toContain("(2)");
+    expect(newName).toContain("#");
+    expect(newName).not.toBe("电脑主机 (i7-12700 / 32GB / 1TB / SSD)");
   });
 
   it("重复导入相同配件时不会重复创建型号", async () => {

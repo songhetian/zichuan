@@ -63,6 +63,7 @@ function getCategoryName(categoryId: number, categories: { id: number; name: str
 export const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: string }[] }>[] = [
   {
     id: "category",
+    accessorFn: (row) => row.categoryId,
     header: "分类",
     size: 100,
     cell: ({ row }) => getCategoryName(row.original.categoryId, row.original._categories),
@@ -451,7 +452,11 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
           </Button>
         )}
       </div>
-      <DataTable columns={columns} data={dataWithCategories} />
+      <DataTable
+        columns={columns}
+        data={dataWithCategories}
+        defaultSorting={[{ id: "id", desc: true }]}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">

@@ -1,6 +1,7 @@
 # 资产管理系统 - Docker Compose 配置
 # 环境变量从 .env 文件读取
-# 一键启动：npm run docker:deploy
+# 常规一键启动：npm run docker:deploy
+# 生产安全一键部署（app 容器默认 production + 迁移先于应用启动 + 有数据跳过种子）：npm run docker:deploy:safe
 # 停止服务：npm run docker:down
 # 查看日志：npm run docker:logs
 
@@ -35,9 +36,13 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET}
-      NODE_ENV: ${NODE_ENV}
+      # 显式固定生产模式：.env 里若写着 NODE_ENV=development（本地开发用），
+      # env_file 会把它带进生产容器，这里覆盖回来，保证部署结果与 .env 内容无关
+      NODE_ENV: production
+      # 用 :? 做「缺失即失败」：变量未配置时 compose 直接报错退出，
+      # 而不是安静地传空值（空 DATABASE_URL / 空 SESSION_SECRET 都会在运行时埋雷）
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?未设置 DOCKER_DATABASE_URL，请在服务端 .env 中配置容器内连接串（host 用服务名 mysql）}
+      SESSION_SECRET: ${SESSION_SECRET:?未设置 SESSION_SECRET，请在服务端 .env 中配置一个至少 32 字符的随机串}
     depends_on:
       mysql:
         condition: service_healthy
@@ -51,8 +56,9 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DOCKER_DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET}
+      NODE_ENV: production
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?未设置 DOCKER_DATABASE_URL，请在服务端 .env 中配置容器内连接串（host 用服务名 mysql）}
+      SESSION_SECRET: ${SESSION_SECRET:?未设置 SESSION_SECRET，请在服务端 .env 中配置一个至少 32 字符的随机串}
     depends_on:
       mysql:
         condition: service_healthy

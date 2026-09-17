@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
 import { generateAssetNo } from "@/lib/asset-numbering";
+import { BOM_SUFFIX_SEPARATOR, bomFingerprint } from "@/lib/template-normalize";
 import type { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 
@@ -82,15 +83,22 @@ async function getOrCreateComponentModel(
   name: string,
   brand: string
 ): Promise<number> {
+  // 型号唯一键为 (categoryId, name, brand)：保留品牌维度，同规格不同品牌是两个型号
+  // （对应迁移 20260917160000_restore_brand_dimension）
+  const normalizedBrand = brand.trim();
+
   const existing = await tx.componentModel.findUnique({
-    where: { categoryId_name_brand: { categoryId, name, brand: brand || "" } },
+    where: {
+      categoryId_name_brand: { categoryId, name, brand: normalizedBrand },
+    },
   });
+
   if (existing) return existing.id;
 
   const created = await tx.componentModel.create({
     data: {
       name,
-      brand: brand || undefined,
+      brand: normalizedBrand,
       categoryId,
       stock: { create: { quantity: 1 } },
     },
@@ -223,15 +231,22 @@ async function findOrCreateDeviceTemplate(
     }
   }
 
+  // 同名但 BOM 不同 → 不再用 " (2)" 后缀：
+  // DeviceTemplate 上的 normalizedName 生成列会剥掉 " (数字)" 后缀，
+  // 重名的 (2) 模板会被唯一约束拒绝（迁移 20260917140000 有意如此）。
+  // 改用由 BOM 派生的确定性短码命名（同配置恒定 → 重复导入仍收敛到同一模板）。
   let finalName = templateName;
-  let counter = 2;
+  let attempt = 0;
   while (
     await tx.deviceTemplate.findFirst({
       where: { categoryId, name: finalName },
     })
   ) {
-    finalName = `${templateName} (${counter})`;
-    counter++;
+    attempt++;
+    finalName =
+      templateName +
+      BOM_SUFFIX_SEPARATOR +
+      bomFingerprint(componentMappings, attempt === 1 ? "" : String(attempt));
   }
 
   const created = await tx.deviceTemplate.create({

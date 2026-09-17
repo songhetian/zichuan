@@ -1,47 +1,20 @@
-import { execSync } from "child_process";
+/**
+ * ⚠️ 行为已变更（2026-09-17）：只释放端口，不再「杀光所有 node.exe」
+ *
+ * 旧行为（已废弃）：tasklist 抓出所有 node.exe 全部 taskkill。
+ *   - npm 自身就是 node.exe，会被一并杀掉 → `npm run dev:start` 的 && 链在此断掉，
+ *     dev-start.js 永远不执行（表现为「只打印到 kill-node 那行，然后什么也没发生」）；
+ *   - 会连带杀掉机器上其它项目的 Node 服务（如 3001 端口的前端项目）。
+ *
+ * 新行为：只终止「正在监听目标端口」的进程，默认 3000。
+ *   用法：node scripts/kill-node.js [port]
+ */
+import { freePort } from "./free-port.js";
 
-const currentPid = process.pid;
+const port = Number(process.argv[2] || process.env.PORT || 3000);
 
-console.log(`[kill-node] 当前进程ID: ${currentPid}`);
+console.log(`[kill-node] 安全模式：只清理占用 ${port} 端口的进程，不影响其它 Node 项目`);
 
-try {
-  const output = execSync(
-    `tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH`,
-    { encoding: "utf-8" }
-  );
-  
-  const lines = output.trim().split("\n").filter(line => line.trim());
-  
-  if (lines.length === 0) {
-    console.log("[kill-node] ✅ 没有找到其他Node进程");
-    process.exit(0);
-  }
-  
-  console.log("[kill-node] 发现以下Node进程:");
-  
-  let killedCount = 0;
-  for (const line of lines) {
-    const parts = line.split(",");
-    if (parts.length >= 2) {
-      const pidStr = parts[1].replace(/"/g, "").trim();
-      const pid = parseInt(pidStr, 10);
-      
-      if (!isNaN(pid) && pid !== currentPid) {
-        console.log(`[kill-node] 终止进程 PID: ${pid}`);
-        try {
-          execSync(`taskkill /F /PID ${pid}`, { encoding: "utf-8", stdio: "ignore" });
-          killedCount++;
-        } catch (e) {
-          console.log(`[kill-node] 终止进程 ${pid} 失败`);
-        }
-      }
-    }
-  }
-  
-  console.log(`[kill-node] ✅ 成功终止 ${killedCount} 个Node进程`);
-  process.exit(0);
-  
-} catch (error) {
-  console.error("[kill-node] ❌ 执行失败:", error.message);
-  process.exit(1);
-}
+const { failed } = freePort(port);
+
+process.exit(failed.length > 0 ? 1 : 0);
