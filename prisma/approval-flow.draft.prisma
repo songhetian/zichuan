@@ -1,0 +1,482 @@
+// ============================================================
+// 审批流 + 权限 + 组织打通 — 数据模型草案（DRAFT）
+// ============================================================
+//
+// 说明
+//   1. 这是草案，不是生效 schema。Prisma 只加载 prisma/schema.prisma，
+//      本文件不会被 migrate / generate 读取，可安全保留在仓库里评审。
+//   2. 确定后再逐块并入 schema.prisma，并生成迁移。
+//   3. 标记 [改] 的 = 在现有表上加字段（只加不删，迁移安全）。
+//      标记 [新] 的 = 全新表。
+//   4. 全库统一沿用现有约定：Int 自增主键、中文注释、createdAt/updatedAt。
+//
+// 核心设计取舍（先看这三条，它决定了后面所有表）
+//   A. 流程定义「发布后不可修改」——改流程 = 新建版本。
+//      申请单绑定的是 definitionId（版本），不是业务类型。
+//      这样已在跑的申请单不会因为管理员改流程而错乱。
+//   B. 待办(ApprovalTask) 与 时间线(ApprovalLog) 分两张表。
+//      Task 面向「我的待办」高频查询（有 assignee）；
+//      Log 面向「这张单经历了什么」完整审计（含无 assignee 的系统动作）。
+//      APPROVE 这类动作两边都会写，是有意冗余，换查询简单。
+//   C. 审批人解析依赖组织关系，因此组织底座必须先补齐（见 A 段）。
+
+// ============================================================
+// A. 组织底座 —— 审批人解析的前提
+// ============================================================
+//
+// 现状：Employee(142 人) 与 Admin(1 账号) 是两套表、零关联，且没有「主管」概念。
+// 不补这一段，流程设计器上只能选死具体某个人 —— 流程调整就要重配，画布等于白做。
+
+// [改] 部门：增加主管，支持「部门主管审批」的动态解析
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  managerId Int?     // 新增：部门主管（指向员工档案，不是账号）
+  manager   Employee? @relation("DeptManager", fields: [managerId], references: [id])
+  employees Employee[] @relation("DeptEmployees")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([managerId])
+}
+
+// [改] 员工：增加汇报关系，支持「直属主管审批」与多级审批
+model Employee {
+  id           Int      @id @default(autoincrement())
+  employeeNo   String   @unique
+  name         String
+  departmentId Int
+  department   Department @relation("DeptEmployees", fields: [departmentId], references: [id])
+  managerId    Int?     // 新增：直属主管（自关联）
+  manager      Employee? @relation("EmployeeManager", fields: [managerId], references: [id])
+  reports      Employee[] @relation("EmployeeManager")
+  phone        String?
+  email        String?
+  assets       Asset[]
+  account      Admin?   // 新增：反向关系，一个员工最多一个登录账号
+  managedDepartments Department[] @relation("DeptManager") // 反向：本人主管的部门
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([managerId])
+}
+
+// [改] 登录账号：接上员工档案 + 角色
+model Admin {
+  id          Int       @id @default(autoincrement())
+  username    String    @unique
+  password    String    // bcrypt 哈希
+  displayName String?   // 新增：显示名，列表/审批人下拉可读
+  role        AdminRole @default(EMPLOYEE)  // 新增
+  employeeId  Int?      @unique             // 新增：关联员工档案
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  isActive    Boolean   @default(true)      // 新增：离职即停用，不用删账号
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  initiatedRequests ApprovalRequest[] @relation("Initiator")
+  assignedTasks     ApprovalTask[]    @relation("Assignee")
+  notifications     Notification[]
+  approvalLogs      ApprovalLog[]     @relation("LogActor")
+}
+
+// 角色：四档覆盖「超管 / 资产员 / 主管 / 普通员工」
+// 说明：第一版用枚举 + 代码内权限矩阵（类型安全、够用）。
+//       若要做「后台勾选权限点」，见文末 F 段，成本 +2~3 天。
+enum AdminRole {
+  SUPER_ADMIN   // 超管：全部权限 + 账号与流程管理
+  ASSET_MANAGER // 资产管理员：资产/配件/模板/盘点全权
+  DEPT_MANAGER  // 部门主管：本部门数据可见 + 审批
+  EMPLOYEE      // 普通员工：只看自己的资产 + 提交申请
+}
+
+// ============================================================
+// B. 流程定义 —— 全新，且版本不可变
+// ============================================================
+
+// [新] 流程定义（一个 businessType 可有多个版本，同时只有一个 PUBLISHED）
+model WorkflowDefinition {
+  id           Int                  @id @default(autoincrement())
+  businessType WorkflowBusinessType
+  name         String               // 如「设备领用流程」
+  version      Int                  @default(1)
+  status       WorkflowStatus       @default(DRAFT)
+  publishedAt  DateTime?
+  createdById  Int?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  nodes    WorkflowNode[]
+  edges    WorkflowEdge[]
+  requests ApprovalRequest[]
+
+  @@unique([businessType, version])
+  @@index([businessType, status])
+}
+
+enum WorkflowBusinessType {
+  ASSET_ALLOCATE // 设备领用
+  ASSET_RETURN   // 设备归还
+  ASSET_TRANSFER // 设备调拨
+  ASSET_REPAIR   // 设备报修
+  ASSET_SCRAP    // 设备报废
+}
+
+enum WorkflowStatus {
+  DRAFT     // 草稿，可任意编辑
+  PUBLISHED // 已发布，不可修改（改 = 复制成新版本）
+  ARCHIVED  // 已归档（同类型已有更新版本）
+}
+
+// [新] 流程节点
+model WorkflowNode {
+  id           Int                @id @default(autoincrement())
+  definitionId Int
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  nodeKey      String             // 画布内稳定标识，如 "n1"（跨版本可读）
+  name         String             // 如「直属主管审批」
+  type         WorkflowNodeType
+
+  // ---- 审批人解析方式（决定谁能审）----
+  assigneeType   AssigneeType @default(EMP_MANAGER)
+  assigneeUserId Int?         // assigneeType = USER 时指定具体人
+  assigneeRole   AdminRole?   // assigneeType = ROLE 时指定角色
+  initiatorCanChoose Boolean  @default(false) // 发起人是否可自行指定审批人
+
+  // ---- 多人节点语义 ----
+  multiMode MultiMode @default(ANY) // ANY=或签（任一通过即过）/ ALL=会签（全部通过）
+
+  // ---- 驳回策略（必须现在定，事后改要动数据）----
+  rejectPolicy RejectPolicy @default(TO_PREV)
+  rejectToNodeId Int?       // rejectPolicy = TO_NODE 时指向目标节点
+  rejectToNode   WorkflowNode? @relation("RejectTarget", fields: [rejectToNodeId], references: [id])
+  rejectTargetOf WorkflowNode[] @relation("RejectTarget")
+
+  // ---- 画布坐标（可视化用）----
+  posX Float @default(0)
+  posY Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks       ApprovalTask[]
+  currentOf   ApprovalRequest[] @relation("CurrentNode")
+  outEdges    WorkflowEdge[]    @relation("EdgeFrom") // 反向：本节点出发的连线
+  inEdges     WorkflowEdge[]    @relation("EdgeTo")   // 反向：指向本节点的连线
+
+  @@unique([definitionId, nodeKey])
+  @@index([definitionId])
+}
+
+enum WorkflowNodeType {
+  START     // 发起（只有一个）
+  APPROVAL  // 审批
+  CONDITION // 条件分支（第一版可先不实现）
+  END       // 结束
+}
+
+enum AssigneeType {
+  USER           // 指定具体某个人
+  ROLE           // 按角色（如所有 ASSET_MANAGER）
+  DEPT_MANAGER   // 申请人所在部门的主管（动态）
+  EMP_MANAGER    // 申请人的直属主管（动态）
+  INITIATOR      // 回到发起人（如「确认归还」）
+  CUSTOM         // 由发起人提交时自选（需 initiatorCanChoose = true）
+}
+
+enum MultiMode {
+  ANY // 或签：任一通过即推进，其余置 SKIPPED
+  ALL // 会签：全部通过才推进，任一驳回即驳回
+}
+
+enum RejectPolicy {
+  TO_PREV  // 退回上一节点
+  TO_START // 退回发起人（重走全流程）
+  TO_NODE  // 退回指定节点
+}
+
+// [新] 流程连线
+model WorkflowEdge {
+  id           Int                @id @default(autoincrement())
+  definitionId Int
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  fromNodeId   Int
+  fromNode     WorkflowNode @relation("EdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNodeId     Int
+  toNode       WorkflowNode @relation("EdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  label        String? // 如「金额 > 5000」
+  condition    String? // 条件表达式，第一版可空 = 无条件
+
+  @@index([definitionId])
+  @@index([fromNodeId])
+}
+
+// ============================================================
+// C. 审批运行 —— 申请单 / 待办 / 时间线
+// ============================================================
+
+// [新] 申请单
+model ApprovalRequest {
+  id           Int      @id @default(autoincrement())
+  requestNo    String   @unique // 单号，如 AP-202609-0001
+  definitionId Int      // 绑定「流程版本」，不是 businessType —— 关键
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id])
+  businessType WorkflowBusinessType // 冗余存一份，列表筛选不用 join
+  title        String
+  payload      Json     // 业务内容快照：assetIds / targetEmployeeId / reason ...
+  status       RequestStatus @default(PENDING)
+
+  currentNodeId Int?
+  currentNode   WorkflowNode? @relation("CurrentNode", fields: [currentNodeId], references: [id])
+
+  initiatorId      Int
+  initiator        Admin    @relation("Initiator", fields: [initiatorId], references: [id])
+  targetEmployeeId Int?     // 给谁领（可能不是发起人本人）
+
+  submittedAt DateTime  @default(now())
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tasks         ApprovalTask[]
+  logs          ApprovalLog[]
+  notifications Notification[]
+  reservedAssets Asset[]      @relation("ReservedAssets") // 本单预占的资产
+
+  @@index([status, createdAt])
+  @@index([initiatorId, status])
+  @@index([businessType, status])
+}
+
+enum RequestStatus {
+  DRAFT     // 草稿（暂存未提交）
+  PENDING   // 审批中
+  APPROVED  // 已通过（资产动作已执行）
+  REJECTED  // 已驳回
+  CANCELLED // 发起人撤销
+}
+
+// [新] 审批任务 = 待办
+// 「我的待办」核心查询：where assigneeId = me AND status = PENDING
+model ApprovalTask {
+  id         Int             @id @default(autoincrement())
+  requestId  Int
+  request    ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  nodeId     Int
+  node       WorkflowNode    @relation(fields: [nodeId], references: [id])
+  nodeKey    String          // 冗余，日志/展示可读
+  assigneeId Int
+  assignee   Admin           @relation("Assignee", fields: [assigneeId], references: [id])
+  status     TaskStatus      @default(PENDING)
+  comment    String?         // 审批意见
+  dueAt      DateTime?       // 超时提醒（可选）
+  actedAt    DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([assigneeId, status, createdAt]) // 我的待办
+  @@index([requestId])
+}
+
+enum TaskStatus {
+  PENDING   // 待处理
+  APPROVED  // 已通过
+  REJECTED  // 已驳回
+  SKIPPED   // 或签场景下被跳过
+}
+
+// [新] 流转时间线（面向申请单的完整审计）
+model ApprovalLog {
+  id          Int             @id @default(autoincrement())
+  requestId   Int
+  request     ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actorId     Int?            // 系统动作（EXECUTE）时为空
+  actor       Admin?          @relation("LogActor", fields: [actorId], references: [id])
+  action      ApprovalLogAction
+  fromNodeKey String?
+  toNodeKey   String?
+  comment     String?
+  meta        Json?           // 执行结果 / 异常信息
+  createdAt   DateTime        @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+enum ApprovalLogAction {
+  SUBMIT         // 提交申请
+  APPROVE        // 审批通过
+  REJECT         // 驳回
+  CANCEL         // 发起人撤销
+  EXECUTE        // 审批通过后系统执行资产动作
+  EXECUTE_FAILED // 执行失败（需人工介入）
+}
+
+// ============================================================
+// D. 通知
+// ============================================================
+
+// [新] 站内通知
+model Notification {
+  id          Int              @id @default(autoincrement())
+  recipientId Int
+  recipient   Admin            @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  content     String
+  linkUrl     String?          // 点击跳转，如 /approvals/123
+  requestId   Int?
+  request     ApprovalRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  isRead      Boolean          @default(false)
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  @@index([recipientId, isRead, createdAt]) // 未读红点 + 列表
+}
+
+enum NotificationType {
+  APPROVAL_TODO   // 你有新的待办
+  APPROVAL_RESULT // 你提交的申请有结果
+  APPROVAL_CC     // 抄送通知
+  SYSTEM          // 系统消息
+}
+
+// ============================================================
+// E. 现有表的小改（都是为了接上审批流）
+// ============================================================
+
+// [改] Asset：预占锁 —— 解决「审批期间资产被别人领走」
+model Asset {
+  id                  Int         @id @default(autoincrement())
+  assetNo             String      @unique
+  name                String
+  templateId          Int
+  template            DeviceTemplate @relation(fields: [templateId], references: [id])
+  status              AssetStatus @default(IDLE)
+  employeeId          Int?
+  employee            Employee?   @relation(fields: [employeeId], references: [id])
+  location            String?
+  purchaseDate        DateTime?
+  warrantyMonths      Int?
+  notes               String?
+  reservedByRequestId Int?        @unique // 新增：被哪张进行中的申请预占
+  reservedByRequest   ApprovalRequest? @relation("ReservedAssets", fields: [reservedByRequestId], references: [id], onDelete: SetNull)
+  components          AssetComponent[]
+  lifecycleLogs       LifecycleLog[]
+  stocktakeRecords    StocktakeRecord[]
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@index([employeeId])
+  @@index([templateId])
+  @@index([status])
+}
+
+// [改] 资产状态：新增 RESERVED
+// 注意：前端 src/components/features/status-badge.tsx 的 getStatusStyle 要同步加一档
+//       颜色（建议信息蓝或中性紫），筛选器/统计口径也要一起过一遍。
+enum AssetStatus {
+  IDLE           // 闲置
+  IN_USE         // 在用
+  IN_MAINTENANCE // 维修中
+  SCRAPPED       // 报废
+  IN_STOCK       // 库存
+  RESERVED       // 新增：已被进行中的申请预占
+}
+
+// [改] 生命周期日志：把「操作人」从自由文本升级为可追溯的账号
+// operator 文本保留不删 —— 它是历史快照，也兼容现有数据与代码。
+model LifecycleLog {
+  id             Int             @id @default(autoincrement())
+  assetId        Int
+  asset          Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  action         LifecycleAction
+  fromStatus     AssetStatus?
+  toStatus       AssetStatus?
+  employeeId     Int?
+  fromEmployeeId Int?
+  operator       String
+  operatorId     Int?            // 新增：真实操作账号（系统执行时为空）
+  requestId      Int?            // 新增：追溯是哪张申请单触发的
+  remark         String?
+  createdAt      DateTime        @default(now())
+
+  @@index([assetId])
+  @@index([createdAt])
+  @@index([action])
+  @@index([requestId])
+}
+
+// ============================================================
+// F. 可选扩展 —— 可配置权限点（第一版建议不做）
+// ============================================================
+//
+// 若「权限管理」的意思是「能在后台勾选每个角色有哪些权限」，
+// 则需要下面三张表，并把 Admin.role 换成 Admin.roleId。
+// 成本约 +2~3 天；收益仅在「角色数量会持续增加」时才成立。
+// 当前只有 4 类人，枚举 + 代码内矩阵更简单也更安全（权限点写错是安全问题）。
+//
+// model Role {
+//   id          Int    @id @default(autoincrement())
+//   key         String @unique  // 如 ASSET_MANAGER
+//   name        String
+//   isSystem    Boolean @default(false) // 系统内置角色不允许删除
+//   permissions RolePermission[]
+//   admins      Admin[]
+// }
+//
+// model Permission {
+//   id      Int    @id @default(autoincrement())
+//   key     String @unique // 如 asset.delete / stocktake.create
+//   module  String         // 分组用：asset / component / employee / system
+//   name    String
+//   roles   RolePermission[]
+// }
+//
+// model RolePermission {
+//   roleId       Int
+//   role         Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+//   permissionId Int
+//   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+//   @@id([roleId, permissionId])
+// }
+
+// ============================================================
+// 迁移与落地注意事项
+// ============================================================
+//
+// 1. 已用 prisma migrate diff 实测过（见下方数据），0 个 DROP / TRUNCATE / DELETE。
+//    实际改动 = 7 张新表 + 9 个可空新列 + 4 处枚举扩展（均为末尾追加值）。
+//    现有 135 资产 / 806 配件 / 142 员工 / 1 账号的数据不会被触碰。
+//
+//    CREATE TABLE  : 7   （WorkflowDefinition / Node / Edge / ApprovalRequest /
+//                          ApprovalTask / ApprovalLog / Notification）
+//    ADD COLUMN    : 9   （Department.managerId、Employee.managerId、
+//                          Asset.reservedByRequestId、LifecycleLog.operatorId+requestId、
+//                          Admin.displayName+employeeId+isActive+role）
+//    MODIFY(枚举)  : 4   （Asset.status / LifecycleLog.fromStatus / toStatus /
+//                          StocktakeRecord.expectedStatus —— 都是追加 RESERVED）
+//    AddForeignKey : 19
+//
+// 2. ⚠️ 迁移后必须立刻执行这一条，否则超管会被自己锁在外面：
+//
+//      UPDATE Admin SET role = 'SUPER_ADMIN' WHERE id = 1;
+//
+//    原因：Admin.role 的迁移默认值是 EMPLOYEE，现有账号迁移后会变成普通员工，
+//    权限校验一上线他就没有任何管理权限了。
+//    更稳的做法：在合并 schema 时把默认值临时写作 SUPER_ADMIN，执行迁移后再改回
+//    EMPLOYEE（这样默认值策略正确，且不用手工 SQL）。
+//
+// 3. AssetStatus 的 4 处 MODIFY 都是「末尾追加 RESERVED」，MySQL 下对现有数据安全。
+//    但前端必须同步这三处，否则会漏状态：
+//      - src/components/features/status-badge.tsx 的 getStatusStyle 加一档颜色
+//      - 资产列表的筛选器选项
+//      - 统计页的状态口径（src/actions/stats.actions.ts）
+//
+// 4. LifecycleLog.operator 的现有写入点（src/actions/lifecycle.actions.ts 等）
+//    后续补 operatorId，属可空字段，不补也不会报错，可分批改。
+//
+// 5. 三个库都要 migrate deploy：开发库/测试库由脚本自动；真实库(3308)需手动执行。
+//
+// 6. 流程定义一旦 PUBLISHED 就不可 UPDATE（引擎层强制）——
+//    这是整个设计里唯一只能靠代码守住、无法只靠数据库约束表达的规则。
+//    务必配一个测试钉住它，否则某天一个「编辑已发布流程」的功能就会把在途单据搞乱。
