@@ -13,5 +13,5 @@ export default async function MainLayout({
     redirect("/login");
   }
 
-  return <MainLayoutClient username={user.username}>{children}</MainLayoutClient>;
+  return <MainLayoutClient username={user.username} userId={user.id}>{children}</MainLayoutClient>;
 }

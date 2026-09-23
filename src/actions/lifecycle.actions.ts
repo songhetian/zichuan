@@ -1,9 +1,10 @@
-﻿"use server";
+"use server";
 
 import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { applyComponentAdjustments } from "@/lib/component-adjust";
 
 // ============================================================
 // Schema 校验
@@ -12,20 +13,20 @@ import { requireAuth } from "@/lib/auth";
 const allocateSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
   employeeId: z.number(),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
 const returnSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
 const transferSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
   toEmployeeId: z.number(),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
@@ -34,13 +35,13 @@ const upgradeSchema = z.object({
   modelId: z.number(),
   newModelId: z.number(),
   quantity: z.number().int().positive("数量必须为正整数"),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
 const scrapSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
@@ -54,7 +55,7 @@ const adjustComponentsSchema = z.object({
       })
     )
     .min(1, "调整列表不能为空"),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
@@ -586,7 +587,7 @@ export async function scrapAssets(
 
 const maintenanceStartSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
@@ -666,7 +667,7 @@ export async function maintenanceStart(
 
 const maintenanceCompleteSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
-  operator: z.string().min(1),
+  operator: z.string().min(1, "操作员不能为空"),
   remark: z.string().optional(),
 });
 
@@ -773,129 +774,20 @@ export async function adjustAssetComponents(
   }
   const modelMap = new Map(models.map((m) => [m.id, m.name]));
 
+  let changeSummary = "";
   try {
-    await prisma.$transaction(async (tx) => {
-      // 获取设备当前配件配置
-      const currentComponents = await tx.assetComponent.findMany({
-        where: { assetId },
-      });
-      const currentMap = new Map(currentComponents.map((c) => [c.modelId, c]));
-
-      for (const adj of adjustments) {
-        if (adj.quantityDelta > 0) {
-          // === 增加配件 ===
-          // 原子性扣减库存
-          const stockUpdate = await tx.componentStock.updateMany({
-            where: {
-              modelId: adj.modelId,
-              quantity: { gte: adj.quantityDelta },
-            },
-            data: { quantity: { decrement: adj.quantityDelta } },
-          });
-
-          if (stockUpdate.count === 0) {
-            throw new Error("STOCK_INSUFFICIENT");
-          }
-
-          // 更新设备配件配置
-          const existing = currentMap.get(adj.modelId);
-          if (existing) {
-            await tx.assetComponent.update({
-              where: { assetId_modelId: { assetId, modelId: adj.modelId } },
-              data: { quantity: { increment: adj.quantityDelta } },
-            });
-          } else {
-            await tx.assetComponent.create({
-              data: { assetId, modelId: adj.modelId, quantity: adj.quantityDelta },
-            });
-          }
-
-          // 库存出库流水
-          await tx.componentStockLog.create({
-            data: {
-              modelId: adj.modelId,
-              type: "UPGRADE_USE",
-              quantity: -adj.quantityDelta,
-              operator,
-              remark: remark ?? null,
-            },
-          });
-        } else {
-          // === 减少配件 ===
-          const existing = currentMap.get(adj.modelId);
-          if (!existing) {
-            throw new Error("COMPONENT_NOT_FOUND");
-          }
-
-          const removeQty = Math.abs(adj.quantityDelta);
-          if (existing.quantity < removeQty) {
-            throw new Error("QUANTITY_INSUFFICIENT");
-          }
-
-          if (existing.quantity === removeQty) {
-            // 全部移除，删除记录
-            await tx.assetComponent.delete({
-              where: { assetId_modelId: { assetId, modelId: adj.modelId } },
-            });
-          } else {
-            // 部分减少
-            await tx.assetComponent.update({
-              where: { assetId_modelId: { assetId, modelId: adj.modelId } },
-              data: { quantity: { decrement: removeQty } },
-            });
-          }
-
-          // 库存回补
-          await tx.componentStock.upsert({
-            where: { modelId: adj.modelId },
-            update: { quantity: { increment: removeQty } },
-            create: { modelId: adj.modelId, quantity: removeQty },
-          });
-
-          // 库存入库流水
-          await tx.componentStockLog.create({
-            data: {
-              modelId: adj.modelId,
-              type: "UPGRADE_RETURN",
-              quantity: removeQty,
-              operator,
-              remark: remark ?? null,
-            },
-          });
-        }
-      }
-
-      // 生成变更摘要
-      const summaryParts = adjustments.map((adj) => {
-        const name = modelMap.get(adj.modelId) ?? String(adj.modelId);
-        if (adj.quantityDelta > 0) {
-          return `+${adj.quantityDelta} ${name}`;
-        }
-        return `${adj.quantityDelta} ${name}`;
-      });
-      const changeSummary = summaryParts.join("；");
-
-      // 生命周期日志
-      await tx.lifecycleLog.create({
-        data: {
-          assetId,
-          action: "UPGRADED",
-          fromStatus: asset.status,
-          toStatus: asset.status,
-          operator,
-          remark: remark
-            ? `${remark}（${changeSummary}）`
-            : `配置调整：${changeSummary}`,
-        },
-      });
-    });
+    changeSummary = await prisma.$transaction(async (tx) =>
+      applyComponentAdjustments(tx, {
+        assetId,
+        adjustments,
+        operator,
+        remark,
+        modelMap,
+        assetStatus: asset.status,
+      })
+    );
 
     // 系统日志（事务外写入）
-    const changeSummary = adjustments.map((adj) => {
-      const name = modelMap.get(adj.modelId) ?? String(adj.modelId);
-      return adj.quantityDelta > 0 ? `+${adj.quantityDelta} ${name}` : `${adj.quantityDelta} ${name}`;
-    }).join("；");
-
     await prisma.systemLog.create({
       data: {
         module: "配置变更",

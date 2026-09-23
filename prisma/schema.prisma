@@ -17,29 +17,30 @@ datasource db {
 
 // 配件分类（两级）
 model ComponentCategory {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
+  id        Int                 @id @default(autoincrement())
+  name      String              @unique
   parentId  Int?
   parent    ComponentCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children  ComponentCategory[] @relation("CategoryTree")
   models    ComponentModel[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 }
 
 // 配件型号
 model ComponentModel {
-  id          Int      @id @default(autoincrement())
-  name        String   // 型号名称，如 "i7-12700F"
-  brand       String   @default("") // 品牌
-  categoryId  Int
-  category    ComponentCategory @relation(fields: [categoryId], references: [id])
-  stock       ComponentStock?
-  stockLogs   ComponentStockLog[]
+  id                 Int                 @id @default(autoincrement())
+  name               String // 型号名称，如 "i7-12700F"
+  brand              String              @default("") // 品牌
+  categoryId         Int
+  category           ComponentCategory   @relation(fields: [categoryId], references: [id])
+  stock              ComponentStock?
+  stockLogs          ComponentStockLog[]
   // 模板配件关联
   templateComponents TemplateComponent[]
   // 设备当前配件关联
   assetComponents    AssetComponent[]
+
   // 同分类下「型号 + 品牌」唯一：保留品牌维度，允许同规格不同品牌并存
   // （历史遗留的伪品牌分身已由 scripts/dedupe-data.mjs 清理，此约束不会放过真分身）
   @@unique([categoryId, name, brand])
@@ -47,32 +48,32 @@ model ComponentModel {
 
 // 配件库存（与型号一对一）
 model ComponentStock {
-  id        Int    @id @default(autoincrement())
-  modelId   Int    @unique
+  id        Int            @id @default(autoincrement())
+  modelId   Int            @unique
   model     ComponentModel @relation(fields: [modelId], references: [id])
-  quantity  Int    @default(0)
-  updatedAt DateTime @updatedAt
+  quantity  Int            @default(0)
+  updatedAt DateTime       @updatedAt
 }
 
 // 配件库存流水
 model ComponentStockLog {
-  id         Int      @id @default(autoincrement())
-  modelId    Int
-  model      ComponentModel @relation(fields: [modelId], references: [id])
-  type       StockLogType  // 入库/出库类型
-  quantity   Int      // 正数入库，负数出库
-  operator   String   // 操作员
-  remark     String?  // 备注
-  createdAt  DateTime @default(now())
+  id        Int            @id @default(autoincrement())
+  modelId   Int
+  model     ComponentModel @relation(fields: [modelId], references: [id])
+  type      StockLogType // 入库/出库类型
+  quantity  Int // 正数入库，负数出库
+  operator  String // 操作员
+  remark    String? // 备注
+  createdAt DateTime       @default(now())
 
   @@index([createdAt])
 }
 
 enum StockLogType {
-  PURCHASE_IN     // 采购入库
-  UPGRADE_RETURN  // 升级退回（旧配件回库）
-  ASSET_BUILD     // 组装设备出库
-  UPGRADE_USE     // 升级使用
+  PURCHASE_IN // 采购入库
+  UPGRADE_RETURN // 升级退回（旧配件回库）
+  ASSET_BUILD // 组装设备出库
+  UPGRADE_USE // 升级使用
 }
 
 // ============================================================
@@ -81,40 +82,42 @@ enum StockLogType {
 
 // 设备分类（两级）
 model AssetCategory {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  code        String   @unique  // 编号前缀，如 DN、WL
-  unique         Boolean  @default(false) @map("is_unique")  // 该分类下每人只能拥有一台设备
-  numberingRule  String?  // 编号规则模板，如 "{prefix}-{YYYY}{MM}{DD}-{####}"
-  parentId    Int?
-  parent      AssetCategory?  @relation("AssetCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children    AssetCategory[] @relation("AssetCategoryTree")
-  templates   DeviceTemplate[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            Int              @id @default(autoincrement())
+  name          String           @unique
+  code          String           @unique // 编号前缀，如 DN、WL
+  unique        Boolean          @default(false) @map("is_unique") // 该分类下每人只能拥有一台设备
+  numberingRule String? // 编号规则模板，如 "{prefix}-{YYYY}{MM}{DD}-{####}"
+  parentId      Int?
+  parent        AssetCategory?   @relation("AssetCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children      AssetCategory[]  @relation("AssetCategoryTree")
+  templates     DeviceTemplate[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 // 设备模板（BOM）
 model DeviceTemplate {
-  id          Int      @id @default(autoincrement())
-  name        String   // 模板名称，如"标准办公电脑"
-  categoryId  Int
-  category    AssetCategory @relation(fields: [categoryId], references: [id])
-  components  TemplateComponent[]
-  assets      Asset[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         Int                 @id @default(autoincrement())
+  name       String // 模板名称，如"标准办公电脑"
+  categoryId Int
+  category   AssetCategory       @relation(fields: [categoryId], references: [id])
+  components TemplateComponent[]
+  assets     Asset[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
   @@unique([categoryId, name])
 }
 
 // 模板配件清单（BOM 明细）
 model TemplateComponent {
-  id          Int      @id @default(autoincrement())
-  templateId  Int
-  template    DeviceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  modelId     Int
-  model       ComponentModel @relation(fields: [modelId], references: [id])
-  quantity    Int      @default(1)  // 需要的数量
+  id         Int            @id @default(autoincrement())
+  templateId Int
+  template   DeviceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  modelId    Int
+  model      ComponentModel @relation(fields: [modelId], references: [id])
+  quantity   Int            @default(1) // 需要的数量
+
   @@unique([templateId, modelId])
 }
 
@@ -124,25 +127,45 @@ model TemplateComponent {
 
 // 部门
 model Department {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  employees Employee[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  managerId Int? // 部门主管（指向员工档案，审批流「部门主管节点」按此动态解析）
+  manager   Employee?  @relation("DeptManager", fields: [managerId], references: [id])
+  employees Employee[] @relation("DeptEmployees")
+  roleScopes RoleDepartment[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([managerId])
+}
+
+// 员工在职状态
+enum EmployeeStatus {
+  ACTIVE // 在职
+  LEFT // 离职（离职即停用账号并回收名下设备）
 }
 
 // 员工
 model Employee {
-  id          Int      @id @default(autoincrement())
-  employeeNo  String   @unique  // 工号
-  name        String
-  departmentId Int
-  department   Department @relation(fields: [departmentId], references: [id])
-  phone       String?
-  email       String?
-  assets      Asset[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 Int            @id @default(autoincrement())
+  employeeNo         String         @unique // 工号
+  name               String
+  departmentId       Int
+  status             EmployeeStatus @default(ACTIVE) // 在职/离职
+  department         Department   @relation("DeptEmployees", fields: [departmentId], references: [id])
+  managerId          Int? // 直属主管（审批流「直属主管节点」按此解析）
+  manager            Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
+  reports            Employee[]   @relation("EmployeeManager")
+  phone              String?
+  email              String?
+  assets             Asset[]
+  account            Admin? // 登录账号（一个员工最多一个账号，反向见 Admin.employee）
+  managedDepartments Department[] @relation("DeptManager") // 本人主管的部门
+  handoverOrders     HandoverOrder[] @relation("DepartureHandover") // 本人离职交接单
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([managerId])
 }
 
 // ============================================================
@@ -151,23 +174,29 @@ model Employee {
 
 // 设备实体
 model Asset {
-  id              Int      @id @default(autoincrement())
-  assetNo         String   @unique  // 设备编号，如 DN-0001
-  name            String
-  templateId      Int
-  template        DeviceTemplate @relation(fields: [templateId], references: [id])
-  status          AssetStatus @default(IDLE)
-  employeeId      Int?     // 当前使用人
-  employee        Employee? @relation(fields: [employeeId], references: [id])
-  location        String?  // 存放位置
-  purchaseDate    DateTime? // 采购日期
-  warrantyMonths  Int?     // 保修期（月）
-  notes           String?
-  components      AssetComponent[]
-  lifecycleLogs   LifecycleLog[]
+  id             Int            @id @default(autoincrement())
+  assetNo        String         @unique // 设备编号，如 DN-0001
+  name           String
+  templateId     Int
+  template         DeviceTemplate @relation(fields: [templateId], references: [id])
+  status         AssetStatus    @default(IDLE)
+  employeeId     Int? // 当前使用人
+  employee       Employee?      @relation(fields: [employeeId], references: [id])
+  location       String? // 存放位置
+  purchaseDate   DateTime? // 采购日期
+  warrantyMonths Int? // 保修期（月）
+  notes          String?
+
+  // ---- 审批预占（M5）：提交申请时置 RESERVED，终态释放并恢复 reservedFromStatus ----
+  reservedByRequestId Int?             @unique // 预占该资产的申请单
+  reservedBy          ApprovalRequest? @relation("AssetReservation", fields: [reservedByRequestId], references: [id])
+  reservedFromStatus  AssetStatus? // 预占前的状态，终态释放时恢复
+
+  components       AssetComponent[]
+  lifecycleLogs    LifecycleLog[]
   stocktakeRecords StocktakeRecord[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([employeeId])
   @@index([templateId])
@@ -176,74 +205,146 @@ model Asset {
 
 // 设备当前配件配置
 model AssetComponent {
-  id        Int    @id @default(autoincrement())
-  assetId   Int
-  asset     Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  modelId   Int
-  model     ComponentModel @relation(fields: [modelId], references: [id])
-  quantity  Int    @default(1)
+  id       Int            @id @default(autoincrement())
+  assetId  Int
+  asset    Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  modelId  Int
+  model    ComponentModel @relation(fields: [modelId], references: [id])
+  quantity Int            @default(1)
+
   @@unique([assetId, modelId])
 }
 
 // 生命周期日志
 model LifecycleLog {
-  id         Int      @id @default(autoincrement())
-  assetId    Int
-  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  action     LifecycleAction
-  fromStatus AssetStatus?
-  toStatus   AssetStatus?
-  employeeId Int?     // 相关人员（分配/归还时）
+  id             Int              @id @default(autoincrement())
+  assetId        Int
+  asset          Asset            @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  action         LifecycleAction
+  fromStatus     AssetStatus?
+  toStatus       AssetStatus?
+  employeeId     Int? // 相关人员（分配/归还时）
   fromEmployeeId Int? // 调拨时使用
-  operator   String
-  remark     String?
-  createdAt  DateTime @default(now())
+  operator       String
+  operatorId     Int? // 操作账号（M5：系统自动执行时为空，人工操作为登录账号 id）
+  operatorAdmin  Admin?           @relation(fields: [operatorId], references: [id])
+  requestId      Int? // 关联审批申请单（M5：升级追溯，人工升级为空）
+  request        ApprovalRequest? @relation(fields: [requestId], references: [id])
+  remark         String?
+  createdAt      DateTime         @default(now())
 
   @@index([assetId])
   @@index([createdAt])
   @@index([action])
+  @@index([requestId])
 }
 
 enum AssetStatus {
-  IDLE            // 闲置
-  IN_USE          // 在用
-  IN_MAINTENANCE  // 维修中
-  SCRAPPED        // 报废
-  IN_STOCK        // 库存
+  IDLE // 闲置
+  IN_USE // 在用
+  IN_MAINTENANCE // 维修中
+  SCRAPPED // 报废
+  IN_STOCK // 库存
+  RESERVED // 审批预占（申请提交后锁定，终态释放恢复原状态）
 }
 
 enum LifecycleAction {
-  CREATED           // 设备创建（按模板生成）
-  ALLOCATED         // 分配
-  RETURNED          // 归还
-  TRANSFERRED       // 调拨
-  UPGRADED          // 升级
+  CREATED // 设备创建（按模板生成）
+  ALLOCATED // 分配
+  RETURNED // 归还
+  TRANSFERRED // 调拨
+  UPGRADED // 升级
   MAINTENANCE_START // 送修
-  MAINTENANCE_DONE  // 维修完成
-  SCRAPPED          // 报废
+  MAINTENANCE_DONE // 维修完成
+  SCRAPPED // 报废
+  REPLACED // 更换回收旧机
+}
+
+// 离职交接单状态：离职审批通过后生成待对账单，对账确认无误后自动回收全部设备
+enum HandoverStatus {
+  PENDING // 待对账（设备清单快照已生成，待资产管理员核对）
+  COLLECTED // 已对账并自动回收离职员工名下全部设备
 }
 
 // ============================================================
 // 系统模块
 // ============================================================
 
-// 管理员
+// 管理员（多用户登录账号）
 model Admin {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  password  String   // bcrypt 哈希
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  Int                  @id @default(autoincrement())
+  username            String               @unique
+  password            String // bcrypt 哈希
+  displayName         String? // 显示名，列表/审批人下拉可读
+  roleId              Int? // 角色（可配置权限点，见 Role/Permission/RolePermission）
+  role                Role?                @relation(fields: [roleId], references: [id])
+  employeeId          Int?                 @unique // 关联员工档案（一个账号对应一个员工）
+  employee            Employee?            @relation(fields: [employeeId], references: [id])
+  isActive            Boolean              @default(true) // 离职即停用，不删账号
+  mustChangePassword  Boolean              @default(false) // 首登强制改密（默认密码账号置 true，改密后置 false）
+  workflowDefinitions WorkflowDefinition[] // 创建的流程定义
+  initiatedRequests   ApprovalRequest[]    @relation("Initiator") // 发起的申请单
+  assignedTasks       ApprovalTask[]       @relation("Assignee") // 收到的审批待办
+  approvalLogs        ApprovalLog[]        @relation("LogActor") // 产生的流转记录
+  lifecycleLogs       LifecycleLog[] // 产生的资产动作日志（operatorId）
+  notifications       Notification[] // 站内通知（M6 实时通知落库）
+  confirmedHandovers  HandoverOrder[] @relation("HandoverConfirmer") // 确认过的离职交接单
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+// 角色（可配置权限点：角色↔权限多对多，Admin 通过 roleId 关联）
+model Role {
+  id          Int              @id @default(autoincrement())
+  key         String           @unique // 如 SUPER_ADMIN / ASSET_MANAGER / DEPT_MANAGER / EMPLOYEE
+  name        String // 中文名，如 超级管理员
+  isSystem    Boolean          @default(false) // 系统内置角色，不允许删除
+  // 数据范围：'ALL'（默认，沿用权限矩阵默认范围）| 'SPEC'（仅 departments 关联部门）
+  departmentScope String        @default("ALL")
+  departments     RoleDepartment[]
+  admins      Admin[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// 权限点
+model Permission {
+  id     Int              @id @default(autoincrement())
+  key    String           @unique // 如 asset.manage / approval.submit
+  module String // 分组：system / workflow / asset / dept / approval
+  name   String // 中文名
+  roles  RolePermission[]
+}
+
+// 角色-权限 关联
+model RolePermission {
+  roleId       Int
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId Int
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// 角色-部门 关联（仅 departmentScope='SPEC' 时生效：角色的数据范围）
+model RoleDepartment {
+  roleId       Int
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, departmentId])
 }
 
 // 系统日志
 model SystemLog {
-  id         Int      @id @default(autoincrement())
-  module     String   // 模块
-  action     String   // 动作
-  detail     String   // 详情
-  operator   String   // 操作员
-  createdAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  module    String // 模块
+  action    String // 动作
+  detail    String // 详情
+  operator  String // 操作员
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([module])
@@ -252,34 +353,330 @@ model SystemLog {
 
 // 盘点
 model StocktakeSession {
-  id          Int      @id @default(autoincrement())
-  name        String   // 盘点任务名称
+  id          Int               @id @default(autoincrement())
+  name        String // 盘点任务名称
   description String?
-  status      StocktakeStatus @default(OPEN)
-  startedAt   DateTime @default(now())
+  status      StocktakeStatus   @default(OPEN)
+  startedAt   DateTime          @default(now())
   completedAt DateTime?
   records     StocktakeRecord[]
 }
 
 enum StocktakeStatus {
-  OPEN        // 进行中
-  COMPLETED   // 已完成
+  OPEN // 进行中
+  COMPLETED // 已完成
 }
 
 model StocktakeRecord {
-  id             Int      @id @default(autoincrement())
+  id             Int              @id @default(autoincrement())
   sessionId      Int
   session        StocktakeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  asset          Asset    @relation(fields: [assetId], references: [id])
+  asset          Asset            @relation(fields: [assetId], references: [id])
   assetId        Int
   expectedStatus AssetStatus
   actualStatus   StocktakeResult
   remark         String?
+
   @@unique([sessionId, assetId])
 }
 
 enum StocktakeResult {
-  NORMAL    // 正常
-  MISSING   // 盘亏
-  EXTRA     // 盘盈
+  NORMAL // 正常
+  MISSING // 盘亏
+  EXTRA // 盘盈
+}
+
+// ============================================================
+// 审批流程配置（M3，蓝本 prisma/approval-flow.draft.prisma）
+// ============================================================
+
+// 业务类型（首批只接入「申请升级配件」，后续扩展追加枚举值即可）
+enum WorkflowBusinessType {
+  ASSET_UPGRADE // 申请升级配件
+  ASSET_SCRAP // 申请资产报废
+  ASSET_RETURN // 设备退回（终审通过自动将设备置闲置归还）
+  ASSET_REPLACE // 设备更换（终审通过后资产管理员手动执行：回收旧机并分配新机）
+  ASSET_REPAIR // 设备维修（终审通过后资产管理员手动执行：旧机置维修中并分配替换机）
+  ASSET_DEPART // 员工离职（终审通过后生成交接单，对账无误后自动回收名下全部设备）
+}
+
+// 流程定义状态：草稿可编辑；已发布不可改（改=新建版本）；同类型同状态唯一 PUBLISHED
+enum WorkflowStatus {
+  DRAFT // 草稿，可任意编辑
+  PUBLISHED // 已发布，不可修改（修改 = 复制成新版本）
+  ARCHIVED // 已归档（同类型已有更新版本）
+}
+
+// 节点类型（第一版只维护 APPROVAL；START/END 由引擎隐式）
+enum WorkflowNodeType {
+  START // 发起
+  APPROVAL // 审批
+  END // 结束（全部通过后自动执行）
+}
+
+// 审批人解析方式
+enum AssigneeType {
+  USER // 指定具体某个人
+  ROLE // 按角色（对应 Role.key，如 ASSET_MANAGER）
+  DEPT_MANAGER // 申请人所在部门的主管（动态）
+  EMP_MANAGER // 申请人的直属主管（动态）
+  INITIATOR // 回到发起人
+  CUSTOM // 由发起人提交时自选（需 initiatorCanChoose = true）
+}
+
+// 多人节点语义
+enum MultiMode {
+  ANY // 或签：任一通过即推进
+  ALL // 会签：全部通过才推进
+}
+
+// 驳回策略（第一版固定「驳回即终态」，字段保留供后续扩展）
+enum RejectPolicy {
+  TO_PREV // 退回上一节点
+  TO_START // 退回发起人
+  TO_NODE // 退回指定节点
+}
+
+// 节点级抄送对象（决策6：只读知会，不参与审批）
+enum CcType {
+  NONE // 不抄送
+  INITIATOR // 抄送发起人本人
+  DEPT_MANAGER // 抄送申请人所在部门主管
+  EMP_MANAGER // 抄送申请人直属主管
+  SPECIFIC // 抄送指定人（ccUserIds）
+}
+
+// 流程定义（一个业务类型可有多个版本，同时只有一个 PUBLISHED）
+model WorkflowDefinition {
+  id           Int                  @id @default(autoincrement())
+  businessType WorkflowBusinessType
+  name         String // 如「申请升级配件流程」
+  version      Int                  @default(1)
+  status       WorkflowStatus       @default(DRAFT)
+  publishedAt  DateTime?
+  createdById  Int?
+  createdBy    Admin?               @relation(fields: [createdById], references: [id])
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  nodes    WorkflowNode[]
+  edges    WorkflowEdge[]
+  requests ApprovalRequest[]
+
+  @@unique([businessType, version])
+  @@index([businessType, status])
+}
+
+// 审批节点（顺序链：sortOrder 越小越靠前，第一版按数组顺序流转）
+model WorkflowNode {
+  id           Int                @id @default(autoincrement())
+  definitionId Int
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  nodeKey      String // 定义内稳定标识，如 n1（日志/展示可读）
+  name         String // 如「部门主管审批」
+  type         WorkflowNodeType   @default(APPROVAL)
+  sortOrder    Int                @default(0) // 顺序链位置
+
+  // ---- 审批人解析 ----
+  assigneeType       AssigneeType @default(EMP_MANAGER)
+  assigneeUserId     Int? // assigneeType = USER 时指定具体账号
+  assigneeRole       String? // assigneeType = ROLE 时指定角色 key
+  initiatorCanChoose Boolean      @default(false) // 发起人是否可自选审批人
+
+  // ---- 多人节点语义 ----
+  multiMode MultiMode @default(ANY)
+
+  // ---- 驳回策略（第一版用不到，字段保留）----
+  rejectPolicy   RejectPolicy @default(TO_START)
+  rejectToNodeId Int?
+
+  // ---- 抄送（决策6）----
+  ccType    CcType @default(NONE)
+  ccUserIds Json? // ccType = SPECIFIC 时的账号 id 数组
+  ccRules   Json? // 抄送规则数组；非空时按规则并集解析，为空/无效时回退 ccType+ccUserIds（spec §5.1）
+
+  // ---- 画布坐标（可视化预留）----
+  posX Float @default(0)
+  posY Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outEdges  WorkflowEdge[]    @relation("EdgeFrom")
+  inEdges   WorkflowEdge[]    @relation("EdgeTo")
+  tasks     ApprovalTask[] // 该节点产生的待办
+  currentOf ApprovalRequest[] @relation("CurrentNode") // 停留在此节点的申请单
+
+  @@unique([definitionId, nodeKey])
+  @@index([definitionId])
+}
+
+// 流程连线（第一版顺序链不需要写入，为条件分支/画布预留）
+model WorkflowEdge {
+  id           Int                @id @default(autoincrement())
+  definitionId Int
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  fromNodeId   Int
+  fromNode     WorkflowNode       @relation("EdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNodeId     Int
+  toNode       WorkflowNode       @relation("EdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  label        String? // 如「金额 > 5000」
+  condition    String? // 条件表达式（第一版可空）
+
+  @@index([definitionId])
+  @@index([fromNodeId])
+}
+
+// ============================================================
+// 审批运行（M4 审批引擎，蓝本 prisma/approval-flow.draft.prisma）
+// ============================================================
+
+// 申请单状态（驳回即终态 REJECTED，发起人改单重提走新流程）
+enum RequestStatus {
+  DRAFT // 草稿（暂存未提交）
+  PENDING // 审批中
+  APPROVED // 已通过（资产动作已执行）
+  REJECTED // 已驳回（终态）
+  CANCELLED // 发起人撤销
+}
+
+// 待办状态
+enum TaskStatus {
+  PENDING // 待处理
+  APPROVED // 已通过
+  REJECTED // 已驳回
+  SKIPPED // 或签场景下被跳过
+}
+
+// 流转时间线动作
+enum ApprovalLogAction {
+  SUBMIT // 提交申请
+  APPROVE // 审批通过
+  REJECT // 驳回
+  CANCEL // 发起人撤销
+  EXECUTE // 审批通过后系统执行资产动作
+  EXECUTE_FAILED // 执行失败（需人工介入）
+}
+
+// 申请单：绑定「流程版本」，不是业务类型 —— 在途单不受管理员改配置影响
+model ApprovalRequest {
+  id           Int                  @id @default(autoincrement())
+  requestNo    String               @unique // 单号，如 AP-202609-0001
+  definitionId Int
+  definition   WorkflowDefinition   @relation(fields: [definitionId], references: [id])
+  businessType WorkflowBusinessType // 冗余一份，列表筛选不用 join
+  title        String
+  payload      Json // 业务内容快照：assetId / newModelId / reason ...
+  status       RequestStatus        @default(PENDING)
+
+  currentNodeId Int?
+  currentNode   WorkflowNode? @relation("CurrentNode", fields: [currentNodeId], references: [id])
+
+  initiatorId      Int
+  initiator        Admin @relation("Initiator", fields: [initiatorId], references: [id])
+  targetEmployeeId Int? // 给谁升级（可能不是发起人本人）
+
+  submittedAt DateTime  @default(now())
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // ---- 资产管理员手动执行（ASSET_UPGRADE 手动改配件）----
+  executedAt    DateTime? // 执行完成时间；NULL = 待执行
+  finalNodeRole String? // 末节点审批角色 key（"ASSET_MANAGER" 时才可执行）
+
+  tasks ApprovalTask[]
+  logs  ApprovalLog[]
+
+  // M5：预占资产（提交时置 RESERVED）+ 升级执行的资产日志追溯
+  reservedAsset Asset?         @relation("AssetReservation")
+  lifecycleLogs LifecycleLog[]
+  notifications Notification[] // 关联的站内通知（M6）
+  handoverOrder HandoverOrder? // 离职申请通过后生成的交接单
+
+  @@index([status, createdAt])
+  @@index([initiatorId, status])
+  @@index([businessType, status])
+}
+
+// 离职交接单（ASSET_DEPART）：终审通过后生成待对账单，对账确认无误后自动回收全部设备
+model HandoverOrder {
+  id            Int            @id @default(autoincrement())
+  orderNo       String         @unique // 交接单号，如 HO-YYYYMM-NNNN
+  employeeId    Int
+  employee      Employee       @relation("DepartureHandover", fields: [employeeId], references: [id])
+  requestId     Int? @unique // 关联离职审批申请单
+  request       ApprovalRequest? @relation(fields: [requestId], references: [id])
+  status        HandoverStatus @default(PENDING)
+  assetSnapshot Json // 离职员工名下设备清单快照（对账单：assetNo/name/status）
+  confirmedById Int? // 对账确认人（资产管理员账号）
+  confirmedBy   Admin?         @relation("HandoverConfirmer", fields: [confirmedById], references: [id])
+  confirmRemark String?
+  confirmedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  collectedAt   DateTime? // 设备回收完成时间
+
+  @@index([employeeId])
+  @@index([status, createdAt])
+}
+
+// 审批待办：「我的待办」核心查询 = assigneeId = me AND status = PENDING
+model ApprovalTask {
+  id         Int             @id @default(autoincrement())
+  requestId  Int
+  request    ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  nodeId     Int
+  node       WorkflowNode    @relation(fields: [nodeId], references: [id])
+  nodeKey    String // 冗余，日志/展示可读
+  assigneeId Int
+  assignee   Admin           @relation("Assignee", fields: [assigneeId], references: [id])
+  status     TaskStatus      @default(PENDING)
+  comment    String? // 审批意见
+  actedAt    DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([assigneeId, status, createdAt]) // 我的待办
+  @@index([requestId])
+}
+
+// 通知类型（spec §4：类型维度，前端可展示分类）
+enum NotificationType {
+  APPROVAL_TODO // 审批待办
+  APPROVAL_RESULT // 审批结果
+  APPROVAL_CC // 审批抄送
+  SYSTEM // 系统
+}
+
+// 站内通知（M6 实时通知落库：未读/已读 + 点击跳申请单详情）
+model Notification {
+  id        Int              @id @default(autoincrement())
+  adminId    Int // 接收人账号
+  admin      Admin            @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  requestId  Int? // 关联审批申请单（点击跳 /approvals/[id]）
+  request    ApprovalRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  type      NotificationType @default(SYSTEM)
+  title      String
+  content    String?
+  isRead     Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  @@index([adminId, isRead, createdAt])
+}
+
+// 流转时间线：面向申请单的完整审计（系统动作 actorId 为空）
+model ApprovalLog {
+  id          Int               @id @default(autoincrement())
+  requestId   Int
+  request     ApprovalRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actorId     Int?
+  actor       Admin?            @relation("LogActor", fields: [actorId], references: [id])
+  action      ApprovalLogAction
+  fromNodeKey String?
+  toNodeKey   String?
+  comment     String?
+  meta        Json? // 执行结果 / 异常信息
+  createdAt   DateTime          @default(now())
+
+  @@index([requestId, createdAt])
 }

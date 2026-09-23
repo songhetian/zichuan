@@ -9,6 +9,7 @@ import {
   Trash2,
   ArrowRightLeft,
   ArrowUpCircle,
+  ArrowDownCircle,
   Package,
   UserCheck,
   RotateCcw,
@@ -41,50 +42,56 @@ const actionConfig: Record<
   CREATED: {
     label: "创建",
     icon: Package,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50 border-blue-200",
+    color: "text-slate-600",
+    bgColor: "bg-slate-100/80 border-slate-300/60",
   },
   ALLOCATED: {
     label: "分配",
     icon: UserCheck,
-    color: "text-green-600",
-    bgColor: "bg-green-50 border-green-200",
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-100/70 border-emerald-300/60",
   },
   RETURNED: {
     label: "归还",
     icon: RotateCcw,
-    color: "text-orange-600",
-    bgColor: "bg-orange-50 border-orange-200",
+    color: "text-amber-700",
+    bgColor: "bg-amber-100/80 border-amber-300/60",
   },
   TRANSFERRED: {
     label: "调拨",
     icon: ArrowRightLeft,
-    color: "text-purple-600",
-    bgColor: "bg-purple-50 border-purple-200",
+    color: "text-purple-700",
+    bgColor: "bg-purple-100/70 border-purple-300/60",
   },
   UPGRADED: {
     label: "升级",
     icon: ArrowUpCircle,
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-50 border-indigo-200",
+    color: "text-indigo-700",
+    bgColor: "bg-indigo-100/70 border-indigo-300/60",
+  },
+  DOWNGRADED: {
+    label: "降级",
+    icon: ArrowDownCircle,
+    color: "text-indigo-700",
+    bgColor: "bg-indigo-100/70 border-indigo-300/60",
   },
   SCRAPPED: {
     label: "报废",
     icon: Trash2,
-    color: "text-red-600",
-    bgColor: "bg-red-50 border-red-200",
+    color: "text-red-700",
+    bgColor: "bg-red-100/80 border-red-300/60",
   },
   MAINTENANCE_START: {
     label: "送修",
     icon: Wrench,
-    color: "text-yellow-600",
-    bgColor: "bg-yellow-50 border-yellow-200",
+    color: "text-amber-700",
+    bgColor: "bg-amber-100/80 border-amber-300/60",
   },
   MAINTENANCE_DONE: {
     label: "维修完成",
     icon: CheckCircle2,
-    color: "text-emerald-600",
-    bgColor: "bg-emerald-50 border-emerald-200",
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-100/70 border-emerald-300/60",
   },
 };
 
@@ -120,8 +127,8 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
           const config = actionConfig[log.action] || {
             label: log.action,
             icon: Clock,
-            color: "text-gray-600",
-            bgColor: "bg-gray-50 border-gray-200",
+            color: "text-muted-foreground",
+            bgColor: "bg-muted/60 border-border/60",
           };
           const Icon = config.icon;
           const isFirst = index === 0;
@@ -149,17 +156,20 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
                       <Badge variant="outline" className={config.color}>
                         {config.label}
                       </Badge>
-                      {log.fromStatus && log.toStatus && (
-                        <div className="flex items-center gap-1 text-sm">
-                          <span className="text-muted-foreground">
-                            {statusLabelMap[log.fromStatus] ?? log.fromStatus}
-                          </span>
-                          <span className="text-muted-foreground">→</span>
-                          <span className="font-medium">
-                            {statusLabelMap[log.toStatus] ?? log.toStatus}
-                          </span>
-                        </div>
-                      )}
+                      {/* 仅当状态确实变化时显示流转；升降级等不改变资产状态的记录不展示 */}
+                      {log.fromStatus &&
+                        log.toStatus &&
+                        log.fromStatus !== log.toStatus && (
+                          <div className="flex items-center gap-1 text-sm">
+                            <span className="text-muted-foreground">
+                              {statusLabelMap[log.fromStatus] ?? log.fromStatus}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="font-medium">
+                              {statusLabelMap[log.toStatus] ?? log.toStatus}
+                            </span>
+                          </div>
+                        )}
                       {!log.fromStatus && log.toStatus && (
                         <span className="text-sm font-medium">
                           {statusLabelMap[log.toStatus] ?? log.toStatus}
@@ -176,7 +186,7 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(log.createdAt).toLocaleString("zh-CN")}
+                        {new Date(log.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
                       </span>
                       <span>操作人: {log.operator}</span>
                     </div>

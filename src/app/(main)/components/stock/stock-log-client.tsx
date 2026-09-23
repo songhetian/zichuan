@@ -96,7 +96,7 @@ export const columns: ColumnDef<StockLogItem>[] = [
     size: 160,
     cell: ({ row }) => {
       const date = new Date(row.getValue("createdAt"));
-      return date.toLocaleString("zh-CN");
+      return date.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
     },
   },
 ];

@@ -1,4 +1,4 @@
-﻿"use server";
+"use server";
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -65,7 +65,7 @@ export async function getSystemLogs(
 
   const logs = await prisma.systemLog.findMany({
     where,
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
 
   return { success: true, data: logs };

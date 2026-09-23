@@ -62,12 +62,15 @@ model Employee {
 }
 
 // [改] 登录账号：接上员工档案 + 角色
+// 角色采用三表可配置权限点（Role / Permission / RolePermission，见下文），
+// 已随 M1 落地，不再是枚举。
 model Admin {
   id          Int       @id @default(autoincrement())
   username    String    @unique
   password    String    // bcrypt 哈希
   displayName String?   // 新增：显示名，列表/审批人下拉可读
-  role        AdminRole @default(EMPLOYEE)  // 新增
+  roleId      Int?      // 新增：角色（三表权限点）
+  role        Role?     @relation(fields: [roleId], references: [id])
   employeeId  Int?      @unique             // 新增：关联员工档案
   employee    Employee? @relation(fields: [employeeId], references: [id])
   isActive    Boolean   @default(true)      // 新增：离职即停用，不用删账号
@@ -81,13 +84,33 @@ model Admin {
 }
 
 // 角色：四档覆盖「超管 / 资产员 / 主管 / 普通员工」
-// 说明：第一版用枚举 + 代码内权限矩阵（类型安全、够用）。
-//       若要做「后台勾选权限点」，见文末 F 段，成本 +2~3 天。
-enum AdminRole {
-  SUPER_ADMIN   // 超管：全部权限 + 账号与流程管理
-  ASSET_MANAGER // 资产管理员：资产/配件/模板/盘点全权
-  DEPT_MANAGER  // 部门主管：本部门数据可见 + 审批
-  EMPLOYEE      // 普通员工：只看自己的资产 + 提交申请
+// 说明：决策已改为「三表可配置权限点」（用户确认），Role/Permission/RolePermission
+//       已随 M1 落地到 schema.prisma 并 seed 四角色 + 默认矩阵（数据源 src/lib/permissions.ts）。
+model Role {
+  id          Int    @id @default(autoincrement())
+  key         String @unique  // 如 SUPER_ADMIN / ASSET_MANAGER / DEPT_MANAGER / EMPLOYEE
+  name        String
+  isSystem    Boolean @default(false) // 系统内置角色不允许删除
+  admins      Admin[]
+  permissions RolePermission[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Permission {
+  id      Int    @id @default(autoincrement())
+  key     String @unique // 如 asset.manage / stocktake.create
+  module  String         // 分组用：asset / component / employee / system
+  name    String
+  roles   RolePermission[]
+}
+
+model RolePermission {
+  roleId       Int
+  role         Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId Int
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
 }
 
 // ============================================================
@@ -140,7 +163,7 @@ model WorkflowNode {
   // ---- 审批人解析方式（决定谁能审）----
   assigneeType   AssigneeType @default(EMP_MANAGER)
   assigneeUserId Int?         // assigneeType = USER 时指定具体人
-  assigneeRole   AdminRole?   // assigneeType = ROLE 时指定角色
+  assigneeRole   String?   // assigneeType = ROLE 时指定角色 key（对应 Role.key，如 ASSET_MANAGER）
   initiatorCanChoose Boolean  @default(false) // 发起人是否可自行指定审批人
 
   // ---- 多人节点语义 ----
@@ -407,38 +430,13 @@ model LifecycleLog {
 }
 
 // ============================================================
-// F. 可选扩展 —— 可配置权限点（第一版建议不做）
+// F. 可配置权限点 —— 已落地（M1 决策改为三表）
 // ============================================================
 //
-// 若「权限管理」的意思是「能在后台勾选每个角色有哪些权限」，
-// 则需要下面三张表，并把 Admin.role 换成 Admin.roleId。
-// 成本约 +2~3 天；收益仅在「角色数量会持续增加」时才成立。
-// 当前只有 4 类人，枚举 + 代码内矩阵更简单也更安全（权限点写错是安全问题）。
-//
-// model Role {
-//   id          Int    @id @default(autoincrement())
-//   key         String @unique  // 如 ASSET_MANAGER
-//   name        String
-//   isSystem    Boolean @default(false) // 系统内置角色不允许删除
-//   permissions RolePermission[]
-//   admins      Admin[]
-// }
-//
-// model Permission {
-//   id      Int    @id @default(autoincrement())
-//   key     String @unique // 如 asset.delete / stocktake.create
-//   module  String         // 分组用：asset / component / employee / system
-//   name    String
-//   roles   RolePermission[]
-// }
-//
-// model RolePermission {
-//   roleId       Int
-//   role         Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-//   permissionId Int
-//   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-//   @@id([roleId, permissionId])
-// }
+// 用户已确认采用「三表可配置权限点」：Role / Permission / RolePermission
+// 已随 M1 落地到 prisma/schema.prisma，种子数据见 prisma/seed.ts，
+// 权限矩阵单一数据源在 src/lib/permissions.ts。
+// 后台「勾选权限点」界面属于 M2 权限管理页的一部分。
 
 // ============================================================
 // 迁移与落地注意事项
@@ -457,14 +455,11 @@ model LifecycleLog {
 //                          StocktakeRecord.expectedStatus —— 都是追加 RESERVED）
 //    AddForeignKey : 19
 //
-// 2. ⚠️ 迁移后必须立刻执行这一条，否则超管会被自己锁在外面：
-//
-//      UPDATE Admin SET role = 'SUPER_ADMIN' WHERE id = 1;
-//
-//    原因：Admin.role 的迁移默认值是 EMPLOYEE，现有账号迁移后会变成普通员工，
-//    权限校验一上线他就没有任何管理权限了。
-//    更稳的做法：在合并 schema 时把默认值临时写作 SUPER_ADMIN，执行迁移后再改回
-//    EMPLOYEE（这样默认值策略正确，且不用手工 SQL）。
+// 2. ⚠️ 超管保护（已由 seed 处理，见 prisma/seed.ts）：
+//      迁移后旧账号 roleId 为空（没有角色），权限校验一上线他会被锁在外面。
+//      seedRoles() 会建四角色并给「无角色的首个账号」补绑 SUPER_ADMIN。
+//      任何环境跑完迁移后必须执行 seed：npm run db reset（开发）/ 生产手动跑 seed。
+//      等价手工 SQL：UPDATE Admin SET roleId = (SELECT id FROM Role WHERE key='SUPER_ADMIN') WHERE roleId IS NULL;
 //
 // 3. AssetStatus 的 4 处 MODIFY 都是「末尾追加 RESERVED」，MySQL 下对现有数据安全。
 //    但前端必须同步这三处，否则会漏状态：

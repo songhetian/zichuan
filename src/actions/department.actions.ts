@@ -1,10 +1,11 @@
-﻿"use server";
+"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 const createSchema = z.object({
   name: z.string().min(1, "部门名称不能为空"),
@@ -12,6 +13,8 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(1, "部门名称不能为空").optional(),
+  // 部门主管（指向员工档案）；null = 清除主管
+  managerId: z.number().int().positive().nullable().optional(),
 });
 
 export async function createDepartment(
@@ -35,26 +38,37 @@ export async function createDepartment(
   }
 }
 
+const deptWithManager = {
+  id: true,
+  name: true,
+  managerId: true,
+  manager: { select: { id: true, name: true } },
+} as const;
+
 export async function getDepartments(): Promise<
-  ActionResult<{ id: number; name: string }[]>
+  ActionResult<
+    { id: number; name: string; managerId: number | null; manager: { id: number; name: string } | null }[]
+  >
 > {
   await requireAuth();
 
   const depts = await prisma.department.findMany({
     orderBy: { id: "asc" },
-    select: { id: true, name: true },
+    select: deptWithManager,
   });
   return { success: true, data: depts };
 }
 
 export async function getDepartmentById(
   id: number
-): Promise<ActionResult<{ id: number; name: string }>> {
+): Promise<
+  ActionResult<{ id: number; name: string; managerId: number | null; manager: { id: number; name: string } | null }>
+> {
   await requireAuth();
 
   const dept = await prisma.department.findUnique({
     where: { id },
-    select: { id: true, name: true },
+    select: deptWithManager,
   });
   if (!dept) {
     return { success: false, error: "部门不存在" };
@@ -65,8 +79,12 @@ export async function getDepartmentById(
 export async function updateDepartment(
   id: number,
   input: z.infer<typeof updateSchema>
-): Promise<ActionResult<{ id: number; name: string }>> {
-  await requireAuth();
+): Promise<
+  ActionResult<{ id: number; name: string; managerId: number | null; manager: { id: number; name: string } | null }>
+> {
+  const user = await requireAuth();
+  const forbidden = await guardPermission(user, "department.update", "没有编辑部门的权限");
+  if (forbidden) return forbidden;
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -78,11 +96,22 @@ export async function updateDepartment(
     return { success: false, error: "部门不存在" };
   }
 
+  // managerId 非空时校验员工存在（避免外键报错不友好）
+  if (validated.data.managerId != null) {
+    const manager = await prisma.employee.findUnique({
+      where: { id: validated.data.managerId },
+      select: { id: true },
+    });
+    if (!manager) {
+      return { success: false, error: "指定的部门主管员工不存在" };
+    }
+  }
+
   try {
     const dept = await prisma.department.update({
       where: { id },
       data: validated.data,
-      select: { id: true, name: true },
+      select: deptWithManager,
     });
     return { success: true, data: dept };
   } catch (e) {

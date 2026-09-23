@@ -3,7 +3,11 @@
 > **决策变更记录**
 > - v1：渐进式引入（Next.js 单宿主过渡）
 > - v2：企业级功能全景 + 渐进式演进
-> - **v3（本版）：一次性整体替换。** 用户明确：不做渐进式共存；新架构一步到位承载全部功能；旧分支冻结，作为对照与兜底；现有 12 个核心模块与近期迭代功能**全部保留**。
+> - v3（本版）：一次性整体替换。用户明确：不做渐进式共存；新架构一步到位承载全部功能；旧分支冻结，作为对照与兜底；现有 12 个核心模块与近期迭代功能**全部保留**。
+> - **⚠️ v4 决策变更（2026-09-19）：本 v3 方案已废弃，实际采用「渐进式改造」路线。**
+>   定稿方案见 [approval-flow-v1.md](approval-flow-v1.md)：沿用现有 Next.js + Server Actions + Prisma 架构，
+>   只叠加审批流 / 权限 / Socket.io 通知（不引入 NestJS / refine / Redis / monorepo）。
+>   本文件保留作为历史对照，不再作为实施依据。
 >
 > 目标技术栈：**refine · Next.js · NestJS · WebSocket(Socket.io) · zustand · zod · Prisma · MySQL · Redis · React Flow**。
 

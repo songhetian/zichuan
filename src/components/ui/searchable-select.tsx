@@ -20,6 +20,7 @@ interface SearchableSelectProps {
   onValueChange: (value: string) => void
   placeholder?: string
   emptyText?: string
+  ariaLabel?: string
   className?: string
   triggerClassName?: string
 }
@@ -30,6 +31,7 @@ export function SearchableSelect({
   onValueChange,
   placeholder = "选择...",
   emptyText = "无匹配项",
+  ariaLabel,
   className,
   triggerClassName,
 }: SearchableSelectProps) {
@@ -47,6 +49,7 @@ export function SearchableSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={ariaLabel}
           className={cn("h-9 justify-between font-normal", triggerClassName)}
         >
           <span className="truncate">{selectedLabel}</span>

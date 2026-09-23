@@ -4,6 +4,7 @@ import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 // ============================================================
 // Schema 校验
@@ -25,13 +26,17 @@ const stockOutSchema = z.object({
 
 const logQuerySchema = z.object({
   modelId: z.number().optional(),
-  type: z.enum(["PURCHASE_IN", "UPGRADE_RETURN", "ASSET_BUILD", "UPGRADE_USE"]).optional(),
+  type: z.enum(["PURCHASE_IN", "UPGRADE_RETURN", "ASSET_BUILD", "UPGRADE_USE"], {
+    message: "流水类型不合法",
+  }).optional(),
 });
 
 const batchItemSchema = z.object({
   modelId: z.number(),
   quantity: z.number().int().positive("数量必须为正整数"),
-  type: z.enum(["ASSET_BUILD", "UPGRADE_USE"]),
+  type: z.enum(["ASSET_BUILD", "UPGRADE_USE"], {
+    message: "出库类型不合法",
+  }),
 });
 
 const batchOutSchema = z.array(batchItemSchema);
@@ -52,7 +57,9 @@ async function checkModelExists(modelId: number): Promise<boolean> {
 export async function purchaseStockIn(
   input: z.infer<typeof stockInSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = stockInSchema.safeParse(input);
   if (!validated.success) {
@@ -108,7 +115,9 @@ export async function purchaseStockIn(
 export async function upgradeReturnStockIn(
   input: z.infer<typeof stockInSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = stockInSchema.safeParse(input);
   if (!validated.success) {
@@ -154,7 +163,9 @@ export async function upgradeReturnStockIn(
 export async function assetBuildStockOut(
   input: z.infer<typeof stockOutSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = stockOutSchema.safeParse(input);
   if (!validated.success) {
@@ -209,7 +220,9 @@ export async function assetBuildStockOut(
 export async function upgradeUseStockOut(
   input: z.infer<typeof stockOutSchema>
 ): Promise<ActionResult<{ modelId: number; quantity: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = stockOutSchema.safeParse(input);
   if (!validated.success) {
@@ -270,7 +283,9 @@ export async function batchStockOut(
   operator: string,
   remark?: string
 ): Promise<ActionResult<{ success: true }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = batchOutSchema.safeParse(items);
   if (!validated.success) {

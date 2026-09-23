@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "name": "计算机设备",
+    "code": "DN",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": null,
+    "createdAt": "2026-09-19T08:48:14.313Z",
+    "updatedAt": "2026-09-19T08:48:14.313Z"
+  },
+  {
+    "id": 2,
+    "name": "台式机",
+    "code": "DT",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": 1,
+    "createdAt": "2026-09-19T08:48:14.317Z",
+    "updatedAt": "2026-09-19T08:48:14.317Z"
+  },
+  {
+    "id": 3,
+    "name": "笔记本",
+    "code": "NB",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": 1,
+    "createdAt": "2026-09-19T08:48:14.319Z",
+    "updatedAt": "2026-09-19T08:48:14.319Z"
+  },
+  {
+    "id": 4,
+    "name": "网络设备",
+    "code": "WL",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": null,
+    "createdAt": "2026-09-19T08:48:14.320Z",
+    "updatedAt": "2026-09-19T08:48:14.320Z"
+  },
+  {
+    "id": 5,
+    "name": "交换机",
+    "code": "SW",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": 4,
+    "createdAt": "2026-09-19T08:48:14.321Z",
+    "updatedAt": "2026-09-19T08:48:14.321Z"
+  },
+  {
+    "id": 6,
+    "name": "办公设备",
+    "code": "BG",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": null,
+    "createdAt": "2026-09-19T08:48:14.323Z",
+    "updatedAt": "2026-09-19T08:48:14.323Z"
+  },
+  {
+    "id": 7,
+    "name": "打印机",
+    "code": "PR",
+    "unique": false,
+    "numberingRule": "{prefix}-{R6}",
+    "parentId": 6,
+    "createdAt": "2026-09-19T08:48:14.324Z",
+    "updatedAt": "2026-09-19T08:48:14.324Z"
+  }
+]

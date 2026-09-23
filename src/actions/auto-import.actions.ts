@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
+import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { BOM_SUFFIX_SEPARATOR, bomFingerprint } from "@/lib/template-normalize";
 import type { Prisma } from "@prisma/client";
@@ -313,7 +315,9 @@ async function getOrCreateEmployee(
 export async function importAssetsAuto(
   input: { assets: HardwareAssetInput[] }
 ): Promise<ActionResult<ImportResult>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   if (!input.assets || input.assets.length === 0) {
     return { success: false, error: "没有要导入的设备数据" };
@@ -446,7 +450,7 @@ export async function importAssetsAuto(
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : "未知错误";
-      errors.push(`第${rowNum}行 (${row.deviceName}): ${message}`);
+      errors.push(`第${rowNum}行 (${row.deviceName}): ${cleanErrorMessage(message)}`);
     }
   }
 
@@ -588,6 +592,6 @@ export async function importAssetsFromExcelAuto(
     return importAssetsAuto({ assets: hardwareAssets });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Excel文件解析失败";
-    return { success: false, error: message };
+    return { success: false, error: cleanErrorMessage(message) };
   }
 }

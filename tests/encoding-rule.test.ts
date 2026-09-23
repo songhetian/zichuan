@@ -45,7 +45,7 @@ async function setupTemplate(categoryCode = "DN") {
 
 describe("编码规则", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

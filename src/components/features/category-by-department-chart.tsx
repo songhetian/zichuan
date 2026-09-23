@@ -7,6 +7,7 @@ import {
   buildCategoryByDepartmentOption,
   type CategoryByDepartmentData,
 } from "@/lib/category-by-department";
+import { useThemeColors } from "@/lib/use-theme-colors";
 
 const ALL = "all";
 
@@ -16,10 +17,11 @@ export function CategoryByDepartmentChart({
   data: CategoryByDepartmentData;
 }) {
   const [category, setCategory] = useState<string>(ALL);
+  const colors = useThemeColors();
 
   if (data.departments.length === 0 || data.categories.length === 0) {
     return (
-      <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
+      <div className="h-[340px] flex items-center justify-center text-muted-foreground text-sm">
         暂无数据
       </div>
     );
@@ -27,7 +29,8 @@ export function CategoryByDepartmentChart({
 
   const option = buildCategoryByDepartmentOption(
     data,
-    category === ALL ? undefined : category
+    category === ALL ? undefined : category,
+    { label: colors.muted, axisLine: colors.border, splitLine: colors.border }
   );
 
   return (
@@ -45,7 +48,7 @@ export function CategoryByDepartmentChart({
           ]}
         />
       </div>
-      <ReactECharts option={option} style={{ height: 300 }} notMerge />
+      <ReactECharts option={option} style={{ height: 340 }} notMerge />
     </div>
   );
 }

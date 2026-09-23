@@ -25,16 +25,14 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CreateAssetDialog } from "./create-asset-dialog";
+import { AssetHeaderActions } from "./asset-header-actions";
 import {
   Eye,
   Pencil,
   Trash2,
   Ban,
-  Plus,
   Search,
   X,
-  Download,
-  Upload,
   RotateCcw,
   UserPlus,
   Wrench,
@@ -55,6 +53,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { usePermission } from "@/hooks/use-permission";
 import { updateAsset, deleteAsset } from "@/actions/asset.actions";
 import {
   returnAssets,
@@ -317,6 +316,8 @@ function ActionButtons({
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const canEdit = usePermission("asset.device.update");
+  const canDelete = usePermission("asset.device.delete");
   const [scrapOpen, setScrapOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
@@ -470,12 +471,16 @@ function ActionButtons({
             <AssetPreviewContent asset={asset} />
           </PopoverContent>
         </Popover>
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {canEdit && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
+        {canDelete && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="更多操作" aria-label="更多操作">
@@ -648,13 +653,13 @@ function AssetNoCell({ asset }: { asset: AssetItem }) {
     <Popover open={preview.isOpen} onOpenChange={() => {}}>
       <PopoverTrigger asChild>
         <div
-          className="text-center cursor-pointer group"
+          className="text-left cursor-pointer group min-w-0"
           onClick={() => router.push(`/assets/${asset.id}`)}
           onMouseEnter={preview.handleMouseEnter}
           onMouseLeave={preview.handleMouseLeave}
         >
-          <div className="text-primary group-hover:underline">{asset.assetNo}</div>
-          <div className="text-muted-foreground text-xs">{asset.name}</div>
+          <div className="text-primary group-hover:underline truncate">{asset.assetNo}</div>
+          <div className="text-muted-foreground text-xs truncate">{asset.name}</div>
         </div>
       </PopoverTrigger>
       <PopoverContent
@@ -704,6 +709,8 @@ function getColumns(
       accessorKey: "assetNo",
       meta: { align: "left" as const },
       header: "编号/名称",
+      size: 200,
+      minSize: 180,
       cell: ({ row }) => <AssetNoCell asset={row.original} />,
     },
     {
@@ -761,7 +768,7 @@ function getColumns(
       header: "创建时间",
       size: 170,
       cell: ({ row }) =>
-        row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN") : "-",
+        row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : "-",
     },
     {
       id: "actions",
@@ -932,6 +939,7 @@ export function AssetListClient({
       !keyword ||
       asset.assetNo.toLowerCase().includes(keyword.toLowerCase()) ||
       asset.name.toLowerCase().includes(keyword.toLowerCase()) ||
+      (asset.employeeName ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
       asset.components.some((c) =>
         (c.modelName ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
         (c.modelBrand ?? "").toLowerCase().includes(keyword.toLowerCase())
@@ -1217,7 +1225,7 @@ export function AssetListClient({
         title="设备管理"
         description="管理所有设备资产信息"
         action={
-          <div className="flex items-center gap-2">
+          <>
             <input
               ref={fileInputRef}
               type="file"
@@ -1225,35 +1233,6 @@ export function AssetListClient({
               className="hidden"
               onChange={handleImport}
             />
-            <Button
-              variant="outline"
-              onClick={() => { setExportMode("all"); setExportPreviewOpen(true); }}
-              disabled={exportLoading}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              {exportLoading ? "导出中..." : "导出 Excel"}
-            </Button>
-            {selectedAssets.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => { setExportMode("selected"); setExportPreviewOpen(true); }}
-                disabled={exportLoading}
-                className="border-primary text-primary hover:bg-primary/5"
-                title="仅导出当前选中的设备"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {exportLoading ? "导出中..." : `导出选中 (${selectedAssets.length})`}
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importLoading}
-              title="手动导入：需提前创建模板，适合手动维护设备数据"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {importLoading ? "导入中..." : "导入 Excel"}
-            </Button>
             <input
               ref={autoImportFileRef}
               type="file"
@@ -1261,21 +1240,18 @@ export function AssetListClient({
               className="hidden"
               onChange={handleAutoImport}
             />
-            <Button
-              variant="outline"
-              onClick={() => autoImportFileRef.current?.click()}
-              disabled={autoImportLoading}
-              className="border-primary text-primary hover:bg-primary/5"
-              title="硬件扫描导入：从扫描脚本生成的Excel导入，自动创建分类、模板和配件"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {autoImportLoading ? "导入中..." : "硬件扫描导入"}
-            </Button>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              新建设备
-            </Button>
-          </div>
+            <AssetHeaderActions
+            hasSelection={selectedAssets.length > 0}
+            exportLoading={exportLoading}
+            importLoading={importLoading}
+            autoImportLoading={autoImportLoading}
+            onCreate={() => setCreateOpen(true)}
+            onExportAll={() => { setExportMode("all"); setExportPreviewOpen(true); }}
+            onExportSelected={() => { setExportMode("selected"); setExportPreviewOpen(true); }}
+            onImportClick={() => fileInputRef.current?.click()}
+            onAutoImportClick={() => autoImportFileRef.current?.click()}
+          />
+          </>
         }
       />
 
@@ -1356,7 +1332,7 @@ export function AssetListClient({
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="搜索编号、名称或配件型号..."
+            placeholder="搜索编号、名称、使用人或配件型号..."
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             className="pl-9 pr-8"

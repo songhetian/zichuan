@@ -131,11 +131,12 @@ if (busy.length > 0) {
   process.exit(1);
 }
 
-const dev = spawn(`npx next dev -p ${PORT}`, {
+// 自定义服务器（server.ts）：先挂 Socket.IO，再转发给 Next（修复 /api/socket 实时推送）
+const dev = spawn(`npx tsx server.ts`, {
   shell: true,
   stdio: "inherit",
   cwd: ROOT,
-  env: childEnv,
+  env: { ...childEnv, PORT: String(PORT), NODE_ENV: "development" },
 });
 
 dev.on("exit", (code) => process.exit(code ?? 0));

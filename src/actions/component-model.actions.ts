@@ -5,6 +5,7 @@ import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 // ============================================================
 // Schema 校验
@@ -63,7 +64,9 @@ function formatModel(model: PrismaComponentModel): ComponentModelWithStock {
 export async function createComponentModel(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<ComponentModelWithStock>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -149,7 +152,9 @@ export async function updateComponentModel(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<ComponentModelWithStock>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -187,7 +192,9 @@ export async function updateComponentModel(
 export async function deleteComponentModel(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   // 检查型号是否存在
   const existing = await prisma.componentModel.findUnique({ where: { id } });

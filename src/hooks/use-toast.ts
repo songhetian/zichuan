@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast"
+import { cleanErrorMessage } from "@/lib/sanitize-error"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
@@ -136,6 +137,12 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+
+  // 兜底卫生化：任何以英文/编码形态进入提示的错误都替换为通用中文，保留已通顺中文
+  if (typeof props.title === "string") props.title = cleanErrorMessage(props.title)
+  if (typeof props.description === "string") {
+    props.description = cleanErrorMessage(props.description)
+  }
 
   const update = (props: ToasterToast) =>
     dispatch({

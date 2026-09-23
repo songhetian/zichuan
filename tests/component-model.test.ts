@@ -18,7 +18,7 @@ async function createTestCategory(name = "CPU") {
 
 describe("配件型号 CRUD", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

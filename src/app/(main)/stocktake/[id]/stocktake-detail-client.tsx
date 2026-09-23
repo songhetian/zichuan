@@ -22,13 +22,18 @@ import { useToast } from "@/hooks/use-toast";
 import {
   updateStocktakeRecord,
   completeStocktakeSession,
+  getStocktakeSessionById,
+  importStocktakeFile,
+  exportStocktakeAbnormal,
 } from "@/actions/stocktake.actions";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
+import { ExportPreview } from "@/components/features/export-preview";
 
 interface StocktakeRecord {
   id: number;
   assetId: number;
   assetNo: string;
+  assetName: string;
   expectedStatus: string;
   actualStatus: string;
   remark: string | null;
@@ -52,6 +57,17 @@ const statusMap: Record<string, string> = {
   IN_MAINTENANCE: "维修中",
   SCRAPPED: "已报废",
 };
+
+/** 异常报告导出的列定义（与后端 importStocktakeAbnormalRow 字段 key 一一对应），用于 ExportPreview 复用 */
+export const abnormalColumns = [
+  { key: "assetNo", label: "设备编号" },
+  { key: "assetName", label: "设备名称" },
+  { key: "expectedStatus", label: "预期状态" },
+  { key: "actualStatus", label: "实际状态" },
+  { key: "remark", label: "备注" },
+] as const;
+
+export type StocktakeAbnormalColumnKey = (typeof abnormalColumns)[number]["key"];
 
 const resultConfig: Record<
   string,
@@ -90,6 +106,73 @@ export function StocktakeDetailClient({
   const [editOpen, setEditOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    updated: number;
+    unknown: string[];
+  } | null>(null);
+
+  // 上传 Excel 对账：把文件字节传给后端解析并对账，随后刷新明细
+  const handleImportExcel = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".xlsx,.xls";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setImporting(true);
+      try {
+        const buffer = await file.arrayBuffer();
+        const res = await importStocktakeFile(session.id, buffer);
+        if (res.success) {
+          setImportResult({ updated: res.data.updated, unknown: res.data.unknown });
+          toast({
+            title: "对账完成",
+            description: `共更新 ${res.data.updated} 条`,
+          });
+          // 刷新明细（actualStatus 因对账变化）
+          const fresh = await getStocktakeSessionById(session.id);
+          if (fresh.success) setRecords(fresh.data.records);
+        } else {
+          setImportResult(null);
+          toast({ title: "对账失败", description: res.error, variant: "destructive" });
+        }
+      } finally {
+        setImporting(false);
+      }
+    };
+    input.click();
+  };
+
+  // 导出异常报告：后端生成 xlsx 的 base64 → Blob → 触发浏览器下载
+  const handleExportAbnormal = async (selectedFields?: string[]) => {
+    setExporting(true);
+    try {
+      const res = await exportStocktakeAbnormal(
+        session.id,
+        selectedFields as StocktakeAbnormalColumnKey[] | undefined
+      );
+      if (res.success) {
+        const bytes = Uint8Array.from(atob(res.data.base64), (c) => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes]));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `盘点异常_${session.name}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } else {
+        toast({
+          title: "导出失败",
+          description: res.error,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // 键盘快捷键
   useEffect(() => {
@@ -171,6 +254,20 @@ export function StocktakeDetailClient({
   const extraCount = records.filter((r) => r.actualStatus === "EXTRA").length;
   const progress = total > 0 ? ((normalCount + missingCount + extraCount) / total) * 100 : 0;
 
+  // 异常记录 = 盘亏/盘盈，或带备注（与对账/导出判定一致），供预览弹窗展示
+  const abnormalRecords = records.filter(
+    (r) => r.actualStatus === "MISSING" || r.actualStatus === "EXTRA" || r.remark
+  );
+
+  // 导出预览数据（与后端导出列 key 一一对应）
+  const abnormalExportData = abnormalRecords.map((r) => ({
+    assetNo: r.assetNo,
+    assetName: r.assetName ?? "",
+    expectedStatus: r.expectedStatus,
+    actualStatus: r.actualStatus,
+    remark: r.remark ?? "",
+  }));
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -197,22 +294,22 @@ export function StocktakeDetailClient({
       />
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-card rounded-lg border p-4">
           <div className="text-sm text-muted-foreground mb-1">总设备数</div>
           <div className="text-2xl font-bold">{total}</div>
         </div>
-        <div className="bg-green-50 rounded-lg border border-green-200 p-4">
-          <div className="text-sm text-green-700 mb-1">正常</div>
-          <div className="text-2xl font-bold text-green-600">{normalCount}</div>
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+          <div className="text-sm text-emerald-500 mb-1">正常</div>
+          <div className="text-2xl font-bold text-emerald-500">{normalCount}</div>
         </div>
-        <div className="bg-red-50 rounded-lg border border-red-200 p-4">
-          <div className="text-sm text-red-700 mb-1">盘亏</div>
-          <div className="text-2xl font-bold text-red-600">{missingCount}</div>
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+          <div className="text-sm text-red-500 mb-1">盘亏</div>
+          <div className="text-2xl font-bold text-red-500">{missingCount}</div>
         </div>
-        <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-          <div className="text-sm text-blue-700 mb-1">盘盈</div>
-          <div className="text-2xl font-bold text-blue-600">{extraCount}</div>
+        <div className="rounded-lg border border-primary/20 bg-primary/10 p-4">
+          <div className="text-sm text-primary mb-1">盘盈</div>
+          <div className="text-2xl font-bold text-primary">{extraCount}</div>
         </div>
       </div>
 
@@ -225,6 +322,54 @@ export function StocktakeDetailClient({
         <Progress value={progress} className="h-2" />
       </div>
 
+      {/* 上传 Excel 对账 */}
+      {session.status === "OPEN" && (
+        <div className="bg-card rounded-lg border p-4 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">上传 Excel 对账</div>
+              <div className="text-xs text-muted-foreground">
+                表头支持「设备编号/实际状态」等；结果支持 正常/盘亏/盘盈
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {abnormalRecords.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewOpen(true)}
+                >
+                  导出异常报告 ({abnormalRecords.length})
+                </Button>
+              )}
+              <Button variant="secondary" size="sm" onClick={handleImportExcel} disabled={importing}>
+                {importing ? "对账中…" : "选择 Excel 并上传"}
+              </Button>
+            </div>
+          </div>
+
+          {importResult && (
+            <div className="text-sm rounded-md border p-3 bg-muted space-y-1">
+              <div>已更新 <span className="font-semibold text-primary">{importResult.updated}</span> 条记录</div>
+              {importResult.unknown.length > 0 && (
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                  <div>
+                    表中存在但系统内没有的编号（盘盈待核查）：
+                    <span className="font-mono text-amber-500">
+                      {importResult.unknown.join("、")}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {importResult.updated === 0 && importResult.unknown.length === 0 && (
+                <div>未发现变更</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 设备卡片列表 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {records.map((record) => {
@@ -235,7 +380,7 @@ export function StocktakeDetailClient({
           return (
             <div
               key={record.id}
-              className={`bg-card rounded-lg border-2 p-4 cursor-pointer transition-all hover:shadow-md ${
+              className={`bg-card rounded-lg border-2 p-4 cursor-pointer transition-all hover:border-primary/40 ${
                 session.status === "OPEN" ? "hover:border-primary" : ""
               }`}
               onClick={() => session.status === "OPEN" && handleEditRecord(record)}
@@ -340,6 +485,18 @@ export function StocktakeDetailClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 导出异常报告（可预览 + 选择字段后导出） */}
+      <ExportPreview
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        data={abnormalExportData}
+        columns={abnormalColumns as unknown as { key: string; label: string }[]}
+        onExport={async (fields) => {
+          await handleExportAbnormal(Array.isArray(fields) ? fields : undefined);
+        }}
+        loading={exporting}
+      />
 
       <ConfirmDialog
         open={completeOpen}

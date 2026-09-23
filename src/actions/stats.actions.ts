@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
 
@@ -16,10 +17,23 @@ type AssetStatsResult = {
 export async function getAssetStats(
   input: { groupBy?: "category" | "department" | "employee" } = {}
 ): Promise<ActionResult<AssetStatsResult>> {
-  await requireAuth();
+  // 数据范围过滤：拥有 asset.manage 者可见全部资产；否则仅统计本人名下资产
+  const user = await requireAuth();
+  const canViewAll = await hasPermission(user, "asset.manage");
+  let meEmployeeId: number | null = null;
+  if (!canViewAll) {
+    const me = await prisma.admin.findUnique({
+      where: { id: user.id },
+      select: { employeeId: true },
+    });
+    meEmployeeId = me?.employeeId ?? null;
+  }
+  // 本人名下（employeeId 匹配）；无账号绑定的员工身份不可见任何资产
+  const mine = meEmployeeId ?? -1;
 
   const statusGroups = await prisma.asset.groupBy({
     by: ["status"],
+    where: canViewAll ? undefined : { employeeId: mine },
     _count: { id: true },
   });
 
@@ -39,6 +53,7 @@ export async function getAssetStats(
 
   if (input.groupBy === "category") {
     const catGroups = await prisma.asset.findMany({
+      where: canViewAll ? undefined : { employeeId: mine },
       include: {
         template: {
           select: {
@@ -68,7 +83,7 @@ export async function getAssetStats(
 
   if (input.groupBy === "department") {
     const empGroups = await prisma.asset.findMany({
-      where: { employeeId: { not: null } },
+      where: canViewAll ? { employeeId: { not: null } } : { employeeId: mine },
       include: {
         employee: {
           select: {
@@ -98,7 +113,7 @@ export async function getAssetStats(
 
   if (input.groupBy === "employee") {
     const empAssets = await prisma.asset.findMany({
-      where: { employeeId: { not: null } },
+      where: canViewAll ? { employeeId: { not: null } } : { employeeId: mine },
       include: {
         employee: {
           select: {

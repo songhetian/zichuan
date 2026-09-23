@@ -1,13 +1,13 @@
 import { cn } from "@/lib/utils"
 
-// 状态 → 语义样式映射（带底色的胶囊，一眼可辨）
-// IDLE 中性 / IN_USE 成功绿 / IN_MAINTENANCE 警告琥珀 / SCRAPPED 危险红 / IN_STOCK 信息蓝
+// 状态 → 语义样式映射（纸币感暖调胶囊，一眼可辨）
+// IDLE 中性暖灰 / IN_USE 松绿 / IN_MAINTENANCE 铜色 / SCRAPPED 砖红 / IN_STOCK 蓝灰
 const statusConfig: Record<string, { label: string; className: string }> = {
   IDLE: { label: "闲置", className: "bg-muted text-muted-foreground border-transparent" },
-  IN_USE: { label: "在用", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  IN_MAINTENANCE: { label: "维修中", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  SCRAPPED: { label: "报废", className: "bg-red-50 text-red-700 border-red-200" },
-  IN_STOCK: { label: "库存", className: "bg-blue-50 text-blue-700 border-blue-200" },
+  IN_USE: { label: "在用", className: "bg-emerald-100/70 text-emerald-800 border-emerald-300/60" },
+  IN_MAINTENANCE: { label: "维修中", className: "bg-amber-100/80 text-amber-800 border-amber-300/60" },
+  SCRAPPED: { label: "报废", className: "bg-red-100/80 text-red-800 border-red-300/60" },
+  IN_STOCK: { label: "库存", className: "bg-slate-100/80 text-slate-700 border-slate-300/60" },
 }
 
 export interface StatusStyle {

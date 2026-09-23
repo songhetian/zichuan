@@ -9,7 +9,7 @@ import { setTestUser } from "@/lib/auth";
 
 describe("设备分类唯一性约束", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

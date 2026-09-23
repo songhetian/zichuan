@@ -11,20 +11,20 @@ export const ASSET_STATUS_LABEL_MAP: Record<string, string> = {
   SCRAPPED: "报废",
 };
 
-/** 资产状态 → ECharts 颜色 */
+/** 资产状态 → ECharts 颜色（暖纸·台账色系） */
 export const ASSET_STATUS_COLOR_MAP: Record<string, string> = {
-  IDLE: "#94a3b8",
-  IN_USE: "#22c55e",
-  IN_MAINTENANCE: "#eab308",
-  SCRAPPED: "#ef4444",
+  IDLE: "#a8a29e",
+  IN_USE: "#4d7c4f",
+  IN_MAINTENANCE: "#b97a34",
+  SCRAPPED: "#b3452e",
 };
 
 /** 资产状态 → Badge className (用于 StatusBadge 组件) */
 export const ASSET_STATUS_BADGE_MAP: Record<string, { label: string; className: string }> = {
-  IDLE: { label: "闲置", className: "bg-slate-100 text-slate-700 border-slate-200" },
-  IN_USE: { label: "在用", className: "bg-green-100 text-green-700 border-green-200" },
-  IN_MAINTENANCE: { label: "维修中", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  SCRAPPED: { label: "报废", className: "bg-red-100 text-red-700 border-red-200" },
+  IDLE: { label: "闲置", className: "bg-slate-100/80 text-slate-600 border-slate-300/60" },
+  IN_USE: { label: "在用", className: "bg-emerald-100/70 text-emerald-800 border-emerald-300/60" },
+  IN_MAINTENANCE: { label: "维修中", className: "bg-amber-100/80 text-amber-800 border-amber-300/60" },
+  SCRAPPED: { label: "报废", className: "bg-red-100/80 text-red-800 border-red-300/60" },
 };
 
 /** 生命周期动作 → 中文标签 */
@@ -34,7 +34,9 @@ export const LIFECYCLE_ACTION_LABEL_MAP: Record<string, string> = {
   RETURNED: "归还",
   TRANSFERRED: "调拨",
   UPGRADED: "升级",
+  DOWNGRADED: "降级",
   SCRAPPED: "报废",
+  REPLACED: "更换回收",
   MAINTENANCE_START: "送修",
   MAINTENANCE_DONE: "维修完成",
 };

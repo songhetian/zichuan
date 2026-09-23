@@ -76,7 +76,7 @@ const columns: ColumnDef<StocktakeSession>[] = [
   {
     accessorKey: "startedAt",
     header: "创建时间",
-    cell: ({ row }) => new Date(row.original.startedAt).toLocaleString("zh-CN"),
+    cell: ({ row }) => new Date(row.original.startedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
   },
   {
     id: "actions",

@@ -11,7 +11,8 @@ import * as XLSX from "xlsx";
 
 describe("自动导入设备", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    // 设备导入为写入操作：导入者需具备 asset.manage（与 createAsset 一致）
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

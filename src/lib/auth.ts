@@ -5,6 +5,16 @@ import { ActionResult } from "./types";
 
 const SESSION_COOKIE = "zichuan_session";
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 小时
+// 「记住我」时延长会话保留，30 天（秒）
+export const REMEMBER_MAX_AGE = 30 * 24 * 60 * 60;
+
+/**
+ * 根据是否勾选「记住我」计算会话 cookie 的有效时长（秒）。
+ * 勾选 → 30 天；未勾选 → 常规 8 小时。
+ */
+export function resolveSessionMaxAge(remember: boolean): number {
+  return remember ? REMEMBER_MAX_AGE : SESSION_MAX_AGE;
+}
 
 // iron-session 要求密码至少 32 字符
 const SESSION_SECRET =
@@ -37,17 +47,34 @@ export interface SessionUser {
 // 测试注入 — 保留原有 API，确保 28 个测试文件无需修改
 // ============================================================
 
-let _testUser: SessionUser | null = null;
+export interface TestUser extends SessionUser {
+  /** 测试注入的显式权限 key 集合；未提供时走真实 DB 判定 */
+  permissions?: string[];
+}
 
-export function setTestUser(user: SessionUser | null): void {
+let _testUser: TestUser | null = null;
+
+export function setTestUser(user: TestUser | null): void {
   _testUser = user;
+}
+
+/**
+ * 测试注入的权限覆盖（供 hasPermission 使用）：
+ * 当前测试注入用户与该 id 匹配且显式给了 permissions 时返回该集合（可为空数组=无权限），
+ * 否则返回 undefined（走真实 DB 判定）。
+ */
+export function getTestPermissionOverride(userId: number): string[] | undefined {
+  if (_testUser && _testUser.id === userId && _testUser.permissions !== undefined) {
+    return _testUser.permissions;
+  }
+  return undefined;
 }
 
 // ============================================================
 // Session 核心操作
 // ============================================================
 
-async function getSession() {
+async function getSession(maxAge?: number) {
   // 根据真实代理协议动态决定 secure，为将来上 HTTPS 兜底（当前局域网 HTTP 下为 false）
   const proto = (await headers()).get("x-forwarded-proto") ?? "http";
   const opts: SessionOptions = {
@@ -55,6 +82,8 @@ async function getSession() {
     cookieOptions: {
       ...sessionOptions.cookieOptions,
       secure: proto === "https",
+      // 按「记住我」覆盖会话 cookie 有效期（未指定时沿用默认 8 小时）
+      maxAge: maxAge ?? SESSION_MAX_AGE,
     },
   };
   return getIronSession<SessionData>(cookies(), opts);
@@ -62,10 +91,11 @@ async function getSession() {
 
 export async function createSession(
   userId: number,
-  username: string
+  username: string,
+  remember = false
 ): Promise<void> {
   try {
-    const session = await getSession();
+    const session = await getSession(resolveSessionMaxAge(remember));
     session.userId = userId;
     session.username = username;
     await session.save();
@@ -101,9 +131,26 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     } catch {
       // 只读上下文不可写 cookie，忽略
     }
+    // 真实会话必须校验账号仍为启用状态（停用/离职后会话不再有效）
+    await assertActiveAccount(session.userId);
     return { id: session.userId, username: session.username };
   } catch {
     return null;
+  }
+}
+
+/**
+ * 校验账号仍处于启用状态（isActive=true）。
+ * 停用或账号不存在时抛 UNAUTHORIZED，用于在真实会话分支拒绝其继续操作。
+ * 仅作用于真实会话；测试注入（_testUser）不经过此校验。
+ */
+export async function assertActiveAccount(userId: number): Promise<void> {
+  const admin = await prisma.admin.findUnique({
+    where: { id: userId },
+    select: { isActive: true },
+  });
+  if (!admin || !admin.isActive) {
+    throw new Error("UNAUTHORIZED");
   }
 }
 

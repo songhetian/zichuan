@@ -46,7 +46,7 @@ async function setupTemplate(categoryCode = "DN") {
 
 describe("批量入库", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

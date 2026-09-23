@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "modelId": 2,
+    "quantity": 10,
+    "updatedAt": "2026-09-19T13:07:32.793Z"
+  },
+  {
+    "id": 2,
+    "modelId": 4,
+    "quantity": 10,
+    "updatedAt": "2026-09-19T13:08:14.216Z"
+  },
+  {
+    "id": 3,
+    "modelId": 6,
+    "quantity": 10,
+    "updatedAt": "2026-09-19T13:09:50.833Z"
+  }
+]

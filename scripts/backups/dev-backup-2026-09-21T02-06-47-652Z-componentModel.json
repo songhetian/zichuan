@@ -1,0 +1,38 @@
+[
+  {
+    "id": 2,
+    "name": "DDR4-16G",
+    "brand": "",
+    "categoryId": 1
+  },
+  {
+    "id": 1,
+    "name": "DDR4-8G",
+    "brand": "",
+    "categoryId": 1
+  },
+  {
+    "id": 4,
+    "name": "DDR4-16G",
+    "brand": "",
+    "categoryId": 3
+  },
+  {
+    "id": 3,
+    "name": "DDR4-8G",
+    "brand": "",
+    "categoryId": 3
+  },
+  {
+    "id": 6,
+    "name": "DDR4-16G",
+    "brand": "",
+    "categoryId": 4
+  },
+  {
+    "id": 5,
+    "name": "DDR4-8G",
+    "brand": "",
+    "categoryId": 4
+  }
+]

@@ -4,58 +4,131 @@
 
 @layer base {
   :root {
-    /* 暖色系背景 - 不用纯白，用暖米白 */
-    --background: 40 5% 98%;
-    --foreground: 20 14% 12%;
+    /* 线性·克制工具风 —— 暗色
+      —— 深灰蓝底 + 单一靛蓝强调色 + 发丝边框，去投影，靠色阶分层 */
 
-    /* 卡片用纯白，从暖背景中跳出来 */
-    --card: 0 0% 100%;
-    --card-foreground: 20 14% 12%;
+    --background: 226 25% 9%;
+    --foreground: 214 26% 96%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 20 14% 12%;
+    --card: 226 22% 12%;
+    --card-foreground: 214 26% 96%;
 
-    /* 主色调：深青色 teal - 有辨识度的品牌色 */
-    --primary: 173 80% 40%;
+    --popover: 226 22% 12%;
+    --popover-foreground: 214 26% 96%;
+
+    /* 靛蓝 —— 全站唯一强调色（沉稳、专业） */
+    --primary: 243 75% 66%;
     --primary-foreground: 0 0% 100%;
 
-    /* 暖灰色系 */
-    --secondary: 30 10% 95%;
-    --secondary-foreground: 20 14% 12%;
-    --muted: 30 10% 95%;
-    --muted-foreground: 25 5% 45%;
-    --accent: 173 30% 94%;
-    --accent-foreground: 173 80% 30%;
+    --secondary: 226 20% 16%;
+    --secondary-foreground: 214 24% 94%;
+    --muted: 226 20% 14%;
+    --muted-foreground: 219 18% 74%;
 
-    --destructive: 0 72% 51%;
+    --accent: 243 40% 22%;
+    --accent-foreground: 224 40% 92%;
+
+    --destructive: 350 62% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    /* 暖色边框 */
-    --border: 30 8% 90%;
-    --input: 30 8% 90%;
-    --ring: 173 80% 40%;
-    --radius: 0.5rem;
+    /* 发丝边框（明一档，空间层级更清晰） */
+    --border: 226 16% 22%;
+    --input: 226 16% 24%;
+    --ring: 243 75% 66%;
 
-    /* 侧边栏深色主题 */
-    --sidebar-bg: 200 15% 14%;
-    --sidebar-fg: 200 10% 80%;
-    --sidebar-active: 173 80% 40%;
+    --radius: 0.625rem;
+
+    /* 侧边栏略深，形成停靠感（不靠阴影，靠色差） */
+    --sidebar-bg: 226 28% 7%;
+    --sidebar-fg: 220 20% 80%;
+    --sidebar-active: 243 75% 66%;
     --sidebar-active-fg: 0 0% 100%;
+
+    color-scheme: dark;
+  }
+
+  :root.light {
+    /* 线性·克制工具风 —— 亮色
+      —— 中性白灰底 + 单一靛蓝强调色 + 发丝边框，去投影，靠色阶分层 */
+
+    --background: 224 30% 98%;
+    --foreground: 226 22% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 226 22% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 226 22% 14%;
+
+    /* 靛蓝 —— 亮底深一档保证对比 */
+    --primary: 243 68% 47%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 226 22% 94%;
+    --secondary-foreground: 226 20% 20%;
+    --muted: 226 22% 95%;
+    --muted-foreground: 224 14% 38%;
+
+    --accent: 243 80% 95%;
+    --accent-foreground: 243 60% 36%;
+
+    --destructive: 350 60% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* 发丝边框 */
+    --border: 226 16% 88%;
+    --input: 226 16% 86%;
+    --ring: 243 68% 47%;
+
+    /* 侧边栏中性浅灰 */
+    --sidebar-bg: 226 24% 96%;
+    --sidebar-fg: 224 14% 36%;
+    --sidebar-active: 243 68% 47%;
+    --sidebar-active-fg: 0 0% 100%;
+
+    color-scheme: light;
   }
 
   * {
     @apply border-border;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
-    font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+      "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* 亮暗均为纯色背景（无渐变/辉光），保持线性克制 */
+    background-image: none;
+  }
+
+  /* 全站选区：单一强调色淡化 */
+  ::selection {
+    background-color: hsl(243 75% 60% / 0.24);
+    color: inherit;
   }
 }
 
 @layer utilities {
-  /* 弱化侧边栏非激活态导航图标，让文字成为主导，去除AI生成的图标感 */
+  /* 显示体 —— 冷峻无衬线精密感，用于品牌与页面/卡片标题 */
+  .font-display {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+      "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.008em;
+  }
+
+  /* 线性克制：卡片不投影，层级靠背景色阶与发丝边框区分 */
+  .shadow-warm {
+    box-shadow: none;
+  }
+
+  /* 弱化侧边栏非激活态导航图标，让文字成为主导 */
   .sidebar-nav button:not([class*="bg-primary"]) > svg:first-of-type,
   .sidebar-nav a:not([class*="bg-primary"]) > svg:first-of-type {
     opacity: 0.4;
@@ -64,5 +137,34 @@
   .sidebar-nav button:hover > svg:first-of-type,
   .sidebar-nav a:hover > svg:first-of-type {
     opacity: 0.8;
+  }
+
+  /* 必填标记：用伪元素 +，不污染 label 文本（getByLabelText 兼容） */
+  .req::after {
+    content: "*";
+    margin-left: 3px;
+    color: hsl(350 62% 55%);
+  }
+}
+
+/* 极简暖调滚动条（桌面 webkit） */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(226 16% 38%) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(226 16% 38%);
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(226 16% 46%);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
   }
 }

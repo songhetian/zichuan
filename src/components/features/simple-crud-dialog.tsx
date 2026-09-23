@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 export interface FieldConfig {
   key: string;
   label: string;
-  type: "text" | "select";
+  type: "text" | "password" | "select";
   placeholder?: string;
   options?: { value: string; label: string }[];
   optional?: boolean;
@@ -106,13 +106,7 @@ export function SimpleCrudDialog({
           {fields.map((field) => (
             <div key={field.key} className="space-y-2">
               <Label>{field.label}{field.optional ? "（可选）" : ""}</Label>
-              {field.type === "text" ? (
-                <Input
-                  value={values[field.key] || ""}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                />
-              ) : (
+              {field.type === "select" ? (
                 <Select value={values[field.key] || ""} onValueChange={(v) => handleChange(field.key, v)}>
                   <SelectTrigger>
                     <SelectValue placeholder={field.placeholder} />
@@ -125,6 +119,13 @@ export function SimpleCrudDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              ) : (
+                <Input
+                  type={field.type === "password" ? "password" : "text"}
+                  value={values[field.key] || ""}
+                  onChange={(e) => handleChange(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                />
               )}
               {field.hint && <p className="text-xs text-muted-foreground">{field.hint}</p>}
             </div>

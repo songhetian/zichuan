@@ -177,7 +177,7 @@ export function createTemplateColumns(
       header: "创建时间",
       size: 170,
       cell: ({ row }) =>
-        row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN") : "-",
+        row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : "-",
     },
     {
       id: "actions",

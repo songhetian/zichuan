@@ -4,10 +4,9 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { DashboardClient } from "@/app/(main)/dashboard/dashboard-client";
 
-// jsdom 无 canvas：mock echarts，断言仅关注模块切换行为
+// jsdom 无 canvas：mock echarts，断言仅关注概览模块的同屏展示
 vi.mock("echarts-for-react", () => ({
   default: () => <div data-testid="mock-chart" />,
 }));
@@ -27,57 +26,41 @@ const data = {
 };
 
 const MODULE_HEADINGS = [
+  "待办任务",
   "设备状态分布",
   "各部门设备分类分布",
   "最近操作",
 ];
 
-// 已移除的模块：切换条中不应再出现
+// 已移除的模块：清空待办时也不应出现历史按钮
 const REMOVED_MODULE_BUTTONS = ["分类分布", "配件库存概览（Top 10）", "生命周期趋势（近6个月）"];
 
 afterEach(() => {
   cleanup();
 });
 
-describe("DashboardClient 模块切换", () => {
-  it("默认只显示「待办任务」，其余模块不渲染", () => {
+describe("DashboardClient 概览同屏展示", () => {
+  it("四个导航模块同时展示，无需 tab 切换", () => {
     render(<DashboardClient data={data as any} />);
 
-    expect(screen.getByRole("heading", { name: "待办任务" })).toBeInTheDocument();
     for (const heading of MODULE_HEADINGS) {
-      expect(screen.queryByRole("heading", { name: heading })).toBeNull();
+      expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     }
   });
 
-  it("点击「各部门设备分类分布」只显示该模块", async () => {
-    const user = userEvent.setup();
+  it("不再存在模块切换条", () => {
     render(<DashboardClient data={data as any} />);
 
-    await user.click(screen.getByRole("button", { name: "各部门设备分类分布" }));
-
-    expect(screen.getByRole("heading", { name: "各部门设备分类分布" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "待办任务" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "分类分布" })).toBeNull();
+    expect(screen.queryByTestId("section-switcher")).toBeNull();
+    expect(screen.queryByRole("button", { name: "设备状态分布" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "最近操作" })).toBeNull();
   });
 
-  it("已移除的模块（分类分布、配件库存概览）不再出现在切换条中", () => {
+  it("已移除的模块不再出现", () => {
     render(<DashboardClient data={data as any} />);
 
     for (const button of REMOVED_MODULE_BUTTONS) {
       expect(screen.queryByRole("button", { name: button })).toBeNull();
     }
-  });
-
-  it("依次切换模块，每次只保留一个", async () => {
-    const user = userEvent.setup();
-    render(<DashboardClient data={data as any} />);
-
-    await user.click(screen.getByRole("button", { name: "设备状态分布" }));
-    expect(screen.getByRole("heading", { name: "设备状态分布" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "待办任务" })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "最近操作" }));
-    expect(screen.getByRole("heading", { name: "最近操作" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "设备状态分布" })).toBeNull();
   });
 });

@@ -18,7 +18,7 @@ import { prisma } from "@/lib/prisma";
 describe("deleteAsset —— 真删除语义回归", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
   afterEach(() => setTestUser(null));
 

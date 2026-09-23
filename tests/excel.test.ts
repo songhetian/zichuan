@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as XLSX from "xlsx";
 import { unwrap, unwrapError } from "./helpers";
 import {
   exportAssetsToExcel,
@@ -92,6 +93,25 @@ describe("Excel 导出", () => {
       expect(result.success).toBe(true);
       expect(unwrap(result).buffer).toBeDefined();
       expect(unwrap(result).buffer.length).toBeGreaterThan(0);
+    });
+
+    it("传入 selectedFields 时仅导出选中的列", async () => {
+      await setupExcelData();
+
+      const result = await exportEmployeesToExcel(["employeeNo", "name"]);
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      const wb = XLSX.read(Buffer.from(unwrap(result).buffer));
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
+      expect(rows.length).toBeGreaterThan(0);
+      const row = rows[0];
+      expect(row["工号"]).toBe("E001");
+      expect(row["姓名"]).toBe("张三");
+      expect(row["部门"]).toBeUndefined();
+      expect(row["电话"]).toBeUndefined();
+      expect(row["邮箱"]).toBeUndefined();
     });
   });
 });

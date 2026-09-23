@@ -20,6 +20,19 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 
+// jsdom 不实现 Pointer Capture，Radix Select 的列表项在 pointerdown 时调用会抛错
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {}
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {}
+  }
+}
+
 // 每个测试后清理 DOM，避免多测试文件共享 jsdom 时元素残留导致 screen 查询误命中
 afterEach(() => {
   cleanup()

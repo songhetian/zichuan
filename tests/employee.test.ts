@@ -19,7 +19,7 @@ import { setTestUser } from "@/lib/auth";
 
 describe("部门 CRUD", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["department.update"] });
   });
 
   afterEach(() => {

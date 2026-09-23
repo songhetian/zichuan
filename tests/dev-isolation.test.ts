@@ -63,18 +63,26 @@ describe("开发/生产隔离 - 脚本内部闸门", () => {
     expect(src).toContain("prisma migrate dev");
   });
 
-  it("npm run docker reset 必须先确认，不能一上来就 down -v", () => {
+  it("npm run docker reset 必须确认，且不得 down -v 删库（RDS 无本地数据卷）", () => {
     const src = read("scripts/docker.js");
     expect(src).toContain("CONFIRM_RESET");
-    expect(src.indexOf("confirmReset")).toBeLessThan(src.indexOf("down -v"));
+    // reset 必须走 confirmReset 确认
+    expect(src.indexOf("confirmReset")).toBeGreaterThan(-1);
+    // 数据库是 RDS：reset 绝不能 down -v / 删 mysql_data，防止误清真实数据
+    expect(src).not.toContain("down -v");
+    expect(src).not.toContain("mysql_data");
   });
 
-  it("db-empty.js 必须有安全闸门（它会清空所有业务表，而默认 DATABASE_URL 指向真实库）", () => {
-    const src = read("scripts/db-empty.js");
-    expect(src).toContain("-dev|-test");
-    expect(src).toContain("ALLOW_REAL_DB");
-    // 闸门必须出现在 new PrismaClient() 之前
-    expect(src.indexOf("ALLOW_REAL_DB")).toBeLessThan(src.indexOf("new PrismaClient()"));
+  it("seed 账号按 username 幂等，且 import 不反向清空超管角色（账号冲突治理）", () => {
+    const seedSrc = read("prisma/seed.ts");
+    // seed：admin 账号按 username 定位（而非 findFirst 任意一条），避免唯一键冲突
+    expect(seedSrc).toContain('findUnique({ where: { username: "admin" } }');
+    // seed：已存在但 roleId 为空 → 补绑 SUPER_ADMIN
+    expect(seedSrc).toContain("补绑超级管理员角色");
+    // import：admin 更新时保护已绑定角色，不把 roleId 清成 null
+    const importSrc = read("scripts/import-legacy.mjs");
+    expect(importSrc).toContain('model === "admin" && rest.roleId == null');
+    expect(importSrc).toContain("delete rest.roleId");
   });
 });
 
@@ -105,7 +113,10 @@ describe("开发/生产隔离 - 配置文件", () => {
 
     // 空 SESSION_SECRET 会让 auth.ts 静默回退到写死的默认密钥
     expect(compose).toMatch(/SESSION_SECRET:\s*\$\{SESSION_SECRET:\?/);
-    expect(compose).toMatch(/DATABASE_URL:\s*\$\{DOCKER_DATABASE_URL:\?/);
+    // DATABASE_URL 由 RDS_* 字段自动组合，缺 RDS_USER / RDS_PASSWORD / RDS_HOST 时「缺失即失败」
+    expect(compose).toMatch(/DATABASE_URL:\s*mysql:\/\/\$\{RDS_USER:\?/);
+    expect(compose).toMatch(/\$\{RDS_PASSWORD:\?/);
+    expect(compose).toMatch(/\$\{RDS_HOST:\?/);
   });
 
   it(".gitignore 不得整目录忽略 scripts/ 或 tests/（否则源码会静默不进版本控制）", () => {

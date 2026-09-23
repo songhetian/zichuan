@@ -336,7 +336,7 @@ export function ConfigEditor({
                       className={`group flex items-center gap-2 p-2 rounded-md border transition-shadow ${
                         isPendingDelete
                           ? "border-destructive bg-destructive/5"
-                          : "bg-background hover:shadow-sm cursor-grab active:cursor-grabbing"
+                          : "bg-background hover:border-primary/30 cursor-grab active:cursor-grabbing"
                       }`}
                     >
                       <GripVertical className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0" />
@@ -465,7 +465,7 @@ export function ConfigEditor({
                     key={m.modelId}
                     draggable
                     onDragStart={() => handleDragStart("library", m.modelId)}
-                    className="group flex items-center gap-2 p-2 rounded-md border bg-background hover:shadow-sm hover:border-primary/30 transition-all cursor-grab active:cursor-grabbing"
+                    className="group flex items-center gap-2 p-2 rounded-md border bg-background hover:border-primary/30 transition-all cursor-grab active:cursor-grabbing"
                   >
                     <GripVertical className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground" />
                     <div className="flex-1 min-w-0">
@@ -539,8 +539,8 @@ export function ConfigEditor({
                           key={item.modelId}
                           className={`flex items-center justify-between px-2 py-1.5 rounded-md text-sm ${
                             item.quantityDelta > 0
-                              ? "bg-emerald-50/70 border border-emerald-100"
-                              : "bg-red-50/70 border border-red-100"
+                              ? "bg-emerald-500/10 border border-emerald-500/25"
+                              : "bg-destructive/10 border border-destructive/25"
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">

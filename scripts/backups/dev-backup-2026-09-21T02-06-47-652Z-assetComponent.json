@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "assetId": 4,
+    "modelId": 3,
+    "quantity": 1
+  },
+  {
+    "id": 2,
+    "assetId": 5,
+    "modelId": 5,
+    "quantity": 1
+  }
+]

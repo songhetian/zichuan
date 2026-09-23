@@ -1,0 +1,50 @@
+[
+  {
+    "id": 1,
+    "module": "分配",
+    "action": "ALLOCATED",
+    "detail": "设备 DN-0001 分配给员工 张三",
+    "operator": "admin",
+    "createdAt": "2026-09-19T08:48:14.450Z"
+  },
+  {
+    "id": 2,
+    "module": "归还",
+    "action": "RETURNED",
+    "detail": "设备 DN-0004 由员工 李四 归还",
+    "operator": "admin",
+    "createdAt": "2026-09-19T08:48:14.450Z"
+  },
+  {
+    "id": 3,
+    "module": "调拨",
+    "action": "TRANSFERRED",
+    "detail": "设备 NB-0001 从技术部调拨到市场部",
+    "operator": "admin",
+    "createdAt": "2026-09-19T08:48:14.450Z"
+  },
+  {
+    "id": 4,
+    "module": "报废",
+    "action": "SCRAPPED",
+    "detail": "设备 DN-0002 已报废处理",
+    "operator": "admin",
+    "createdAt": "2026-09-19T08:48:14.450Z"
+  },
+  {
+    "id": 5,
+    "module": "分配",
+    "action": "ALLOCATED",
+    "detail": "设备 SW-0001 分配给员工 王五",
+    "operator": "admin",
+    "createdAt": "2026-09-19T08:48:14.450Z"
+  },
+  {
+    "id": 6,
+    "module": "归还",
+    "action": "RETURNED",
+    "detail": "设备 PR-0001 由员工 张三 归还",
+    "operator": "admin",
+    "createdAt": "2026-09-19T08:48:14.450Z"
+  }
+]

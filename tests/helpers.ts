@@ -14,7 +14,7 @@ export function unwrap<T>(result: ActionResult<T>): T {
 /**
  * 断言 ActionResult 失败并返回错误信息。
  */
-export function unwrapError<T>(result: ActionResult<T>): string {
+export function unwrapError(result: ActionResult<unknown>): string {
   if (result.success) {
     throw new Error("期望操作失败，但实际成功");
   }

@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { StatusBadge } from "@/components/features/status-badge";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Pencil, Wrench, RotateCcw, Trash2, ArrowRightLeft, Package } from "lucide-react";
+import { Pencil, Wrench, RotateCcw, Trash2, ArrowRightLeft, Package, User, Building2, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
 import {
@@ -74,6 +74,7 @@ interface AssetDetailClientProps {
     status: string;
     employeeId: number | null;
     employeeName: string | null;
+    departmentName: string | null;
     location: string | null;
     purchaseDate: Date | null;
     warrantyMonths: number | null;
@@ -248,12 +249,29 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
   return (
     <div className="space-y-4">
       <PageHeader
-        title={asset.name}
-        description={`编号: ${asset.assetNo}`}
+        title={
+          <span className="flex items-center gap-3">
+            {asset.name}
+            <StatusBadge status={asset.status} />
+          </span>
+        }
+        description={
+          <span className="flex items-center gap-1.5">
+            编号 {asset.assetNo}
+            <span className="text-muted-foreground/50">·</span>
+            {asset.categoryName}
+            {asset.templateName && (
+              <>
+                <span className="text-muted-foreground/50">·</span>
+                {asset.templateName}
+              </>
+            )}
+          </span>
+        }
         showBack
         action={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => handleEditOpen(true)} className="text-blue-600 hover:bg-blue-50 hover:text-blue-700">
+            <Button variant="ghost" size="sm" onClick={() => handleEditOpen(true)}>
               <Pencil className="mr-2 h-4 w-4" />
               编辑
             </Button>
@@ -262,7 +280,6 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
               size="sm"
               onClick={() => setConfigEditorOpen(true)}
               disabled={isScrapped}
-              className="border-violet-200 text-violet-600 hover:bg-violet-50 hover:text-violet-700"
             >
               <Package className="mr-2 h-4 w-4" />
               配置调整
@@ -272,7 +289,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
               size="sm"
               onClick={() => setConfirmAction("maintenance")}
               disabled={isInMaintenance || isScrapped}
-              className="border-amber-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+              className="text-amber-600"
             >
               <Wrench className="mr-2 h-4 w-4" />
               送修
@@ -282,7 +299,6 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
                 variant="outline"
                 size="sm"
                 onClick={() => setTransferOpen(true)}
-                className="border-cyan-200 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700"
               >
                 <ArrowRightLeft className="mr-2 h-4 w-4" />
                 调拨
@@ -293,14 +309,13 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
                 variant="outline"
                 size="sm"
                 onClick={() => setConfirmAction("return")}
-                className="border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
                 归还
               </Button>
             )}
             {!isScrapped && (
-              <Button variant="ghost" size="sm" onClick={() => setConfirmAction("scrap")} className="text-red-600 hover:bg-red-50 hover:text-red-700">
+              <Button variant="ghost" size="sm" onClick={() => setConfirmAction("scrap")} className="text-red-600">
                 <Trash2 className="mr-2 h-4 w-4" />
                 报废
               </Button>
@@ -309,82 +324,95 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
         }
       />
 
-      <Tabs defaultValue="info">
+      <Tabs defaultValue="overview">
         <TabsList>
-          <TabsTrigger value="info">基本信息</TabsTrigger>
-          <TabsTrigger value="components">配件配置</TabsTrigger>
-          <TabsTrigger value="lifecycle">操作记录</TabsTrigger>
+          <TabsTrigger value="overview">概览</TabsTrigger>
+          <TabsTrigger value="lifecycle">生命周期</TabsTrigger>
         </TabsList>
 
-        {/* 基本信息 */}
-        <TabsContent value="info">
-          <Card>
-            <CardHeader>
-              <CardTitle>设备基本信息</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                <InfoItem label="设备编号" value={asset.assetNo} />
-                <InfoItem label="设备名称" value={asset.name} />
-                <InfoItem label="设备分类" value={asset.categoryName} />
-                <InfoItem
-                  label="设备状态"
-                  value={
-                    <StatusBadge status={asset.status} />
-                  }
-                />
-                <InfoItem label="使用人" value={asset.employeeName ?? "-"} />
-                <InfoItem label="所在位置" value={asset.location ?? "-"} />
-                <InfoItem
-                  label="采购日期"
-                  value={asset.purchaseDate ? new Date(asset.purchaseDate).toLocaleDateString("zh-CN") : "-"}
-                />
-                <InfoItem label="保修月数" value={asset.warrantyMonths ? `${asset.warrantyMonths} 个月` : "-"} />
-                <InfoItem label="备注" value={asset.notes ?? "-"} />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <TabsContent value="overview" className="space-y-4">
+          {/* 关键信息条：一眼定位设备核心状态 */}
+          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border/80 bg-border/80 sm:grid-cols-3">
+            <KeyStat
+              icon={<ShieldCheck className="h-4 w-4" />}
+              label="设备状态"
+              value={<StatusBadge status={asset.status} />}
+            />
+            <KeyStat
+              icon={<User className="h-4 w-4" />}
+              label="使用人"
+              value={asset.employeeName ?? "-"}
+            />
+            <KeyStat
+              icon={<Building2 className="h-4 w-4" />}
+              label="所在部门"
+              value={asset.departmentName ?? "-"}
+            />
+          </div>
 
-        {/* 配件配置 */}
-        <TabsContent value="components">
-          <Card>
-            <CardHeader>
-              <CardTitle>配件配置</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {asset.components.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">分类</TableHead>
-                      <TableHead>名称</TableHead>
-                      <TableHead>品牌</TableHead>
-                      <TableHead className="text-right">数量</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {asset.components.map((comp) => (
-                      <TableRow key={comp.id}>
-                        <TableCell>
-                          <span className="text-muted-foreground">{comp.categoryName || "-"}</span>
-                        </TableCell>
-                        <TableCell className="font-medium">{comp.modelName}</TableCell>
-                        <TableCell>{comp.modelBrand ?? "-"}</TableCell>
-                        <TableCell className="text-right">{comp.quantity}</TableCell>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {/* 主栏：配件配置 */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>配件配置</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {asset.components.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">分类</TableHead>
+                        <TableHead>名称</TableHead>
+                        <TableHead>品牌</TableHead>
+                        <TableHead className="text-right">数量</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground py-8 text-center">暂无配件配置</p>
-              )}
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {asset.components.map((comp) => (
+                        <TableRow key={comp.id}>
+                          <TableCell>
+                            <Badge variant="secondary" className="font-normal">
+                              {comp.categoryName || "-"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{comp.modelName}</TableCell>
+                          <TableCell>{comp.modelBrand ?? "-"}</TableCell>
+                          <TableCell className="text-right tabular-nums">{comp.quantity}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-muted-foreground py-8 text-center">暂无配件配置</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 侧栏：设备档案 */}
+            <Card className="self-start">
+              <CardHeader>
+                <CardTitle>设备档案</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <InfoItem label="设备编号" value={asset.assetNo} />
+                  <InfoItem label="设备分类" value={asset.categoryName} />
+                  <InfoItem label="模板" value={asset.templateName ?? "-"} />
+                  <InfoItem
+                    label="采购日期"
+                    value={asset.purchaseDate ? new Date(asset.purchaseDate).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : "-"}
+                  />
+                  <InfoItem label="保修月数" value={asset.warrantyMonths ? `${asset.warrantyMonths} 个月` : "-"} />
+                  <InfoItem label="所在位置" value={asset.location ?? "-"} />
+                  <InfoItem label="备注" value={asset.notes ?? "-"} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* 操作记录 - 时间线视图 */}
-        <TabsContent value="lifecycle">
+        <TabsContent value="lifecycle" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>生命周期时间线</CardTitle>
@@ -542,10 +570,24 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
   );
 }
 
+function KeyStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 bg-card px-4 py-3.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <div className="truncate text-sm font-medium">{value}</div>
+      </div>
+    </div>
+  );
+}
+
 function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="space-y-1">
-      <p className="text-sm text-muted-foreground">{label}</p>
+    <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-3 last:border-0 last:pb-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
       <div className="text-sm font-medium">{value}</div>
     </div>
   );

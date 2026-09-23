@@ -34,19 +34,14 @@ import {
 import { useState, useEffect, Fragment, type CSSProperties } from "react"
 import { Search, Inbox, ArrowUpDown } from "lucide-react"
 
-// TanStack 默认列宽为 150，未显式设置 size 的列都会落到这个值。
-// 为避免把所有列都强制成 150px（反而破坏自适应），仅对"非默认宽度"应用 style.width。
+// TanStack 默认列宽为 150。为让 table-fixed 按预期分布列宽，
+// 必须给 ALL 列都写入真实宽度（否则未设宽度的列会被挤到几乎 0，导致换行错位）。
 const DEFAULT_COLUMN_SIZE = 150
 
-// 将列的 size / maxSize 映射为真实单元格样式，使列宽约束真正生效
-// （TanStack 默认不会自动把 size 写到 DOM，导致列宽全靠浏览器自由分配 → "布局怪"）
 function getColStyle<TData, TValue>(column: Column<TData, TValue>): CSSProperties {
-  const size = column.getSize()
+  const size = column.getSize() ?? DEFAULT_COLUMN_SIZE
   const maxSize = column.columnDef.maxSize
-  const style: CSSProperties = {}
-  if (typeof size === "number" && size !== DEFAULT_COLUMN_SIZE) {
-    style.width = `${size}px`
-  }
+  const style: CSSProperties = { width: `${size}px` }
   // maxSize 默认值极大（MAX_SAFE_INTEGER），仅当显式设置且非默认时才应用
   if (typeof maxSize === "number" && maxSize < 100000) {
     style.maxWidth = `${maxSize}px`
@@ -61,6 +56,8 @@ interface DataTableProps<TData, TValue> {
   onRowSelectionChange?: (selectedRows: TData[]) => void
   renderExpandedRow?: (row: TData) => React.ReactNode
   defaultSorting?: SortingState
+  /** 隐藏内置客户端分页控件（配合服务端分页，由外部 PagePagination 驱动） */
+  hidePagination?: boolean
 }
 
 export function DataTable<TData, TValue>({
@@ -70,6 +67,7 @@ export function DataTable<TData, TValue>({
   onRowSelectionChange,
   renderExpandedRow,
   defaultSorting = [],
+  hidePagination = false,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSorting)
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -80,7 +78,8 @@ export function DataTable<TData, TValue>({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // hidePagination 时由外部服务端分页提供数据，禁用内置分页模型
+    getPaginationRowModel: hidePagination ? undefined : getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getExpandedRowModel: renderExpandedRow ? getExpandedRowModel() : undefined,
@@ -105,16 +104,16 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border overflow-auto max-h-[70vh]">
-        <Table className="table-fixed">
+      <div className="overflow-x-auto rounded-lg border border-border/80 bg-card">
+        <Table className="table-fixed w-full">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="group sticky top-0 z-10 bg-muted border-b border-border">
+              <TableRow key={headerGroup.id} className="group sticky top-0 z-10 bg-secondary/80 backdrop-blur-md border-b border-border/80">
                 {headerGroup.headers.map((header) => {
                   const align = (header.column.columnDef.meta as { align?: string } | undefined)?.align
                   const alignClass = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"
                   return (
-                  <TableHead key={header.id} style={getColStyle(header.column)} className={`font-medium h-11 text-sm text-muted-foreground ${alignClass}`}>
+                  <TableHead key={header.id} style={getColStyle(header.column)} className={`font-medium h-11 text-sm text-muted-foreground whitespace-nowrap ${alignClass}`}>
                     {header.isPlaceholder
                       ? null
                       : header.column.getCanSort() ? (
@@ -141,7 +140,7 @@ export function DataTable<TData, TValue>({
                     <TableRow
                       key={`row-${row.id}`}
                       data-state={row.getIsSelected() && "selected"}
-                      className={`group transition-colors duration-150 ${rowIndex % 2 === 1 ? 'bg-muted/10' : ''} hover:bg-accent/50 ${renderExpandedRow ? 'cursor-pointer' : ''} ${row.getIsSelected() ? '!bg-primary/10 border-l-2 border-l-primary' : ''}`}
+                      className={`group transition-colors duration-150 ${rowIndex % 2 === 1 ? 'bg-muted/[0.07]' : ''} border-b border-border/60 hover:bg-accent/30 ${renderExpandedRow ? 'cursor-pointer' : ''} ${row.getIsSelected() ? '!bg-primary/[0.08] border-l-2 border-l-primary' : ''}`}
                       onClick={renderExpandedRow ? () => row.toggleExpanded() : undefined}
                     >
                       {row.getVisibleCells().map((cell) => {
@@ -165,17 +164,21 @@ export function DataTable<TData, TValue>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="flex flex-col items-center gap-2">
+                <TableCell colSpan={columns.length} className="h-40 text-center">
+                  <div className="flex flex-col items-center gap-2.5">
                     {data.length === 0 ? (
                       <>
-                        <Inbox className="h-8 w-8 text-muted-foreground/50" />
-                        <p className="text-muted-foreground">暂无数据</p>
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
+                          <Inbox className="h-6 w-6 text-muted-foreground/60" />
+                        </span>
+                        <p className="text-sm text-muted-foreground">暂无数据</p>
                       </>
                     ) : (
                       <>
-                        <Search className="h-8 w-8 text-muted-foreground/50" />
-                        <p className="text-muted-foreground">未找到匹配的记录</p>
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
+                          <Search className="h-6 w-6 text-muted-foreground/60" />
+                        </span>
+                        <p className="text-sm text-muted-foreground">未找到匹配的记录</p>
                       </>
                     )}
                   </div>
@@ -185,8 +188,8 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      {table.getRowModel().rows.length > 0 && (
-      <div className="flex items-center justify-between py-1">
+      {!hidePagination && table.getRowModel().rows.length > 0 && (
+      <div className="flex items-center justify-between pt-1">
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">
             共 {table.getFilteredRowModel().rows.length} 条

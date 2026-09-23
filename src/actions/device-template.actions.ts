@@ -1,10 +1,11 @@
-﻿"use server";
+"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 // ============================================================
 // Schema 校验
@@ -109,7 +110,9 @@ async function validateComponents(components: { modelId: number }[]): Promise<st
 export async function createDeviceTemplate(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<TemplateWithComponents>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -215,7 +218,9 @@ export async function updateDeviceTemplate(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<TemplateWithComponents>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -287,7 +292,9 @@ export async function updateDeviceTemplate(
 export async function deleteDeviceTemplate(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   // 检查模板是否存在
   const existing = await prisma.deviceTemplate.findUnique({ where: { id } });

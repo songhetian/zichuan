@@ -120,7 +120,7 @@ export const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            {date.toLocaleString("zh-CN")}
+            {date.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
           </TooltipContent>
         </Tooltip>
       );
@@ -182,7 +182,7 @@ export const systemColumns: ColumnDef<SystemLog>[] = [
             </span>
           </TooltipTrigger>
           <TooltipContent>
-            {date.toLocaleString("zh-CN")}
+            {date.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
           </TooltipContent>
         </Tooltip>
       );

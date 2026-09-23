@@ -33,7 +33,7 @@ async function setupAssetData() {
 
 describe("库存盘点", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

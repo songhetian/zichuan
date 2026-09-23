@@ -12,6 +12,7 @@ import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
 import { FilterBar } from "@/components/features/filter-bar";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
+import { ExportPreview } from "@/components/features/export-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,7 +98,7 @@ export const columns: ColumnDef<Employee & { _departments: { id: number; name: s
     header: "创建时间",
     size: 170,
     cell: ({ row }) =>
-      row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN") : "-",
+      row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : "-",
   },
   {
     id: "assetCount",
@@ -278,7 +279,7 @@ function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
                           {log.module}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(log.createdAt).toLocaleString("zh-CN")}
+                          {new Date(log.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
                         </span>
                       </div>
                       <div className="text-sm mt-1">{log.detail}</div>
@@ -491,10 +492,10 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (selectedFields: string[]) => {
     setExportLoading(true);
     try {
-      const result = await exportEmployeesToExcel();
+      const result = await exportEmployeesToExcel(selectedFields);
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
         toast({ title: "导出成功" });
@@ -554,6 +555,22 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
     ...e,
     _departments: departments,
   }));
+
+  // 导出预览数据 + 列定义（与 exportEmployeesToExcel 的字段 key 一一对应）
+  const exportData = filteredEmployees.map((e) => ({
+    employeeNo: e.employeeNo,
+    name: e.name,
+    departmentName: e.departmentName ?? "",
+    phone: e.phone ?? "",
+    email: e.email ?? "",
+  }));
+  const exportColumns = [
+    { key: "employeeNo", label: "工号" },
+    { key: "name", label: "姓名" },
+    { key: "departmentName", label: "部门" },
+    { key: "phone", label: "电话" },
+    { key: "email", label: "邮箱" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -683,56 +700,14 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
         </DialogContent>
       </Dialog>
 
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>导出预览</DialogTitle>
-            <DialogDescription>
-              共 {filteredEmployees.length} 条员工数据将被导出
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-auto border rounded-md">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 sticky top-0">
-                <tr>
-                  <th className="text-left font-medium p-2">工号</th>
-                  <th className="text-left font-medium p-2">姓名</th>
-                  <th className="text-left font-medium p-2">部门</th>
-                  <th className="text-left font-medium p-2">电话</th>
-                  <th className="text-left font-medium p-2">邮箱</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEmployees.slice(0, 50).map((emp) => (
-                  <tr key={emp.id} className="border-t">
-                    <td className="p-2">{emp.employeeNo}</td>
-                    <td className="p-2">{emp.name}</td>
-                    <td className="p-2">{emp.departmentName ?? "-"}</td>
-                    <td className="p-2">{emp.phone ?? "-"}</td>
-                    <td className="p-2">{emp.email ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filteredEmployees.length > 50 && (
-              <div className="p-2 text-center text-sm text-muted-foreground border-t">
-                仅显示前 50 条，共 {filteredEmployees.length} 条
-              </div>
-            )}
-            {filteredEmployees.length === 0 && (
-              <div className="p-8 text-center text-muted-foreground">
-                暂无数据
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewOpen(false)}>取消</Button>
-            <Button onClick={handleExport} disabled={exportLoading || filteredEmployees.length === 0}>
-              {exportLoading ? "导出中..." : "确认导出"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ExportPreview
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        data={exportData}
+        columns={exportColumns}
+        onExport={handleExport}
+        loading={exportLoading}
+      />
     </div>
   );
 }

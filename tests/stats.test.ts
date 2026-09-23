@@ -59,7 +59,8 @@ async function setupStatsData() {
 
 describe("统计报表", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    // 资产统计为全局报表：测试用户显式授予 asset.manage，可统计全部资产
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {
@@ -170,6 +171,40 @@ describe("统计报表", () => {
       const emp2Stats = data.byEmployee!.find((e: any) => e.employeeId === emp2.id);
       expect(emp2Stats).toBeDefined();
       expect(emp2Stats!.count).toBe(1); // DN-0003
+    });
+  });
+
+  describe("getAssetStats — 数据范围过滤", () => {
+    it("无 asset.manage 权限的普通员工仅统计本人名下资产", async () => {
+      const { emp1 } = await setupStatsData();
+      const admin = await prisma.admin.create({
+        data: { username: "emp1mgr", password: "x", employeeId: emp1.id },
+      });
+      setTestUser({ id: admin.id, username: "emp1mgr", permissions: [] });
+
+      const result = await getAssetStats();
+
+      expect(result.success).toBe(true);
+      const data = unwrap(result);
+      // emp1 名下：DN-0002(IN_USE) + WL-0001(IN_USE) = 2 台
+      expect(data.total).toBe(2);
+      expect(data.byStatus.IN_USE).toBe(2);
+      expect(data.byStatus.IDLE).toBe(0);
+      expect(data.byStatus.SCRAPPED).toBe(0);
+    });
+
+    it("有 asset.manage 权限者可统计全部资产", async () => {
+      const { emp1 } = await setupStatsData();
+      const admin = await prisma.admin.create({
+        data: { username: "statmgr", password: "x", employeeId: emp1.id },
+      });
+      setTestUser({ id: admin.id, username: "statmgr", permissions: ["asset.manage"] });
+
+      const result = await getAssetStats();
+
+      expect(result.success).toBe(true);
+      const data = unwrap(result);
+      expect(data.total).toBe(6);
     });
   });
 });

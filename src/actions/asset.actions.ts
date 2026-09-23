@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { computeAssetCapacities } from "@/lib/asset-capacity";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission, hasPermission, resolveRoleDepartmentScope } from "@/lib/permissions";
 
 // ============================================================
 // Schema 校验
@@ -52,6 +53,7 @@ type AssetDetail = {
   status: string;
   employeeId: number | null;
   employeeName: string | null;
+  departmentName: string | null;
   location: string | null;
   purchaseDate: Date | null;
   warrantyMonths: number | null;
@@ -92,7 +94,7 @@ type PrismaAsset = {
   } | null;
   status: string;
   employeeId: number | null;
-  employee?: { name: string } | null;
+  employee?: { name: string; department?: { name: string } | null } | null;
   location: string | null;
   purchaseDate: Date | null;
   warrantyMonths: number | null;
@@ -128,6 +130,7 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
       status: "",
       employeeId: null,
       employeeName: null,
+      departmentName: null,
       location: null,
       purchaseDate: null,
       warrantyMonths: null,
@@ -148,6 +151,7 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
     status: asset.status,
     employeeId: asset.employeeId,
     employeeName: asset.employee?.name ?? null,
+    departmentName: asset.employee?.department?.name ?? null,
     location: asset.location ?? null,
     purchaseDate: asset.purchaseDate ?? null,
     warrantyMonths: asset.warrantyMonths ?? null,
@@ -190,7 +194,9 @@ const batchCreateSchema = z.object({
 export async function createAsset(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<AssetDetail>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -283,10 +289,38 @@ export async function createAsset(
   }
 }
 
+/**
+ * 解析当前账号的资产数据范围（读操作越权防护）：
+ * - asset.manage（超管/资产管理员）：
+ *     无显式部门范围（'ALL'）→ 全部资产；角色限定部门（'SPEC'）→ 仅这些部门员工持有的设备
+ * - 否则 dept.data.view 的部门主管/超管 → 仅本部门资产
+ * - 否则→ 仅本人名下（asset.view.own），无员工身份则不可见
+ */
+async function resolveAssetScope(
+  adminId: number
+): Promise<Prisma.AssetWhereInput | undefined> {
+  if (await hasPermission({ id: adminId }, "asset.manage")) {
+    const scope = await resolveRoleDepartmentScope({ id: adminId });
+    // 限定部门范围：仅该些部门员工持有的设备可操作（闲置/在库池不计入部门范围）
+    return scope === "ALL" ? undefined : { employee: { departmentId: { in: scope } } };
+  }
+  const me = await prisma.admin.findUnique({
+    where: { id: adminId },
+    select: {
+      employeeId: true,
+      employee: { select: { departmentId: true } },
+    },
+  });
+  if ((await hasPermission({ id: adminId }, "dept.data.view")) && me?.employee?.departmentId != null) {
+    return { employee: { departmentId: me.employee.departmentId } };
+  }
+  return { employeeId: me?.employeeId ?? -1 };
+}
+
 export async function getAssets(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<AssetDetail[]>> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const validated = querySchema.safeParse(input);
   if (!validated.success) {
@@ -307,6 +341,9 @@ export async function getAssets(
       { name: { contains: keyword } },
     ];
   }
+  // 数据范围过滤（越权防护）：asset.manage 全部；否则本部门数据可见 → 本部门；再否则仅本人名下
+  const scope = await resolveAssetScope(user.id);
+  if (scope) Object.assign(where, scope);
 
   try {
     const queryOptions: any = {
@@ -379,11 +416,14 @@ export async function getAssets(
 export async function getAssetById(
   id: number
 ): Promise<ActionResult<AssetDetail>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const scope = await resolveAssetScope(user.id);
 
   try {
-    const asset = await prisma.asset.findUnique({
-      where: { id },
+    const where: Prisma.AssetWhereInput = { id };
+    if (scope) Object.assign(where, scope);
+    const asset = await prisma.asset.findFirst({
+      where,
       include: {
         template: {
           select: {
@@ -392,7 +432,7 @@ export async function getAssetById(
             category: { select: { name: true } },
           },
         },
-        employee: { select: { name: true } },
+        employee: { select: { name: true, department: { select: { name: true } } } },
         components: {
           include: { model: { select: { name: true, brand: true, category: { select: { name: true } } } } },
         },
@@ -414,7 +454,9 @@ export async function updateAsset(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<AssetDetail>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -472,7 +514,9 @@ export async function updateAsset(
 export async function deleteAsset(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const existing = await prisma.asset.findUnique({ where: { id } });
   if (!existing) {
@@ -493,7 +537,9 @@ export async function deleteAsset(
 export async function batchCreateAssets(
   input: z.infer<typeof batchCreateSchema>
 ): Promise<ActionResult<AssetDetail[]>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = batchCreateSchema.safeParse(input);
   if (!validated.success) {

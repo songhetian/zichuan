@@ -25,7 +25,7 @@ async function setupTestModel() {
 
 describe("配件库存出入库", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

@@ -32,7 +32,7 @@ function createExcelBuffer(rows: Record<string, unknown>[]): Buffer {
 
 describe("编号规则在所有路径生效", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

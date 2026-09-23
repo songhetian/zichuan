@@ -1,10 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import * as XLSX from "xlsx";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 export async function exportAssetsToExcel(
   selectedFields?: string[],
@@ -118,9 +120,17 @@ export async function exportComponentsToExcel(): Promise<
   };
 }
 
-export async function exportEmployeesToExcel(): Promise<
-  ActionResult<{ buffer: number[]; fileName: string }>
-> {
+const EMPLOYEE_FIELDS: Record<string, { label: string; get: (e: any) => string | number }> = {
+  employeeNo: { label: "工号", get: (e) => e.employeeNo },
+  name: { label: "姓名", get: (e) => e.name },
+  departmentName: { label: "部门", get: (e) => e.department?.name ?? "" },
+  phone: { label: "电话", get: (e) => e.phone ?? "" },
+  email: { label: "邮箱", get: (e) => e.email ?? "" },
+};
+
+export async function exportEmployeesToExcel(
+  selectedFields?: string[]
+): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
   await requireAuth();
 
   const emps = await prisma.employee.findMany({
@@ -130,13 +140,17 @@ export async function exportEmployeesToExcel(): Promise<
     },
   });
 
-  const rows = emps.map((e) => ({
-    "工号": e.employeeNo,
-    "姓名": e.name,
-    "部门": e.department?.name ?? "",
-    "电话": e.phone ?? "",
-    "邮箱": e.email ?? "",
-  }));
+  const fieldsToExport =
+    selectedFields && selectedFields.length > 0 ? selectedFields : Object.keys(EMPLOYEE_FIELDS);
+
+  const rows = emps.map((e) => {
+    const row: Record<string, string | number> = {};
+    for (const field of fieldsToExport) {
+      const def = EMPLOYEE_FIELDS[field];
+      if (def) row[def.label] = def.get(e);
+    }
+    return row;
+  });
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -237,7 +251,9 @@ export async function importEmployeesFromExcel(
 export async function importAssetsFromExcel(
   input: { buffer: number[] }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   try {
     const fileBuffer = Buffer.from(input.buffer);
@@ -349,7 +365,7 @@ export async function importAssetsFromExcel(
 
         importedCount++;
       } catch (e: any) {
-        errors.push(`第${i + 2}行: ${e.message}`);
+        errors.push(`第${i + 2}行: ${cleanErrorMessage(e?.message)}`);
       }
     }
 

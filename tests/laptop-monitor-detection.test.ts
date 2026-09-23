@@ -22,7 +22,8 @@ function buildExcelBuffer(rows: Record<string, string>[]): number[] {
 
 describe("笔记本 + 显示器检测功能导入测试", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    // 设备导入为写入操作：导入者需具备 asset.manage（与 createAsset 一致）
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {

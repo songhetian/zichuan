@@ -84,15 +84,28 @@ const CATEGORY_PALETTE = [
   "#3b82f6", // blue-500
 ];
 
+export interface CategoryChartColors {
+  /** 图例 / 轴标签 / 轴名文字颜色 */
+  label: string;
+  /** 轴线颜色 */
+  axisLine: string;
+  /** 网格分割线颜色 */
+  splitLine: string;
+}
+
 /**
  * 由「部门 × 分类」数据构建 ECharts 堆叠柱状图配置。
  * x 轴 = 部门；每个分类一条 series 并堆叠（stack: "total"）。
- * 传入 category 时仅生成该分类的单系列，便于只看某一分类（如「电脑主机」）；
- * 传入的分类不存在则回退为全部分类。
+ * 传入 category 时仅生成该分类的单系列；colors 用于适配亮/暗主题。
  */
 export function buildCategoryByDepartmentOption(
   data: CategoryByDepartmentData,
-  category?: string
+  category?: string,
+  colors: CategoryChartColors = {
+    label: "#6b7280",
+    axisLine: "#e5e7eb",
+    splitLine: "#f3f4f6",
+  }
 ): Record<string, unknown> {
   const selectedIndex = category ? data.categories.indexOf(category) : -1;
 
@@ -121,28 +134,29 @@ export function buildCategoryByDepartmentOption(
       left: "center",
       itemWidth: 12,
       itemHeight: 12,
-      textStyle: { color: "#6b7280", fontSize: 12 },
+      textStyle: { color: colors.label, fontSize: 12 },
     },
     grid: {
       left: "3%",
       right: "4%",
-      bottom: "12%",
-      top: "6%",
+      // 为底部图例预留固定高度（px），多分类换行也不遮挡柱体
+      bottom: 64,
+      top: 24,
       containLabel: true,
     },
     xAxis: {
       type: "category",
       data: data.departments,
-      axisLabel: { color: "#6b7280", interval: 0, rotate: data.departments.length > 5 ? 30 : 0 },
-      axisLine: { lineStyle: { color: "#e5e7eb" } },
+      axisLabel: { color: colors.label, interval: 0, rotate: data.departments.length > 5 ? 30 : 0 },
+      axisLine: { lineStyle: { color: colors.axisLine } },
       axisTick: { show: false },
     },
     yAxis: {
       type: "value",
       name: "设备数量",
-      nameTextStyle: { color: "#6b7280" },
-      axisLabel: { color: "#6b7280" },
-      splitLine: { lineStyle: { color: "#f3f4f6" } },
+      nameTextStyle: { color: colors.label },
+      axisLabel: { color: colors.label },
+      splitLine: { lineStyle: { color: colors.splitLine } },
     },
     series,
   };

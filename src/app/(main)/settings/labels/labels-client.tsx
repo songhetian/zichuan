@@ -505,7 +505,7 @@ function LabelContent({ label, compact = false }: { label: LabelData; compact?: 
   }
 
   return (
-    <div className="flex h-full w-full rounded-md overflow-hidden border border-border/80 shadow-sm bg-white">
+    <div className="flex h-full w-full rounded-md overflow-hidden border border-border/80 shadow-sm bg-card">
       {/* 左侧竖条 */}
       <div className="w-2 bg-primary shrink-0" />
 

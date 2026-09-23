@@ -17,6 +17,9 @@ beforeEach(async () => {
   await prisma.stocktakeRecord.deleteMany();
   await prisma.stocktakeSession.deleteMany();
 
+  // 离职交接单（依赖 Employee/ApprovalRequest/Admin，先删）
+  await prisma.handoverOrder.deleteMany();
+
   // 系统日志
   await prisma.systemLog.deleteMany();
 
@@ -38,6 +41,26 @@ beforeEach(async () => {
   // 员工相关
   await prisma.employee.deleteMany();
   await prisma.department.deleteMany();
+
+  // 账号/角色/权限（有外键关联，RolePermission 先删）
+  await prisma.rolePermission.deleteMany();
+  await prisma.role.deleteMany();
+  await prisma.permission.deleteMany();
+
+  // 站内通知（M6：依赖 Admin 与 ApprovalRequest，先删）
+  await prisma.notification.deleteMany();
+
+  // 审批运行（ApprovalTask/Log/Request 依赖 Admin 与 WorkflowNode，先删）
+  await prisma.approvalTask.deleteMany();
+  await prisma.approvalLog.deleteMany();
+  await prisma.approvalRequest.deleteMany();
+
+  // 审批流程（WorkflowEdge/Node 依赖 Definition，Definition.createdById 依赖 Admin）
+  await prisma.workflowEdge.deleteMany();
+  await prisma.workflowNode.deleteMany();
+  await prisma.workflowDefinition.deleteMany();
+
+  await prisma.admin.deleteMany();
 
   // 设备分类
   await prisma.assetCategory.deleteMany();
