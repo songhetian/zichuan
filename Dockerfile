@@ -34,7 +34,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ============================================================
-# 阶段3: 生产运行
+# 阶段3: 数据库初始化（仅供 db-init 容器使用，非默认构建目标）
+# 复用 builder：自带完整源码 + tsconfig.json + node_modules，
+# 使 tsx 能在容器内解析 @/* 别名运行 prisma/seed.ts。
+# （standalone 运行镜像不含源码，直接跑 seed 会报 Cannot find package '@/lib'）
+# ⚠️ 必须放在 runner 之前：多阶段构建以最后一个阶段为默认目标。
+# ============================================================
+FROM builder AS db-init
+
+# ============================================================
+# 阶段4: 生产运行
 # ============================================================
 FROM node:20-alpine AS runner
 WORKDIR /app

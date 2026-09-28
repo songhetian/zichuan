@@ -28,11 +28,14 @@ services:
       DATABASE_URL: mysql://${RDS_USER:?未设置 RDS_USER}:${RDS_PASSWORD:?未设置 RDS_PASSWORD}@${RDS_HOST:?未设置 RDS_HOST}:${RDS_PORT:-3306}/${RDS_DATABASE:-asset-manage}
       SESSION_SECRET: ${SESSION_SECRET:?未设置 SESSION_SECRET，请在 .env 中配置一个至少 32 字符的随机串}
 
-  # 数据库初始化（对 RDS 执行 migrate + seed）
+  # 数据库初始化（对目标库执行 migrate + seed）
   db-init:
     build:
       context: .
       dockerfile: Dockerfile
+      # 该镜像需要完整源码 + tsconfig.json 才能用 tsx 跑 prisma/seed.ts
+      # （standalone 运行镜像不含源码，seed 会因 @/* 别名解析失败而崩）
+      target: db-init
     container_name: zichuan-db-init
     env_file:
       - .env
