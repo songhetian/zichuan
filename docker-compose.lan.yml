@@ -1,0 +1,27 @@
+# ============================================================
+# 本地「模拟线上」覆盖文件（仅本机联调用，不参与服务器部署）
+# ------------------------------------------------------------
+# 背景：本机另有一个目录 E:\System\zichuan 也在跑同名 compose，
+#       其容器为 zichuan-mysql / zichuan-app / zichuan-nginx / zichuan-db-init，
+#       占用宿主机 80 与 3308 端口，且正在运行。
+#       两个目录都叫 zichuan → compose 项目名与 container_name 会撞车，
+#       直接 up 会把对方正在运行的容器替换掉。
+#
+# 本文件只做一件事：把本机测试栈的容器名改成 zichuan-lan-*，实现物理隔离。
+# 必须配合独立项目名一起用（否则项目名仍撞）：
+#
+#   docker compose -p zichuan-lan -f docker-compose.yml -f docker-compose.lan.yml build
+#   docker compose -p zichuan-lan -f docker-compose.yml -f docker-compose.lan.yml up db-init
+#   docker compose -p zichuan-lan -f docker-compose.yml -f docker-compose.lan.yml up -d app nginx
+#
+# 端口：nginx 仍取 .env 的 NGINX_HOST_PORT（8080），避开被占用的 80。
+# 数据库：仍取 .env 的 RDS_*（host.docker.internal:3306 本机 MySQL）。
+# ============================================================
+
+services:
+  app:
+    container_name: zichuan-lan-app
+  db-init:
+    container_name: zichuan-lan-db-init
+  nginx:
+    container_name: zichuan-lan-nginx

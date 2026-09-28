@@ -367,8 +367,8 @@ export function DashboardClient({ data }: DashboardClientProps) {
         </div>
       </div>
 
-      {/* ===== 状态统计 KPI 卡片 ===== */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      {/* ===== 状态统计 KPI 卡片（5 张：总设备数 + 4 个运营态） ===== */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
         {statusCards.map((card, idx) => {
           const share = (card.value / total) * 100;
           return (
