@@ -4,6 +4,7 @@ import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 import { applyComponentAdjustments } from "@/lib/component-adjust";
 
 // ============================================================
@@ -66,7 +67,9 @@ const adjustComponentsSchema = z.object({
 export async function allocateAssets(
   input: z.infer<typeof allocateSchema>
 ): Promise<ActionResult<{ allocatedCount: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = allocateSchema.safeParse(input);
   if (!validated.success) {
@@ -91,27 +94,7 @@ export async function allocateAssets(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有状态为 IDLE 或 IN_STOCK 的设备才会被更新
-      const updateResult = await tx.asset.updateMany({
-        where: {
-          id: { in: assetIds },
-          status: { in: ["IDLE", "IN_STOCK"] },
-        },
-        data: {
-          status: "IN_USE",
-          employeeId,
-          // 分配完成后设备名改为使用人姓名
-          name: employee.name,
-        },
-      });
-
-      // 如果更新数量不匹配，说明有设备不是闲置状态
-      if (updateResult.count !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
-      }
-
-      // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
-      // 从模板获取分类ID
+      // 设备名跟随归属：分配后 = 「{使用人}的{设备分类}」，故需先拿到各设备所属分类
       const templateIds = [...new Set(assets.map(a => a.templateId))];
       const templatesWithCategory = await tx.deviceTemplate.findMany({
         where: { id: { in: templateIds } },
@@ -120,10 +103,53 @@ export async function allocateAssets(
       const templateToCategory = new Map(templatesWithCategory.map(t => [t.id, t.categoryId]));
       const allCategoryIds = [...new Set(assets.map(a => templateToCategory.get(a.templateId)!))];
 
-      const uniqueCategories = await tx.assetCategory.findMany({
-        where: { id: { in: allCategoryIds }, unique: true },
-        select: { id: true, name: true },
+      const categories = await tx.assetCategory.findMany({
+        where: { id: { in: allCategoryIds } },
+        select: { id: true, name: true, unique: true },
       });
+      const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+
+      // 原子性更新：只有「闲置」的设备才会被更新（闲置是唯一的可分配池状态）
+      // 按分类分组，让每台设备拿到自己分类的名字
+      const assetIdsByCategory = new Map<number, number[]>();
+      for (const a of assets) {
+        const categoryId = templateToCategory.get(a.templateId)!;
+        const group = assetIdsByCategory.get(categoryId);
+        if (group) group.push(a.id);
+        else assetIdsByCategory.set(categoryId, [a.id]);
+      }
+
+      // 唯一性校验（R4）：先拦「同一批次内」同唯一分类勾选多台 —— 否则一次分配即可让员工持有 2 台
+      const uniqueCategoryIdSet = new Set(categories.filter((c) => c.unique).map((c) => c.id));
+      for (const [categoryId, ids] of assetIdsByCategory) {
+        if (uniqueCategoryIdSet.has(categoryId) && ids.length > 1) {
+          throw new Error(`UNIQUE_VIOLATION:${categoryNameById.get(categoryId) ?? ""}`);
+        }
+      }
+
+      let updatedCount = 0;
+      for (const [categoryId, ids] of assetIdsByCategory) {
+        const updateResult = await tx.asset.updateMany({
+          where: {
+            id: { in: ids },
+            status: "IDLE",
+          },
+          data: {
+            status: "IN_USE",
+            employeeId,
+            name: `${employee.name}的${categoryNameById.get(categoryId) ?? ""}`,
+          },
+        });
+        updatedCount += updateResult.count;
+      }
+
+      // 如果更新数量不匹配，说明有设备不是闲置状态
+      if (updatedCount !== assetIds.length) {
+        throw new Error("STATUS_CONFLICT");
+      }
+
+      // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
+      const uniqueCategories = categories.filter((c) => c.unique);
       if (uniqueCategories.length > 0) {
         const uniqueCategoryIds = new Set(uniqueCategories.map(c => c.id));
         const existingAssets = await tx.asset.findMany({
@@ -172,7 +198,7 @@ export async function allocateAssets(
   } catch (e) {
     if (e instanceof Error) {
       if (e.message === "STATUS_CONFLICT") {
-        return { success: false, error: "部分设备不可分配（非闲置或非库存状态）" };
+        return { success: false, error: "部分设备不可分配（非闲置状态）" };
       }
       if (e.message.startsWith("UNIQUE_VIOLATION")) {
         const categoryNames = e.message.split(":")[1] ?? "";
@@ -190,7 +216,9 @@ export async function allocateAssets(
 export async function returnAssets(
   input: z.infer<typeof returnSchema>
 ): Promise<ActionResult<{ returnedCount: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = returnSchema.safeParse(input);
   if (!validated.success) {
@@ -202,6 +230,7 @@ export async function returnAssets(
   // 预检查：设备是否存在（状态检查放事务内）
   const assets = await prisma.asset.findMany({
     where: { id: { in: assetIds } },
+    include: { template: { select: { name: true } } },
   });
   if (assets.length !== assetIds.length) {
     return { success: false, error: "部分设备不存在" };
@@ -209,21 +238,32 @@ export async function returnAssets(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有状态为 IN_USE 的设备才会被更新
-      const updateResult = await tx.asset.updateMany({
-        where: {
-          id: { in: assetIds },
-          status: "IN_USE",
-        },
-        data: {
-          status: "IDLE",
-          employeeId: null,
-          // 归还后设备名改回「闲置」
-          name: "闲置",
-        },
-      });
+      // 原子性更新：只有「在用」的设备才会被更新
+      // 归还即回到可分配池，名字随归属一起清掉 —— 改回模板名（池子里堆的是型号，不是某个人的设备）
+      const idsByTemplateName = new Map<string, number[]>();
+      for (const a of assets) {
+        const group = idsByTemplateName.get(a.template.name);
+        if (group) group.push(a.id);
+        else idsByTemplateName.set(a.template.name, [a.id]);
+      }
 
-      if (updateResult.count !== assetIds.length) {
+      let updatedCount = 0;
+      for (const [templateName, ids] of idsByTemplateName) {
+        const updateResult = await tx.asset.updateMany({
+          where: {
+            id: { in: ids },
+            status: "IN_USE",
+          },
+          data: {
+            status: "IDLE",
+            employeeId: null,
+            name: templateName,
+          },
+        });
+        updatedCount += updateResult.count;
+      }
+
+      if (updatedCount !== assetIds.length) {
         throw new Error("STATUS_CONFLICT");
       }
 
@@ -270,7 +310,9 @@ export async function returnAssets(
 export async function transferAssets(
   input: z.infer<typeof transferSchema>
 ): Promise<ActionResult<{ transferredCount: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = transferSchema.safeParse(input);
   if (!validated.success) {
@@ -295,24 +337,7 @@ export async function transferAssets(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有状态为 IN_USE 的设备才会被调拨
-      const updateResult = await tx.asset.updateMany({
-        where: {
-          id: { in: assetIds },
-          status: "IN_USE",
-        },
-        data: {
-          employeeId: toEmployeeId,
-          // 调拨后设备名改为新使用人姓名
-          name: toEmployee.name,
-        },
-      });
-
-      if (updateResult.count !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
-      }
-
-      // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
+      // 设备名跟随归属：调拨后 = 「{新使用人}的{设备分类}」，故需先拿到各设备所属分类
       const templatesWithCategory = await tx.deviceTemplate.findMany({
         where: { id: { in: [...new Set(assets.map(a => a.templateId))] } },
         select: { id: true, categoryId: true },
@@ -320,10 +345,51 @@ export async function transferAssets(
       const templateToCategory = new Map(templatesWithCategory.map(t => [t.id, t.categoryId]));
       const allCategoryIds = [...new Set(assets.map(a => templateToCategory.get(a.templateId)!))];
 
-      const uniqueCategories = await tx.assetCategory.findMany({
-        where: { id: { in: allCategoryIds }, unique: true },
-        select: { id: true, name: true },
+      const categories = await tx.assetCategory.findMany({
+        where: { id: { in: allCategoryIds } },
+        select: { id: true, name: true, unique: true },
       });
+      const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+
+      // 原子性更新：只有状态为 IN_USE 的设备才会被调拨
+      // 按分类分组，让每台设备拿到自己分类的名字
+      const assetIdsByCategory = new Map<number, number[]>();
+      for (const a of assets) {
+        const categoryId = templateToCategory.get(a.templateId)!;
+        const group = assetIdsByCategory.get(categoryId);
+        if (group) group.push(a.id);
+        else assetIdsByCategory.set(categoryId, [a.id]);
+      }
+
+      // 唯一性校验（R4）：先拦「同一批次内」同唯一分类勾选多台 —— 否则一次调拨即可让受让人持有 2 台
+      const uniqueCategoryIdSet = new Set(categories.filter((c) => c.unique).map((c) => c.id));
+      for (const [categoryId, ids] of assetIdsByCategory) {
+        if (uniqueCategoryIdSet.has(categoryId) && ids.length > 1) {
+          throw new Error(`UNIQUE_VIOLATION:${categoryNameById.get(categoryId) ?? ""}`);
+        }
+      }
+
+      let updatedCount = 0;
+      for (const [categoryId, ids] of assetIdsByCategory) {
+        const updateResult = await tx.asset.updateMany({
+          where: {
+            id: { in: ids },
+            status: "IN_USE",
+          },
+          data: {
+            employeeId: toEmployeeId,
+            name: `${toEmployee.name}的${categoryNameById.get(categoryId) ?? ""}`,
+          },
+        });
+        updatedCount += updateResult.count;
+      }
+
+      if (updatedCount !== assetIds.length) {
+        throw new Error("STATUS_CONFLICT");
+      }
+
+      // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
+      const uniqueCategories = categories.filter((c) => c.unique);
       if (uniqueCategories.length > 0) {
         const uniqueCategoryIds = new Set(uniqueCategories.map(c => c.id));
         const existingAssets = await tx.asset.findMany({
@@ -389,7 +455,9 @@ export async function transferAssets(
 export async function upgradeAssetComponent(
   input: z.infer<typeof upgradeSchema>
 ): Promise<ActionResult<{ assetId: number; modelId: number; newModelId: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = upgradeSchema.safeParse(input);
   if (!validated.success) {
@@ -511,7 +579,9 @@ export async function upgradeAssetComponent(
 export async function scrapAssets(
   input: z.infer<typeof scrapSchema>
 ): Promise<ActionResult<{ scrappedCount: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = scrapSchema.safeParse(input);
   if (!validated.success) {
@@ -530,11 +600,11 @@ export async function scrapAssets(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有非报废状态的设备才会被更新
+      // 原子性更新：只有非报废、非预占的设备才会被更新（预占中设备不参与人工流转，避免悬空预占）
       const updateResult = await tx.asset.updateMany({
         where: {
           id: { in: assetIds },
-          status: { not: "SCRAPPED" },
+          status: { notIn: ["SCRAPPED", "RESERVED"] },
         },
         data: {
           status: "SCRAPPED",
@@ -575,7 +645,7 @@ export async function scrapAssets(
     return { success: true, data: result };
   } catch (e) {
     if (e instanceof Error && e.message === "STATUS_CONFLICT") {
-      return { success: false, error: "部分设备已报废，无法重复报废" };
+      return { success: false, error: "部分设备状态不允许报废（已报废或已被申请预占）" };
     }
     return { success: false, error: "报废失败" };
   }
@@ -594,7 +664,9 @@ const maintenanceStartSchema = z.object({
 export async function maintenanceStart(
   input: z.infer<typeof maintenanceStartSchema>
 ): Promise<ActionResult<{ startedCount: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = maintenanceStartSchema.safeParse(input);
   if (!validated.success) {
@@ -613,11 +685,11 @@ export async function maintenanceStart(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有非报废且非维修中的设备才能送修
+      // 原子性更新：只有非报废、非维修中、非预占的设备才能送修（预占中设备不参与人工流转）
       const updateResult = await tx.asset.updateMany({
         where: {
           id: { in: assetIds },
-          status: { notIn: ["SCRAPPED", "IN_MAINTENANCE"] },
+          status: { notIn: ["SCRAPPED", "IN_MAINTENANCE", "RESERVED"] },
         },
         data: { status: "IN_MAINTENANCE" },
       });
@@ -655,7 +727,7 @@ export async function maintenanceStart(
     return { success: true, data: result };
   } catch (e) {
     if (e instanceof Error && e.message === "STATUS_CONFLICT") {
-      return { success: false, error: "部分设备已报废或已在维修中，无法送修" };
+      return { success: false, error: "部分设备状态不允许送修（已报废、维修中或已被申请预占）" };
     }
     return { success: false, error: "送修失败" };
   }
@@ -674,7 +746,9 @@ const maintenanceCompleteSchema = z.object({
 export async function maintenanceComplete(
   input: z.infer<typeof maintenanceCompleteSchema>
 ): Promise<ActionResult<{ completedCount: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = maintenanceCompleteSchema.safeParse(input);
   if (!validated.success) {
@@ -683,9 +757,10 @@ export async function maintenanceComplete(
 
   const { assetIds, operator, remark } = validated.data;
 
-  // 预检查：设备是否存在（状态检查放事务内）
+  // 预检查：设备是否存在（状态检查放事务内），并取模板名以便还原池内名称
   const assets = await prisma.asset.findMany({
     where: { id: { in: assetIds } },
+    include: { template: { select: { name: true } } },
   });
   if (assets.length !== assetIds.length) {
     return { success: false, error: "部分设备不存在" };
@@ -693,16 +768,28 @@ export async function maintenanceComplete(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 原子性更新：只有维修中的设备才能标记完成
-      const updateResult = await tx.asset.updateMany({
-        where: {
-          id: { in: assetIds },
-          status: "IN_MAINTENANCE",
-        },
-        data: { status: "IDLE" },
-      });
+      // 维修完成即回到「闲置」池，而池内设备无归属：清空使用人、名称还原为模板名
+      // （与 returnAssets 保持一致，否则会出现「状态=闲置 但 使用人=某人」的矛盾态）
+      const idsByTemplateName = new Map<string, number[]>();
+      for (const a of assets) {
+        const group = idsByTemplateName.get(a.template.name);
+        if (group) group.push(a.id);
+        else idsByTemplateName.set(a.template.name, [a.id]);
+      }
 
-      if (updateResult.count !== assetIds.length) {
+      let updatedCount = 0;
+      for (const [templateName, ids] of idsByTemplateName) {
+        const updateResult = await tx.asset.updateMany({
+          where: {
+            id: { in: ids },
+            status: "IN_MAINTENANCE",
+          },
+          data: { status: "IDLE", employeeId: null, name: templateName },
+        });
+        updatedCount += updateResult.count;
+      }
+
+      if (updatedCount !== assetIds.length) {
         throw new Error("STATUS_CONFLICT");
       }
 
@@ -748,7 +835,9 @@ export async function maintenanceComplete(
 export async function adjustAssetComponents(
   input: z.infer<typeof adjustComponentsSchema>
 ): Promise<ActionResult<{ assetId: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
 
   const validated = adjustComponentsSchema.safeParse(input);
   if (!validated.success) {

@@ -142,6 +142,98 @@ async function seedDefaultScrapWorkflow() {
   console.log("创建默认资产报废流程（v1，已发布）");
 }
 
+/** 默认加购配件流程：员工 → 部门主管 → 资产管理员 → 终审通过自动入库；幂等 */
+async function seedDefaultPurchaseWorkflow() {
+  const existing = await prisma.workflowDefinition.findFirst({
+    where: { businessType: "ASSET_PURCHASE" },
+  });
+  if (existing) {
+    console.log("默认加购配件流程已存在，跳过创建");
+    return;
+  }
+  await prisma.workflowDefinition.create({
+    data: {
+      businessType: "ASSET_PURCHASE",
+      name: "申请加购配件流程",
+      version: 1,
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      nodes: {
+        create: [
+          {
+            nodeKey: "n1",
+            name: "部门主管审批",
+            type: "APPROVAL",
+            sortOrder: 0,
+            assigneeType: "DEPT_MANAGER",
+            ccType: "NONE",
+            ccRules: [{ type: "INITIATOR" }, { type: "ROLE", roleKey: "ASSET_MANAGER" }],
+          },
+          {
+            nodeKey: "n2",
+            name: "资产管理员审批",
+            type: "APPROVAL",
+            sortOrder: 1,
+            assigneeType: "ROLE",
+            assigneeRole: "ASSET_MANAGER",
+            ccType: "INITIATOR",
+          },
+        ],
+      },
+    },
+  });
+  console.log("创建默认加购配件流程（v1，已发布）");
+}
+
+/**
+ * 通用默认审批流程：部门主管 → 资产管理员（幂等）。
+ * 供退回/更换/维修/离职等业务类型使用；终审通过后按业务类型自动落地或手动执行。
+ */
+async function seedDefaultTwoNodeWorkflow(
+  businessType: "ASSET_RETURN" | "ASSET_REPLACE" | "ASSET_REPAIR" | "ASSET_DEPART",
+  name: string
+) {
+  const existing = await prisma.workflowDefinition.findFirst({
+    where: { businessType },
+  });
+  if (existing) {
+    console.log(`默认流程「${name}」已存在，跳过创建`);
+    return;
+  }
+  await prisma.workflowDefinition.create({
+    data: {
+      businessType,
+      name,
+      version: 1,
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+      nodes: {
+        create: [
+          {
+            nodeKey: "n1",
+            name: "部门主管审批",
+            type: "APPROVAL",
+            sortOrder: 0,
+            assigneeType: "DEPT_MANAGER",
+            ccType: "NONE",
+            ccRules: [{ type: "INITIATOR" }, { type: "ROLE", roleKey: "ASSET_MANAGER" }],
+          },
+          {
+            nodeKey: "n2",
+            name: "资产管理员审批",
+            type: "APPROVAL",
+            sortOrder: 1,
+            assigneeType: "ROLE",
+            assigneeRole: "ASSET_MANAGER",
+            ccType: "INITIATOR",
+          },
+        ],
+      },
+    },
+  });
+  console.log(`创建默认流程「${name}」（v1，已发布）`);
+}
+
 async function seed() {
   console.log("开始填充测试数据...");
 
@@ -261,6 +353,11 @@ async function seed() {
   // 默认审批流程（依赖权限枚举，放在角色种子之后）
   await seedDefaultWorkflow();
   await seedDefaultScrapWorkflow();
+  await seedDefaultPurchaseWorkflow();
+  await seedDefaultTwoNodeWorkflow("ASSET_RETURN", "申请设备退回流程");
+  await seedDefaultTwoNodeWorkflow("ASSET_REPLACE", "申请更换设备流程");
+  await seedDefaultTwoNodeWorkflow("ASSET_REPAIR", "申请设备维修流程");
+  await seedDefaultTwoNodeWorkflow("ASSET_DEPART", "申请员工离职流程");
 
   // 演示组织数据：部门 + 员工 + 主管指派 + 全员账号（幂等，已有员工则跳过）
   const org = await bootstrapOrgData([

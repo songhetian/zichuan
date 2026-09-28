@@ -1,16 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { setTestUser } from "@/lib/auth";
-import { createAsset, batchCreateAssets } from "@/actions/asset.actions";
+import { createAsset } from "@/actions/asset.actions";
 import { importAssetsAuto } from "@/actions/auto-import.actions";
 import { importAssetsFromExcel } from "@/actions/excel.actions";
+import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
 import { unwrap } from "./helpers";
 import * as XLSX from "xlsx";
 
 // ============================================================
 // 测试 seam：编号规则在所有设备创建路径中都应被尊重
-// 路径：1) createAsset  2) batchCreateAssets  3) importAssetsAuto（硬件扫描）
-//       4) importAssetsFromExcel（Excel 导入）
+// 路径：1) createAsset  2) importAssetsAuto（硬件扫描）
+//       3) importAssetsFromExcel（Excel 导入）
 // 用户报告：已设置 numberingRule 但仍生成 PC-0001 旧格式
 // ============================================================
 
@@ -52,6 +53,8 @@ describe("编号规则在所有路径生效", () => {
     const cpu = await prisma.componentModel.create({
       data: { name: "i5-12400", brand: "Intel", categoryId: compCat.id },
     });
+    // 建档会按模板 BOM 扣减配件库存，先备料
+    await prisma.componentStock.create({ data: { modelId: cpu.id, quantity: 1 } });
     const template = await prisma.deviceTemplate.create({
       data: {
         name: "测试模板",
@@ -62,44 +65,11 @@ describe("编号规则在所有路径生效", () => {
 
     const result = await createAsset({
       templateId: template.id,
-      name: "测试设备",
       operator: "admin",
     });
 
     const { y, m, d } = today();
-    expect(unwrap(result).assetNo).toBe(`PC-${y}${m}${d}-0001`);
-  });
-
-  it("batchCreateAssets 尊重分类的 numberingRule", async () => {
-    const cat = await prisma.assetCategory.create({
-      data: {
-        name: `规则分类_batch_${Date.now()}`,
-        code: "PC",
-        numberingRule: "{prefix}-{YYYY}{MM}{DD}-{####}",
-      },
-    });
-    const compCat = await prisma.componentCategory.create({ data: { name: "CPU" } });
-    const cpu = await prisma.componentModel.create({
-      data: { name: "i5-12400", brand: "Intel", categoryId: compCat.id },
-    });
-    const template = await prisma.deviceTemplate.create({
-      data: {
-        name: "测试模板",
-        categoryId: cat.id,
-        components: { create: [{ modelId: cpu.id, quantity: 1 }] },
-      },
-    });
-
-    const result = await batchCreateAssets({
-      templateId: template.id,
-      count: 2,
-      operator: "admin",
-    });
-    const assets = unwrap(result);
-
-    const { y, m, d } = today();
-    expect(assets[0].assetNo).toBe(`PC-${y}${m}${d}-0001`);
-    expect(assets[1].assetNo).toBe(`PC-${y}${m}${d}-0002`);
+    expect(unwrap(result)[0].assetNo).toBe(`PC-${y}${m}${d}-0001`);
   });
 
   it("importAssetsAuto（硬件扫描）尊重已存在分类的 numberingRule", async () => {
@@ -142,6 +112,8 @@ describe("编号规则在所有路径生效", () => {
     const cpu = await prisma.componentModel.create({
       data: { name: "i5-12400", brand: "Intel", categoryId: compCat.id },
     });
+    // Excel 导入会按模板 BOM 扣减配件库存，先备料（1 行 × 每台 1 个）
+    await prisma.componentStock.create({ data: { modelId: cpu.id, quantity: 1 } });
     const template = await prisma.deviceTemplate.create({
       data: {
         name: "Excel导入模板",
@@ -163,5 +135,28 @@ describe("编号规则在所有路径生效", () => {
     expect(asset).not.toBeNull();
     const { y, m, d } = today();
     expect(asset!.assetNo).toBe(`PC-${y}${m}${d}-0001`);
+  });
+
+  it("Excel 缺「设备分类编号」列时，新建分类不回退为写死的 PC", async () => {
+    // 外设（显示器等）也是设备层，行内没有编号列时不该被当成「PC」分类
+    const categoryName = `外设分类_${Date.now()}`;
+    const buffer = createExcelBuffer([
+      { "使用人": "张三", "部门": "技术部", "设备分类": categoryName },
+    ]);
+
+    const result = await importAssetsFromExcelAuto({ buffer: Array.from(buffer) });
+
+    expect(result.success).toBe(true);
+    const category = await prisma.assetCategory.findUnique({
+      where: { name: categoryName },
+    });
+    // 回退到中性前缀 EQ（与 excel.actions.ts 既有约定一致），而不是任何设备分类的前缀
+    expect(category!.code).not.toBe("PC");
+    expect(category!.code).toBe("EQ");
+
+    const asset = await prisma.asset.findFirst({
+      where: { template: { categoryId: category!.id } },
+    });
+    expect(asset!.assetNo).toMatch(new RegExp(`^${category!.code}-`));
   });
 });

@@ -18,7 +18,7 @@ describe("设备配件配置调整", () => {
   let extraMonitorModelId: number;
 
   beforeEach(async () => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
 
     // 创建设备分类
     const category = await prisma.assetCategory.create({

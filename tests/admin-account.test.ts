@@ -19,6 +19,18 @@ async function seedRole(key: string, name: string, permissions: string[]) {
   return role;
 }
 
+// 自建部门 + 员工（dependency：Employee 必填 departmentId；编号/部门名用递增计数保证全局唯一）
+let seedSeq = 0;
+async function seedEmployee(name: string) {
+  seedSeq += 1;
+  const dept = await prisma.department.create({
+    data: { name: `测试部-${Date.now()}-${seedSeq}` },
+  });
+  return prisma.employee.create({
+    data: { employeeNo: `SEED-${Date.now()}-${seedSeq}`, name, departmentId: dept.id },
+  });
+}
+
 describe("账号管理（M1：创建账号 + 角色绑定）", () => {
   beforeEach(async () => {
     await prisma.admin.deleteMany();
@@ -38,11 +50,13 @@ describe("账号管理（M1：创建账号 + 角色绑定）", () => {
     setTestUser({ id: boss.id, username: "boss" });
 
     const deptRole = await seedRole("DEPT_MANAGER", "部门主管", []);
+    const emp = await seedEmployee("张三");
     const result = await createAdmin({
       username: "zhangsan",
       password: "pass123",
       roleId: deptRole.id,
       displayName: "张三",
+      employeeId: emp.id,
     });
 
     expect(result.success).toBe(true);
@@ -62,8 +76,11 @@ describe("账号管理（M1：创建账号 + 角色绑定）", () => {
     });
     setTestUser({ id: boss.id, username: "boss" });
 
-    await createAdmin({ username: "zhangsan", password: "pass123" });
-    const result = await createAdmin({ username: "zhangsan", password: "pass456" });
+    const empRole = await seedRole("EMPLOYEE", "普通员工", []);
+    const emp1 = await seedEmployee("张三");
+    const emp2 = await seedEmployee("李四");
+    await createAdmin({ username: "zhangsan", password: "pass123", roleId: empRole.id, employeeId: emp1.id });
+    const result = await createAdmin({ username: "zhangsan", password: "pass456", roleId: empRole.id, employeeId: emp2.id });
 
     expect(result.success).toBe(false);
     expect(unwrapError(result)).toContain("已存在");
@@ -76,7 +93,9 @@ describe("账号管理（M1：创建账号 + 角色绑定）", () => {
     });
     setTestUser({ id: boss.id, username: "boss" });
 
-    await createAdmin({ username: "lisi", password: "secret123" });
+    const empRole = await seedRole("EMPLOYEE", "普通员工", []);
+    const emp = await seedEmployee("李四");
+    await createAdmin({ username: "lisi", password: "secret123", roleId: empRole.id, employeeId: emp.id });
 
     setTestUser(null);
     const result = await login({ username: "lisi", password: "secret123" });
@@ -90,7 +109,8 @@ describe("账号管理（M1：创建账号 + 角色绑定）", () => {
     });
     setTestUser({ id: emp.id, username: "emp1" });
 
-    const result = await createAdmin({ username: "hacker", password: "pass123" });
+    const hackerEmp = await seedEmployee("黑客");
+    const result = await createAdmin({ username: "hacker", password: "pass123", roleId: empRole.id, employeeId: hackerEmp.id });
 
     expect(result.success).toBe(false);
     expect(unwrapError(result)).toContain("权限");
@@ -98,7 +118,9 @@ describe("账号管理（M1：创建账号 + 角色绑定）", () => {
 
   it("未登录不能创建账号", async () => {
     setTestUser(null);
-    const result = await createAdmin({ username: "ghost", password: "pass123" });
+    const ghostRole = await seedRole("EMPLOYEE", "普通员工", []);
+    const ghostEmp = await seedEmployee("幽灵");
+    const result = await createAdmin({ username: "ghost", password: "pass123", roleId: ghostRole.id, employeeId: ghostEmp.id });
     expect(result.success).toBe(false);
     expect(unwrapError(result)).toContain("登录");
   });

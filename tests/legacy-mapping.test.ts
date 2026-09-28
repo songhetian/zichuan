@@ -32,8 +32,18 @@ function loadDump() {
   return castDump(parseLegacyDump(readFileSync(DUMP_PATH, "utf8")));
 }
 
+function dumpExists(): boolean {
+  try {
+    readFileSync(DUMP_PATH);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("legacy-mapping 解析", () => {
-  it("dump 中包含全部 16 张业务表", () => {
+  // 依赖本机附件 dump（旧库 SQL），文件缺失时整体跳过（如 CI/换机环境）
+  it.skipIf(!dumpExists())("dump 中包含全部 16 张业务表", () => {
     const dump = loadDump();
     expect(dump).toBeDefined();
     for (const t of LEGACY_TABLES) {
@@ -42,7 +52,7 @@ describe("legacy-mapping 解析", () => {
     }
   });
 
-  it("解析出的列名与 INSERT 值位置对齐（抽样 Admin / Asset）", () => {
+  it.skipIf(!dumpExists())("解析出的列名与 INSERT 值位置对齐（抽样 Admin / Asset）", () => {
     const dump = loadDump();
     expect(dump.Admin.columns).toEqual(["id", "username", "password", "createdAt", "updatedAt"]);
     const assetCols = dump.Asset.columns;
@@ -67,9 +77,11 @@ describe("legacy-mapping 解析", () => {
 });
 
 describe("buildRows 映射断言", () => {
-  const dump = loadDump();
+  const hasDump = dumpExists();
+  const dump = hasDump ? loadDump() : ({} as Record<string, Table>);
+  const itDump = hasDump ? it : it.skip;
 
-  it("Admin 补 isActive=true，且保留原始 id", () => {
+  itDump("Admin 补 isActive=true，且保留原始 id", () => {
     const rows: any[] = castRows(buildRows("admin", dump));
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {
@@ -82,7 +94,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("Asset 新增审批预占列补 null", () => {
+  itDump("Asset 新增审批预占列补 null", () => {
     const rows: any[] = castRows(buildRows("asset", dump));
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {
@@ -93,7 +105,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("Department / Employee 新增 managerId 补 null", () => {
+  itDump("Department / Employee 新增 managerId 补 null", () => {
     const depts: any[] = castRows(buildRows("department", dump));
     for (const r of depts) {
       expect(r.managerId).toBeNull();
@@ -107,7 +119,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("LifecycleLog 新增 operatorId / requestId 补 null", () => {
+  itDump("LifecycleLog 新增 operatorId / requestId 补 null", () => {
     const rows: any[] = castRows(buildRows("lifecycleLog", dump));
     for (const r of rows) {
       expect(r.operatorId).toBeNull();
@@ -116,7 +128,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("AssetCategory 的 is_unique 映射为 unique 布尔列", () => {
+  itDump("AssetCategory 的 is_unique 映射为 unique 布尔列", () => {
     const rows: any[] = castRows(buildRows("assetCategory", dump));
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {
@@ -125,7 +137,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("DeviceTemplate 去掉旧表生成的 normalizedName 冗余列", () => {
+  itDump("DeviceTemplate 去掉旧表生成的 normalizedName 冗余列", () => {
     const rows: any[] = castRows(buildRows("deviceTemplate", dump));
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {
@@ -135,7 +147,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("映射后的数值字段均为 number，日期字段可被执行 SQL 接受（不 NaN）", () => {
+  itDump("映射后的数值字段均为 number，日期字段可被执行 SQL 接受（不 NaN）", () => {
     const numericModels = ["componentModel", "componentStock", "componentStockLog", "templateComponent", "stocktakeRecord"];
     for (const m of numericModels) {
       const rows: any[] = castRows(buildRows(m, dump));
@@ -152,7 +164,7 @@ describe("buildRows 映射断言", () => {
     }
   });
 
-  it("每条 create 数据都能被 JSON 序列化（可执行 SQL 写入前的最后校验）", () => {
+  itDump("每条 create 数据都能被 JSON 序列化（可执行 SQL 写入前的最后校验）", () => {
     for (const m of IMPORT_ORDER as string[]) {
       for (const r of castRows(buildRows(m, dump))) {
         expect(() => JSON.stringify(r)).not.toThrow();

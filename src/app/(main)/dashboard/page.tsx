@@ -72,6 +72,7 @@ export default async function DashboardPage() {
     IN_USE: 0,
     IN_MAINTENANCE: 0,
     SCRAPPED: 0,
+    RESERVED: 0,
   };
   for (const g of statusGroups) {
     byStatus[g.status] = g._count.id;

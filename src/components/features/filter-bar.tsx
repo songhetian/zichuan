@@ -17,6 +17,8 @@ interface FilterBarProps {
   onReset?: () => void
   /** 是否显示重置按钮，默认 false */
   showReset?: boolean
+  /** 最右侧自定义内容（渲染在重置按钮之后），用于「列设置」等表格操作 */
+  rightSlot?: ReactNode
 }
 
 export function FilterBar({
@@ -26,6 +28,7 @@ export function FilterBar({
   onSearchChange,
   onReset,
   showReset = false,
+  rightSlot,
 }: FilterBarProps) {
   const hasFilters = items.length > 0 || onSearchChange
 
@@ -51,6 +54,7 @@ export function FilterBar({
           重置
         </Button>
       )}
+      {rightSlot && <div className="shrink-0">{rightSlot}</div>}
     </div>
   )
 }

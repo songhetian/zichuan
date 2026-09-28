@@ -27,7 +27,7 @@ describe("简单登录认证", () => {
       const result = await login({ username: "nobody", password: "admin123" });
 
       expect(result.success).toBe(false);
-      expect(unwrapError(result)).toContain("用户名或密码错误");
+      expect(unwrapError(result)).toContain("工号或密码错误");
     });
   });
 

@@ -128,48 +128,63 @@ function ComponentActionButtons({
       return;
     }
     setLoading(true);
-    const result = await purchaseStockIn({
-      modelId: model.id,
-      quantity: qty,
-      operator: "admin",
-    });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: `入库成功，当前库存: ${result.data.quantity}` });
-      setStockInOpen(false);
-      setQuantity("");
-      router.refresh();
-    } else {
-      toast({ title: "入库失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await purchaseStockIn({
+        modelId: model.id,
+        quantity: qty,
+        operator: "admin",
+      });
+      if (result.success) {
+        toast({ title: `入库成功，当前库存: ${result.data.quantity}` });
+        setStockInOpen(false);
+        setQuantity("");
+        router.refresh();
+      } else {
+        toast({ title: "入库失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    const result = await deleteComponentModel(model.id);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      router.refresh();
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await deleteComponentModel(model.id);
+      if (result.success) {
+        toast({ title: "删除成功" });
+        router.refresh();
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDeleteOpen(false);
     }
-    setDeleteOpen(false);
   };
 
   const handleEdit = async () => {
     if (!editName.trim() || !editCategoryId) return;
     setEditLoading(true);
-    const result = await updateComponentModel(model.id, {
-      name: editName.trim(),
-      brand: editBrand.trim() || undefined,
-      categoryId: Number(editCategoryId),
-    });
-    setEditLoading(false);
-    if (result.success) {
-      toast({ title: "更新成功" });
-      setEditOpen(false);
-      router.refresh();
-    } else {
-      toast({ title: "更新失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await updateComponentModel(model.id, {
+        name: editName.trim(),
+        brand: editBrand.trim() || undefined,
+        categoryId: Number(editCategoryId),
+      });
+      if (result.success) {
+        toast({ title: "更新成功" });
+        setEditOpen(false);
+        router.refresh();
+      } else {
+        toast({ title: "更新失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -347,21 +362,26 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
   const handleCreate = async () => {
     if (!name.trim() || !categoryId) return;
     setLoading(true);
-    const result = await createComponentModel({
-      name: name.trim(),
-      brand: brand.trim(),
-      categoryId: Number(categoryId),
-    });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "创建成功" });
-      setCreateOpen(false);
-      setName("");
-      setBrand("");
-      setCategoryId("");
-      router.refresh();
-    } else {
-      toast({ title: "创建失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await createComponentModel({
+        name: name.trim(),
+        brand: brand.trim(),
+        categoryId: Number(categoryId),
+      });
+      if (result.success) {
+        toast({ title: "创建成功" });
+        setCreateOpen(false);
+        setName("");
+        setBrand("");
+        setCategoryId("");
+        router.refresh();
+      } else {
+        toast({ title: "创建失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 

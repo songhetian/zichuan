@@ -112,13 +112,6 @@ const actionLabelMap: Record<string, string> = {
   MAINTENANCE_DONE: "维修完成",
 };
 
-const statusLabelMap: Record<string, string> = {
-  IDLE: "闲置",
-  IN_USE: "在用",
-  IN_MAINTENANCE: "维修中",
-  SCRAPPED: "报废",
-};
-
 export function AssetDetailClient({ asset, componentModels, employees }: AssetDetailClientProps) {
   const router = useRouter();
   const { toast } = useToast();

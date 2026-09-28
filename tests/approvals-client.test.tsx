@@ -9,7 +9,10 @@ import { NewRequestClient } from "@/app/(main)/approvals/new/new-request-client"
 import { TodoClient } from "@/app/(main)/approvals/todo/todo-client";
 import { MyRequestsClient } from "@/app/(main)/approvals/my/my-requests-client";
 import { ApprovalDetailClient } from "@/app/(main)/approvals/[id]/approval-detail-client";
+import { DoneRecordsClient } from "@/app/(main)/approvals/done/done-records-client";
+import { CcRecordsClient } from "@/app/(main)/approvals/cc/cc-records-client";
 import * as approvalActions from "@/actions/approval.actions";
+import * as excelActions from "@/actions/excel.actions";
 
 const routerPush = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -18,11 +21,19 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/actions/approval.actions", () => ({
   submitApprovalRequest: vi.fn(),
-  getMyTodoTasks: vi.fn(),
+  // 提交成功后组件会查询我的待办以决定是否提醒；默认无待办，避免路由被中断
+  getMyTodoTasks: vi.fn().mockResolvedValue({ success: true, data: [] }),
   getMySubmittedRequests: vi.fn(),
   getApprovalRequestById: vi.fn(),
   approveTask: vi.fn(),
   rejectTask: vi.fn(),
+  getMyHandledRecords: vi.fn(),
+  getMyCcRecords: vi.fn(),
+}));
+
+vi.mock("@/actions/excel.actions", () => ({
+  exportHandledRecordsToExcel: vi.fn(),
+  exportCcRecordsToExcel: vi.fn(),
 }));
 
 afterEach(() => {
@@ -89,7 +100,7 @@ describe("发起申请页", () => {
     await user.click(await screen.findByRole("option", { name: "资产报废" }));
     await user.type(screen.getByLabelText("申请标题"), "申请报废损坏主机");
     await user.click(screen.getByRole("combobox", { name: "选择设备" }));
-    await user.click(await screen.findByText("DN-0001 · 台式机"));
+    await user.click(await screen.findByRole("option", { name: /台式机/ }));
     await user.type(screen.getByLabelText("报废原因"), "硬件损坏不可修复");
 
     // 升级专属的配件字段不再渲染
@@ -195,6 +206,150 @@ describe("我的申请页", () => {
   });
 });
 
+describe("我办理的记录页", () => {
+  const options = {
+    canViewAll: true,
+    departments: [{ id: 1, name: "技术部" }],
+    initiators: [{ id: 9, name: "申请员工" }],
+    componentCategories: [{ id: 30, name: "内存" }],
+  };
+  const initial = [
+    {
+      requestId: 42,
+      requestNo: "AP-202609-0001",
+      title: "申请报废电脑",
+      businessType: "ASSET_SCRAP",
+      status: "APPROVED",
+      initiatorId: 9,
+      initiatorName: "申请员工",
+      departmentId: 1,
+      departmentName: "技术部",
+      componentCategoryId: null,
+      componentCategoryName: null,
+      actions: ["APPROVE", "EXECUTE"] as ("APPROVE" | "EXECUTE")[],
+      lastActedAt: new Date("2026-09-19T10:00:00.000Z"),
+      finishedAt: new Date("2026-09-19T10:00:00.000Z"),
+    },
+  ];
+
+  it("渲染办理记录：单号/标题/我的动作标签/详情链接", async () => {
+    render(<DoneRecordsClient initial={initial} options={options} />);
+
+    expect(await screen.findByText("AP-202609-0001")).toBeInTheDocument();
+    expect(screen.getByText("申请报废电脑")).toBeInTheDocument();
+    expect(screen.getByText("审批通过")).toBeInTheDocument();
+    expect(screen.getByText("执行")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看" })).toHaveAttribute("href", "/approvals/42");
+    // 首次渲染直接用服务端数据，不应触发查询
+    expect(approvalActions.getMyHandledRecords).not.toHaveBeenCalled();
+  });
+
+  it("无 approval.detail.view 时不显示「全部办理记录」切换", async () => {
+    render(
+      <DoneRecordsClient initial={[]} options={{ ...options, canViewAll: false }} />
+    );
+    expect(screen.queryByRole("button", { name: "全部办理记录" })).toBeNull();
+  });
+
+  it("切换到「全部办理记录」后按 mode=ALL 防抖重查", async () => {
+    const user = userEvent.setup();
+    (approvalActions.getMyHandledRecords as any).mockResolvedValue({ success: true, data: [] });
+    render(<DoneRecordsClient initial={initial} options={options} />);
+
+    await user.click(screen.getByRole("button", { name: "全部办理记录" }));
+
+    await waitFor(
+      () =>
+        expect(approvalActions.getMyHandledRecords).toHaveBeenCalledWith(
+          expect.objectContaining({ mode: "ALL" })
+        ),
+      { timeout: 3000 }
+    );
+  });
+
+  it("导出按钮调用导出 action 并下载 xlsx", async () => {
+    const user = userEvent.setup();
+    (excelActions.exportHandledRecordsToExcel as any).mockResolvedValue({
+      success: true,
+      data: { fileName: "办理记录_20260924.xlsx", buffer: [1, 2, 3] },
+    });
+    render(<DoneRecordsClient initial={initial} options={options} />);
+
+    await user.click(screen.getByRole("button", { name: /导出 Excel/ }));
+
+    await waitFor(() =>
+      expect(excelActions.exportHandledRecordsToExcel).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: "MINE" })
+      )
+    );
+  });
+});
+
+describe("我的抄送页", () => {
+  const options = {
+    departments: [{ id: 1, name: "技术部" }],
+    initiators: [{ id: 9, name: "申请员工" }],
+    componentCategories: [{ id: 30, name: "内存" }],
+  };
+  const initial = [
+    {
+      requestId: 42,
+      requestNo: "AP-202609-0001",
+      title: "申请升级内存",
+      businessType: "ASSET_UPGRADE",
+      status: "PENDING",
+      initiatorId: 9,
+      initiatorName: "申请员工",
+      departmentId: 1,
+      departmentName: "技术部",
+      componentCategoryId: 30,
+      componentCategoryName: "内存",
+      ccAt: new Date("2026-09-19T10:00:00.000Z"),
+    },
+  ];
+
+  it("渲染抄送记录：单号/标题/状态/详情链接，首次渲染不查询", async () => {
+    render(<CcRecordsClient initial={initial} options={options} />);
+
+    expect(await screen.findByText("AP-202609-0001")).toBeInTheDocument();
+    expect(screen.getByText("申请升级内存")).toBeInTheDocument();
+    expect(screen.getByText("审批中")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看" })).toHaveAttribute("href", "/approvals/42");
+    expect(approvalActions.getMyCcRecords).not.toHaveBeenCalled();
+  });
+
+  it("筛选条件变化后防抖重查", async () => {
+    const user = userEvent.setup();
+    (approvalActions.getMyCcRecords as any).mockResolvedValue({ success: true, data: [] });
+    render(<CcRecordsClient initial={initial} options={options} />);
+
+    await user.type(screen.getByPlaceholderText("单号 / 申请标题"), "AP-202609");
+
+    await waitFor(
+      () =>
+        expect(approvalActions.getMyCcRecords).toHaveBeenCalledWith(
+          expect.objectContaining({ keyword: "AP-202609" })
+        ),
+      { timeout: 3000 }
+    );
+  });
+
+  it("导出按钮调用导出 action 并下载 xlsx", async () => {
+    const user = userEvent.setup();
+    (excelActions.exportCcRecordsToExcel as any).mockResolvedValue({
+      success: true,
+      data: { fileName: "抄送记录_20260924.xlsx", buffer: [1, 2, 3] },
+    });
+    render(<CcRecordsClient initial={initial} options={options} />);
+
+    await user.click(screen.getByRole("button", { name: /导出 Excel/ }));
+
+    await waitFor(() =>
+      expect(excelActions.exportCcRecordsToExcel).toHaveBeenCalled()
+    );
+  });
+});
+
 describe("申请单详情页", () => {
   it("渲染信息、时间线并支持审批操作", async () => {
     const user = userEvent.setup();
@@ -253,7 +408,9 @@ describe("申请单详情页", () => {
     expect(await screen.findByText("申请升级内存")).toBeInTheDocument();
     expect(screen.getByText("审批中")).toBeInTheDocument();
     expect(screen.getByText("提交申请")).toBeInTheDocument();
-    expect(screen.getByText(/发起人：申请员工/)).toBeInTheDocument();
+    // 发起人行渲染为「· 发起人」标签与姓名拼接在同一段落文本内
+    expect(screen.getByText(/· 发起人/)).toBeInTheDocument();
+    expect(screen.getByText(/申请员工/)).toBeInTheDocument();
     expect(screen.getByText("内存")).toBeInTheDocument();
     expect(screen.getByText("升级")).toBeInTheDocument();
 

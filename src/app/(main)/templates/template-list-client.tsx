@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Eye, Pencil, Trash2, X } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { deleteDeviceTemplate } from "@/actions/device-template.actions";
 import { TemplateFormDialog, type TemplateData } from "./template-form-dialog";
@@ -58,14 +58,19 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
   const [editOpen, setEditOpen] = useState(false);
 
   const handleDelete = async () => {
-    const result = await deleteDeviceTemplate(template.id);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      router.refresh();
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await deleteDeviceTemplate(template.id);
+      if (result.success) {
+        toast({ title: "删除成功" });
+        router.refresh();
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDeleteOpen(false);
     }
-    setDeleteOpen(false);
   };
 
   // 编辑时排除当前模板
@@ -115,6 +120,12 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
             <DialogTitle>模板详情 - {template.name}</DialogTitle>
             <DialogDescription>查看模板的配件清单</DialogDescription>
           </DialogHeader>
+          {(template.brand || template.model) && (
+            <p className="text-sm text-muted-foreground">
+              品牌 / 型号：
+              <span className="text-foreground">{[template.brand, template.model].filter(Boolean).join(" / ")}</span>
+            </p>
+          )}
           {template.components.length > 0 ? (
             <Table>
               <TableHeader>
@@ -155,6 +166,20 @@ export function createTemplateColumns(
 ): ColumnDef<TemplateData>[] {
   return [
     { accessorKey: "name", header: "模板名称", size: 260 },
+    {
+      id: "brandModel",
+      header: "品牌 / 型号",
+      size: 180,
+      cell: ({ row }) => {
+        const { brand, model } = row.original;
+        if (!brand && !model) return <span className="text-muted-foreground">-</span>;
+        return (
+          <span className="text-sm text-foreground">
+            {[brand, model].filter(Boolean).join(" / ")}
+          </span>
+        );
+      },
+    },
     {
       id: "categoryId",
       accessorFn: (row) => row.categoryId,
@@ -224,9 +249,14 @@ export function TemplateListClient({ templates, categories, componentModels, com
     [categories],
   );
 
-  // 按模板名称或分类名称过滤，再叠加分类下拉筛选
+  // 按模板名称 / 分类 / 品牌 / 型号过滤，再叠加分类下拉筛选
   const filteredTemplates = useMemo(() => {
-    const base = filterItemsByText(templates, search, (t) => [t.name, categoryName(t.categoryId)]);
+    const base = filterItemsByText(templates, search, (t) => [
+      t.name,
+      categoryName(t.categoryId),
+      t.brand ?? "",
+      t.model ?? "",
+    ]);
     if (!categoryFilter) return base;
     return base.filter((t) => t.categoryId.toString() === categoryFilter);
   }, [templates, search, categories, categoryFilter]);
@@ -256,20 +286,6 @@ export function TemplateListClient({ templates, categories, componentModels, com
           options={categoryOptions}
           triggerClassName="w-[160px]"
         />
-        {(search || categoryFilter) && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setSearch("");
-              setCategoryFilter("");
-            }}
-          >
-            <X className="h-4 w-4 mr-1" />
-            重置
-          </Button>
-        )}
       </div>
       <DataTable
         columns={createTemplateColumns(categories, componentModels, templateOptions, componentCategories)}

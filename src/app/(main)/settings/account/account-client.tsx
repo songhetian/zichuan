@@ -21,14 +21,19 @@ export function AccountClient() {
       return;
     }
     setLoading(true);
-    const result = await changePassword({ oldPassword, newPassword });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "密码修改成功" });
-      setOldPassword("");
-      setNewPassword("");
-    } else {
-      toast({ title: "修改失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await changePassword({ oldPassword, newPassword });
+      if (result.success) {
+        toast({ title: "密码修改成功" });
+        setOldPassword("");
+        setNewPassword("");
+      } else {
+        toast({ title: "修改失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 

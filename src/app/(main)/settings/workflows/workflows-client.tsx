@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, type DragEvent } from "react";
+import { useEffect, useState, type DragEvent } from "react";
+import {
+  TrendingUp, Trash2, Undo2, RefreshCw, Wrench, LogOut, ShoppingCart, type LucideIcon,
+} from "lucide-react";
 import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,12 +116,50 @@ const ROLE_LABEL: Record<string, string> = Object.fromEntries(
   ROLE_OPTIONS.map((r) => [r.value, r.label])
 );
 
-export type WorkflowBusinessType = "ASSET_UPGRADE" | "ASSET_SCRAP";
+export type WorkflowBusinessType =
+  | "ASSET_UPGRADE"
+  | "ASSET_SCRAP"
+  | "ASSET_RETURN"
+  | "ASSET_REPLACE"
+  | "ASSET_REPAIR"
+  | "ASSET_DEPART"
+  | "ASSET_PURCHASE";
 
-const BIZ_TABS: { key: WorkflowBusinessType; label: string }[] = [
-  { key: "ASSET_UPGRADE", label: "升级配件" },
-  { key: "ASSET_SCRAP", label: "资产报废" },
+const BIZ_TABS: {
+  key: WorkflowBusinessType;
+  label: string;
+  icon: LucideIcon;
+  /** 终审通过后的落地方式：auto 自动 / manual 手动（待执行变更） / handover 交接对账 */
+  exec: "auto" | "manual" | "handover";
+  desc: string;
+}[] = [
+  { key: "ASSET_UPGRADE", label: "升级配件", icon: TrendingUp, exec: "manual", desc: "升级/降级配件，审批后由资产管理员执行" },
+  { key: "ASSET_SCRAP", label: "资产报废", icon: Trash2, exec: "auto", desc: "审批通过后自动执行报废落地" },
+  { key: "ASSET_RETURN", label: "设备退回", icon: Undo2, exec: "auto", desc: "审批通过后自动置闲置归还" },
+  { key: "ASSET_REPLACE", label: "更换设备", icon: RefreshCw, exec: "manual", desc: "审批后由资产管理员回收旧机并分配新机" },
+  { key: "ASSET_REPAIR", label: "设备维修", icon: Wrench, exec: "manual", desc: "审批后由资产管理员置维修并分配替换机" },
+  { key: "ASSET_DEPART", label: "员工离职", icon: LogOut, exec: "handover", desc: "审批后生成交接单，对账无误后回收设备" },
+  { key: "ASSET_PURCHASE", label: "加购配件", icon: ShoppingCart, exec: "auto", desc: "审批通过后自动入库并写采购留痕" },
 ];
+
+const EXEC_META: Record<"auto" | "manual" | "handover", { label: string; cls: string }> = {
+  auto: { label: "自动落地", cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30" },
+  manual: { label: "手动执行", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30" },
+  handover: { label: "交接对账", cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/30" },
+};
+
+/** 每种执行方式的强调色（图标底座 / 左侧竖条 / 标题高亮） */
+const EXEC_ACCENT: Record<"auto" | "manual" | "handover", string> = {
+  auto: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/15",
+  manual: "bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/15",
+  handover: "bg-sky-500/10 text-sky-600 dark:text-sky-400 group-hover:bg-sky-500/15",
+};
+/** 每种执行方式的左侧竖条颜色 */
+const EXEC_BAR: Record<"auto" | "manual" | "handover", string> = {
+  auto: "bg-emerald-500",
+  manual: "bg-amber-500",
+  handover: "bg-sky-500",
+};
 
 type NodeFormState = {
   mode: "add" | "edit";
@@ -151,18 +192,6 @@ const CC_RULE_LABEL: Record<(typeof CC_RULE_TYPES)[number], string> = {
   USER: "指定账号",
 };
 
-/** 是否为「末节点资产管理员」：ASSET_UPGRADE 且末节点为 按角色-资产管理员，需在 UI 上固定不可移 */
-const isFinalAssetManagerNode = (
-  detail: Detail | null,
-  nodes: NodeRow[],
-  index: number
-): boolean =>
-  !!detail &&
-  detail.businessType === "ASSET_UPGRADE" &&
-  index === nodes.length - 1 &&
-  nodes[index].assigneeType === "ROLE" &&
-  nodes[index].assigneeRole === "ASSET_MANAGER";
-
 export function WorkflowsClient({
   initialDefinitions,
 }: {
@@ -188,38 +217,82 @@ export function WorkflowsClient({
     | null
   >(null);
   const [bizType, setBizType] = useState<WorkflowBusinessType>("ASSET_UPGRADE");
+  /** 视图：overview 总览 / detail 某类型版本详情 */
+  const [view, setView] = useState<"overview" | "detail">("overview");
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const { toast } = useToast();
 
+  /** 挂载时拉取各业务类型的配置汇总（总览卡依赖） */
+  useEffect(() => {
+    (async () => {
+      const [s, defs] = await Promise.all([
+        getWorkflowConfigSummary(),
+        getWorkflowDefinitions("ASSET_UPGRADE"),
+      ]);
+      if (s.success) setConfigSummary(s.data as Record<WorkflowBusinessType, { total: number; published: number }>);
+      if (defs.success) {
+        setDefinitions(
+          defs.data.map((d) => ({
+            ...d,
+            publishedAt:
+              d.publishedAt instanceof Date ? d.publishedAt.toISOString() : d.publishedAt,
+          }))
+        );
+      }
+      setSummaryLoading(false);
+    })();
+  }, []);
+
   const refreshList = async () => {
-    const result = await getWorkflowDefinitions(bizType);
-    if (result.success) {
-      setDefinitions(
-        result.data.map((d) => ({
-          ...d,
-          publishedAt:
-            d.publishedAt instanceof Date ? d.publishedAt.toISOString() : d.publishedAt,
-        }))
-      );
+    try {
+      const result = await getWorkflowDefinitions(bizType);
+      if (result.success) {
+        setDefinitions(
+          result.data.map((d) => ({
+            ...d,
+            publishedAt:
+              d.publishedAt instanceof Date ? d.publishedAt.toISOString() : d.publishedAt,
+          }))
+        );
+      }
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
     }
   };
 
-  /** 切换业务类型：清空选择并重新加载对应流程列表 */
+  /** 切换业务类型：清空选择并重新加载对应流程列表，进入该类型详情视图 */
   const switchBizType = async (next: WorkflowBusinessType) => {
-    if (next === bizType) return;
+    if (next === bizType) {
+      setView("detail");
+      return;
+    }
     setBizType(next);
     setSelectedId(null);
     setDetail(null);
     setDetailLoading(false);
-    const result = await getWorkflowDefinitions(next);
-    if (result.success) {
-      setDefinitions(
-        result.data.map((d) => ({
-          ...d,
-          publishedAt:
-            d.publishedAt instanceof Date ? d.publishedAt.toISOString() : d.publishedAt,
-        }))
-      );
+    setView("detail");
+    try {
+      const result = await getWorkflowDefinitions(next);
+      if (result.success) {
+        setDefinitions(
+          result.data.map((d) => ({
+            ...d,
+            publishedAt:
+              d.publishedAt instanceof Date ? d.publishedAt.toISOString() : d.publishedAt,
+          }))
+        );
+      }
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
     }
+  };
+
+  /** 返回总览：回到 7 类状态卡 */
+  const backToOverview = () => {
+    setView("overview");
+    setSelectedId(null);
+    setDetail(null);
+    setDetailLoading(false);
   };
 
   const openDetail = async (id: number) => {
@@ -227,12 +300,17 @@ export function WorkflowsClient({
     // 先弹出弹窗，再后台加载详情，避免点击后等待接口造成“卡顿感”
     setDetailLoading(true);
     setDetail(null);
-    const result = await getWorkflowDefinition(id);
-    setDetailLoading(false);
-    if (result.success) {
-      setDetail(result.data as unknown as Detail);
-    } else {
-      toast({ title: "加载失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await getWorkflowDefinition(id);
+      if (result.success) {
+        setDetail(result.data as unknown as Detail);
+      } else {
+        toast({ title: "加载失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -246,8 +324,12 @@ export function WorkflowsClient({
     setCreateType(bizType);
     setCreateName("");
     setShowCreate(true);
-    const result = await getWorkflowConfigSummary();
-    if (result.success) setConfigSummary(result.data);
+    try {
+      const result = await getWorkflowConfigSummary();
+      if (result.success) setConfigSummary(result.data);
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
+    }
   };
 
   const handleCreate = async () => {
@@ -256,25 +338,30 @@ export function WorkflowsClient({
       return;
     }
     setSaving(true);
-    const result = await createWorkflowDefinition({
-      businessType: createType,
-      name: createName.trim(),
-      nodes: [
-        {
-          name: "部门主管审批",
-          assigneeType: "DEPT_MANAGER",
-          ccType: "INITIATOR",
-        },
-      ],
-    });
-    setSaving(false);
-    if (result.success) {
-      toast({ title: "创建成功" });
-      setShowCreate(false);
-      setCreateName("");
-      await refreshList();
-    } else {
-      toast({ title: "创建失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await createWorkflowDefinition({
+        businessType: createType,
+        name: createName.trim(),
+        nodes: [
+          {
+            name: "部门主管审批",
+            assigneeType: "DEPT_MANAGER",
+            ccType: "INITIATOR",
+          },
+        ],
+      });
+      if (result.success) {
+        toast({ title: "创建成功" });
+        setShowCreate(false);
+        setCreateName("");
+        await refreshList();
+      } else {
+        toast({ title: "创建失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -367,53 +454,72 @@ export function WorkflowsClient({
             : { type: r.type }
       ) as WorkflowNodeInput["ccRules"],
     };
-    const result =
-      nodeForm.mode === "add"
-        ? await addWorkflowNode(selectedId, payload)
-        : await updateWorkflowNode(nodeForm.nodeId!, payload);
-    setSaving(false);
-    if (result.success) {
-      toast({ title: nodeForm.mode === "add" ? "节点已添加" : "节点已更新" });
-      setNodeForm(null);
-      await openDetail(selectedId);
-    } else {
-      toast({ title: "保存失败", description: result.error, variant: "destructive" });
+    try {
+      const result =
+        nodeForm.mode === "add"
+          ? await addWorkflowNode(selectedId, payload)
+          : await updateWorkflowNode(nodeForm.nodeId!, payload);
+      if (result.success) {
+        toast({ title: nodeForm.mode === "add" ? "节点已添加" : "节点已更新" });
+        setNodeForm(null);
+        await openDetail(selectedId);
+      } else {
+        toast({ title: "保存失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleRemoveNode = async (nodeId: number) => {
     if (!selectedId) return;
     setSaving(true);
-    const result = await removeWorkflowNode(nodeId);
-    setSaving(false);
-    if (result.success) {
-      toast({ title: "节点已删除" });
-      await openDetail(selectedId);
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await removeWorkflowNode(nodeId);
+      if (result.success) {
+        toast({ title: "节点已删除" });
+        await openDetail(selectedId);
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDuplicateNode = async (nodeId: number) => {
     if (!selectedId) return;
     setSaving(true);
-    const result = await duplicateWorkflowNode(nodeId);
-    setSaving(false);
-    if (result.success) {
-      toast({ title: "节点已复制" });
-      await openDetail(selectedId);
-    } else {
-      toast({ title: "复制失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await duplicateWorkflowNode(nodeId);
+      if (result.success) {
+        toast({ title: "节点已复制" });
+        await openDetail(selectedId);
+      } else {
+        toast({ title: "复制失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   /** 提交一次新的节点顺序（供上移/下移与拖拽复用） */
   const commitOrder = async (definitionId: number, ids: number[]) => {
-    const result = await reorderWorkflowNodes(definitionId, ids);
-    if (result.success) {
-      await openDetail(definitionId);
-    } else {
-      toast({ title: "调整失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await reorderWorkflowNodes(definitionId, ids);
+      if (result.success) {
+        await openDetail(definitionId);
+      } else {
+        toast({ title: "调整失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
     }
   };
 
@@ -467,63 +573,83 @@ export function WorkflowsClient({
 
   const handlePublish = async (id: number) => {
     setSaving(true);
-    const result = await publishWorkflowDefinition(id);
-    setSaving(false);
-    if (result.success) {
-      toast({ title: "已发布，成为当前生效版本" });
-      await refreshList();
-      if (selectedId === id) await openDetail(id);
-    } else {
-      toast({ title: "发布失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await publishWorkflowDefinition(id);
+      if (result.success) {
+        toast({ title: "已发布，成为当前生效版本" });
+        await refreshList();
+        if (selectedId === id) await openDetail(id);
+      } else {
+        toast({ title: "发布失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   /** 一键复制为新版草稿（已发布/已归档版本由此获得「可管理」能力） */
   const handleDuplicate = async (id: number, openAfter = true) => {
     setSaving(true);
-    const result = await duplicateWorkflowDefinition(id);
-    setSaving(false);
-    if (result.success) {
-      toast({
-        title: "已复制为新版本",
-        description: `基于 v${definitions.find((d) => d.id === id)?.version ?? ""} 新建草稿 v${result.data.version}`,
-      });
-      await refreshList();
-      if (openAfter) await openDetail(result.data.id);
-    } else {
-      toast({ title: "复制失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await duplicateWorkflowDefinition(id);
+      if (result.success) {
+        toast({
+          title: "已复制为新版本",
+          description: `基于 v${definitions.find((d) => d.id === id)?.version ?? ""} 新建草稿 v${result.data.version}`,
+        });
+        await refreshList();
+        if (openAfter) await openDetail(result.data.id);
+      } else {
+        toast({ title: "复制失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   /** 历史版本一键设为当前生效 */
   const handleActivate = async (id: number) => {
     setSaving(true);
-    const result = await activateWorkflowVersion(id);
-    setSaving(false);
-    if (result.success) {
-      toast({ title: "已设为当前生效", description: `v${result.data.version} 已切换为生效版本` });
-      await refreshList();
-      if (selectedId === id) await openDetail(id);
-    } else {
-      toast({ title: "设置失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await activateWorkflowVersion(id);
+      if (result.success) {
+        toast({ title: "已设为当前生效", description: `v${result.data.version} 已切换为生效版本` });
+        await refreshList();
+        if (selectedId === id) await openDetail(id);
+      } else {
+        toast({ title: "设置失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   /** 删除流程版本 */
   const handleRemoveDraft = async (id: number) => {
     setSaving(true);
-    const result = await removeWorkflowDraft(id);
-    setSaving(false);
-    if (result.success) {
-      toast({ title: "流程版本已删除" });
-      if (selectedId === id) {
-        setSelectedId(null);
-        setDetail(null);
-        setDetailLoading(false);
+    try {
+      const result = await removeWorkflowDraft(id);
+      if (result.success) {
+        toast({ title: "流程版本已删除" });
+        if (selectedId === id) {
+          setSelectedId(null);
+          setDetail(null);
+          setDetailLoading(false);
+        }
+        await refreshList();
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
       }
-      await refreshList();
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -539,17 +665,6 @@ export function WorkflowsClient({
   const selected = definitions.find((d) => d.id === selectedId);
   const editable = !!detail;
 
-  /** 正在编辑的节点是否为「末节点资产管理员」（此时审批人类型/角色需锁定） */
-  const editingFinalLocked = !!(
-    nodeForm &&
-    nodeForm.mode === "edit" &&
-    detail &&
-    (() => {
-      const idx = detail.nodes.findIndex((n) => n.id === nodeForm.nodeId);
-      return idx >= 0 && isFinalAssetManagerNode(detail, detail.nodes, idx);
-    })()
-  );
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -557,25 +672,123 @@ export function WorkflowsClient({
         description="编排审批流程版本与节点；未删除的版本（草稿/生效/归档）均可原地编辑"
       />
 
-      {/* 版本轨道 */}
-      <Card className={selected ? undefined : undefined}>
-        <CardHeader>
-          {/* 业务类型切换 */}
-          <div className="mb-3 inline-flex rounded-lg border bg-muted/40 p-0.5">
-            {BIZ_TABS.map((tab) => (
+      {/* 总览：7 类业务类型的配置状态卡 */}
+      {view === "overview" && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+          {BIZ_TABS.map((tab) => {
+            const s = configSummary?.[tab.key];
+            const total = s?.total ?? 0;
+            const published = s?.published ?? 0;
+            const missing = total === 0;
+            const Icon = tab.icon;
+            const tone = missing
+              ? ""
+              : published > 0
+                ? "bg-card border-border hover:border-primary/40"
+                : "border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-500/5";
+            return (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => switchBizType(tab.key)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  bizType === tab.key
-                    ? "bg-card text-primary border border-border"
-                    : "text-muted-foreground hover:text-foreground"
+                className={`group relative flex flex-col items-stretch gap-3 overflow-hidden rounded-xl border p-4 pl-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                  missing
+                    ? "border-red-200 bg-red-50/50 dark:border-red-500/30 dark:bg-red-500/5"
+                    : tone
                 }`}
               >
-                {tab.label}
+                {/* 左侧执行方式色条 */}
+                <span
+                  aria-hidden
+                  className={`absolute inset-y-0 left-0 w-1 ${EXEC_BAR[tab.exec]} ${
+                    missing ? "opacity-40" : ""
+                  }`}
+                />
+                <div className="flex w-full items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                        missing
+                          ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                          : EXEC_ACCENT[tab.exec]
+                      }`}
+                    >
+                      <Icon className="h-[18px] w-[18px] stroke-[1.8]" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{tab.label}</p>
+                      <span
+                        className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-px text-[11px] font-normal ${EXEC_META[tab.exec].cls}`}
+                      >
+                        {EXEC_META[tab.exec].label}
+                      </span>
+                    </div>
+                  </div>
+                  {/* 右下箭头提示可点 */}
+                  <span className="mt-0.5 text-muted-foreground/40 transition-colors group-hover:text-muted-foreground">→</span>
+                </div>
+                <div className="w-full">
+                  {summaryLoading ? (
+                    <div className="flex h-9 items-center">
+                      <span className="text-sm text-muted-foreground">加载中…</span>
+                    </div>
+                  ) : missing ? (
+                    <div>
+                      <p className="flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
+                        <span className="text-lg leading-none">!</span> 未配置流程
+                      </p>
+                      <p className="mt-0.5 text-xs text-red-600/70 dark:text-red-400/70">
+                        发起该类型申请会失败
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <p className="flex items-baseline gap-1 font-display text-2xl font-semibold leading-none text-foreground">
+                          {published}
+                          <span className="text-sm font-normal text-muted-foreground">个生效</span>
+                        </p>
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          共 {total} 个版本
+                          {published === 0 ? " · 无主生效版本" : ""}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground/90">
+                  {tab.desc}
+                </p>
               </button>
-            ))}
+            );
+          })}
+        </div>
+      )}
+
+      {/* 版本轨道 */}
+      {view === "detail" && (
+      <Card className={selected ? undefined : undefined}>
+        <CardHeader>
+          {/* 面包屑 + 当前类型执行徽标 */}
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <nav className="flex items-center text-sm text-muted-foreground">
+              <button
+                type="button"
+                onClick={backToOverview}
+                className="transition-colors hover:text-foreground"
+              >
+                流程配置
+              </button>
+              <span className="mx-2 text-muted-foreground/60">/</span>
+              <span className="font-medium text-foreground">
+                {BIZ_TABS.find((t) => t.key === bizType)?.label}
+              </span>
+            </nav>
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-normal ${EXEC_META[BIZ_TABS.find((t) => t.key === bizType)?.exec ?? "manual"].cls}`}
+            >
+              {EXEC_META[BIZ_TABS.find((t) => t.key === bizType)?.exec ?? "manual"].label}
+            </span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>
@@ -684,6 +897,7 @@ export function WorkflowsClient({
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* 节点顺序链配置区（居中弹窗内编辑） */}
       <Dialog
@@ -720,15 +934,14 @@ export function WorkflowsClient({
               <>
                 <div className="divide-y divide-border/70 overflow-hidden rounded-lg border bg-card">
                   {detail.nodes.map((node, index) => {
-                    const isFinalLocked = isFinalAssetManagerNode(detail, detail.nodes, index);
                     return (
                     <div key={node.id} className="relative">
                       <div
-                        draggable={editable && !isFinalLocked}
-                        onDragStart={() => editable && !isFinalLocked && handleDragStart(node.id)}
+                        draggable={editable}
+                        onDragStart={() => editable && handleDragStart(node.id)}
                         onDragOver={handleDragOver(node.id)}
                         onDragLeave={handleDragLeave(node.id)}
-                        onDrop={() => editable && !isFinalLocked && handleDrop(node.id)}
+                        onDrop={() => editable && handleDrop(node.id)}
                         onDragEnd={handleDragEnd}
                         className={`flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40 ${
                           editable && dragNodeId === node.id
@@ -741,7 +954,7 @@ export function WorkflowsClient({
                         }`}
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          {editable && !isFinalLocked && (
+                          {editable && (
                             <span
                               className="flex h-6 w-6 shrink-0 select-none items-center justify-center text-base leading-none text-muted-foreground/35"
                               title="拖拽排序"
@@ -769,11 +982,6 @@ export function WorkflowsClient({
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">
                               {node.name}{" "}
-                              {isFinalLocked && (
-                                <span className="rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[10px] leading-4 text-muted-foreground">
-                                  末节点·资产管理员
-                                </span>
-                              )}
                             </p>
                             <div className="mt-1 flex flex-wrap gap-1">
                               <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground">
@@ -803,7 +1011,7 @@ export function WorkflowsClient({
                                 variant="ghost"
                                 size="sm"
                                 title="上移"
-                                disabled={index === 0 || isFinalLocked}
+                                disabled={index === 0}
                                 onClick={() => handleMoveNode(node, -1)}
                               >
                                 上移
@@ -813,7 +1021,7 @@ export function WorkflowsClient({
                                 variant="ghost"
                                 size="sm"
                                 title="下移"
-                                disabled={index === detail.nodes.length - 1 || isFinalLocked}
+                                disabled={index === detail.nodes.length - 1}
                                 onClick={() => handleMoveNode(node, 1)}
                               >
                                 下移
@@ -844,10 +1052,9 @@ export function WorkflowsClient({
                             variant="ghost"
                             size="sm"
                             title="删除节点"
-                            disabled={!editable || detail.nodes.length <= 1 || isFinalLocked}
+                            disabled={!editable || detail.nodes.length <= 1}
                             onClick={() =>
                               editable &&
-                              !isFinalLocked &&
                               setConfirmDel({ kind: "node", id: node.id, label: node.name })
                             }
                           >
@@ -1008,45 +1215,31 @@ export function WorkflowsClient({
                 </p>
                 <div className="space-y-1">
                   <Label>审批人类型</Label>
-                  {editingFinalLocked ? (
-                    <div className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                      按角色 · 资产管理员（末节点固定）
-                    </div>
-                  ) : (
+                  <SearchableSelect
+                    options={[
+                      { value: "DEPT_MANAGER", label: "部门主管" },
+                      { value: "EMP_MANAGER", label: "直属主管" },
+                      { value: "ROLE", label: "按角色" },
+                      { value: "INITIATOR", label: "发起人" },
+                    ]}
+                    value={nodeForm.assigneeType}
+                    onValueChange={(v) => v && setNodeForm({ ...nodeForm, assigneeType: v })}
+                    placeholder="请选择审批人类型"
+                    triggerClassName="w-full"
+                  />
+                </div>
+                {nodeForm.assigneeType === "ROLE" && (
+                  <div className="space-y-1">
+                    <Label>角色</Label>
                     <SearchableSelect
-                      options={[
-                        { value: "DEPT_MANAGER", label: "部门主管" },
-                        { value: "EMP_MANAGER", label: "直属主管" },
-                        { value: "ROLE", label: "按角色" },
-                        { value: "INITIATOR", label: "发起人" },
-                      ]}
-                      value={nodeForm.assigneeType}
-                      onValueChange={(v) => v && setNodeForm({ ...nodeForm, assigneeType: v })}
-                      placeholder="请选择审批人类型"
+                      options={ROLE_OPTIONS}
+                      value={nodeForm.assigneeRole}
+                      onValueChange={(v) => v && setNodeForm({ ...nodeForm, assigneeRole: v })}
+                      placeholder="请选择角色"
                       triggerClassName="w-full"
                     />
-                  )}
-                </div>
-                {nodeForm.assigneeType === "ROLE" &&
-                  (editingFinalLocked ? (
-                    <div className="space-y-1">
-                      <Label>角色</Label>
-                      <div className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                        资产管理员（末节点固定）
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <Label>角色</Label>
-                      <SearchableSelect
-                        options={ROLE_OPTIONS}
-                        value={nodeForm.assigneeRole}
-                        onValueChange={(v) => v && setNodeForm({ ...nodeForm, assigneeRole: v })}
-                        placeholder="请选择角色"
-                        triggerClassName="w-full"
-                      />
-                    </div>
-                  ))}
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label>多人模式</Label>
                   <SearchableSelect

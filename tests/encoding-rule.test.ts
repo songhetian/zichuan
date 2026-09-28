@@ -56,34 +56,34 @@ describe("编码规则", () => {
     it("默认规则为 {prefix}-{####}，生成 4 位序号", async () => {
       const { template, category } = await setupTemplate("DN");
 
-      const a1 = await createAsset({ templateId: template.id, name: "设备1", operator: "admin" });
-      const a2 = await createAsset({ templateId: template.id, name: "设备2", operator: "admin" });
+      const a1 = await createAsset({ templateId: template.id, operator: "admin" });
+      const a2 = await createAsset({ templateId: template.id, operator: "admin" });
 
-      expect(unwrap(a1).assetNo).toMatch(/^DN-\d{4}$/);
-      expect(unwrap(a2).assetNo).toMatch(/^DN-\d{4}$/);
+      expect(unwrap(a1)[0].assetNo).toMatch(/^DN-\d{4}$/);
+      expect(unwrap(a2)[0].assetNo).toMatch(/^DN-\d{4}$/);
     });
 
     it("序号从 0001 开始递增", async () => {
       const { template } = await setupTemplate("PC");
 
-      const a1 = await createAsset({ templateId: template.id, name: "设备1", operator: "admin" });
-      const a2 = await createAsset({ templateId: template.id, name: "设备2", operator: "admin" });
-      const a3 = await createAsset({ templateId: template.id, name: "设备3", operator: "admin" });
+      const a1 = await createAsset({ templateId: template.id, operator: "admin" });
+      const a2 = await createAsset({ templateId: template.id, operator: "admin" });
+      const a3 = await createAsset({ templateId: template.id, operator: "admin" });
 
-      expect(unwrap(a1).assetNo).toBe("PC-0001");
-      expect(unwrap(a2).assetNo).toBe("PC-0002");
-      expect(unwrap(a3).assetNo).toBe("PC-0003");
+      expect(unwrap(a1)[0].assetNo).toBe("PC-0001");
+      expect(unwrap(a2)[0].assetNo).toBe("PC-0002");
+      expect(unwrap(a3)[0].assetNo).toBe("PC-0003");
     });
 
     it("不同分类的编号独立计数", async () => {
       const { template: t1 } = await setupTemplate("DN");
       const { template: t2 } = await setupTemplate("NB");
 
-      const a1 = await createAsset({ templateId: t1.id, name: "设备1", operator: "admin" });
-      const a2 = await createAsset({ templateId: t2.id, name: "设备2", operator: "admin" });
+      const a1 = await createAsset({ templateId: t1.id, operator: "admin" });
+      const a2 = await createAsset({ templateId: t2.id, operator: "admin" });
 
-      expect(unwrap(a1).assetNo).toBe("DN-0001");
-      expect(unwrap(a2).assetNo).toBe("NB-0001");
+      expect(unwrap(a1)[0].assetNo).toBe("DN-0001");
+      expect(unwrap(a2)[0].assetNo).toBe("NB-0001");
     });
   });
 
@@ -104,8 +104,8 @@ describe("编码规则", () => {
 
       const { template } = await setupTemplateWithCategory(cat);
 
-      const a1 = await createAsset({ templateId: template.id, name: "设备1", operator: "admin" });
-      const no = unwrap(a1).assetNo;
+      const a1 = await createAsset({ templateId: template.id, operator: "admin" });
+      const no = unwrap(a1)[0].assetNo;
 
       const today = new Date();
       const y = today.getFullYear().toString();
@@ -129,8 +129,8 @@ describe("编码规则", () => {
 
       const { template } = await setupTemplateWithCategory(cat);
 
-      const a1 = await createAsset({ templateId: template.id, name: "设备1", operator: "admin" });
-      const no = unwrap(a1).assetNo;
+      const a1 = await createAsset({ templateId: template.id, operator: "admin" });
+      const no = unwrap(a1)[0].assetNo;
 
       const y = new Date().getFullYear().toString();
       expect(no).toBe(`PC-${y}-0001`);
@@ -152,9 +152,9 @@ describe("编码规则", () => {
 
       const { template } = await setupTemplateWithCategory(cat);
 
-      const a1 = await createAsset({ templateId: template.id, name: "设备1", operator: "admin" });
-      expect(unwrap(a1).assetNo).toMatch(/^WL-\d{6}$/);
-      expect(unwrap(a1).assetNo).toBe("WL-000001");
+      const a1 = await createAsset({ templateId: template.id, operator: "admin" });
+      expect(unwrap(a1)[0].assetNo).toMatch(/^WL-\d{6}$/);
+      expect(unwrap(a1)[0].assetNo).toBe("WL-000001");
     });
   });
 });

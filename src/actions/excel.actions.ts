@@ -3,19 +3,30 @@
 import { prisma } from "@/lib/prisma";
 import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
+import { consumeBomStock, INSUFFICIENT_STOCK_PREFIX } from "@/lib/bom-stock";
 import * as XLSX from "xlsx";
+import bcrypt from "bcryptjs";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
-import { guardPermission } from "@/lib/permissions";
+import { guardPermission, resolveAssetScope, resolveEmployeeScope } from "@/lib/permissions";
+import { getMyHandledRecords, getMyCcRecords, type HandledRecordQuery, type CcRecordQuery } from "@/actions/approval.actions";
+import { getStatusLabel } from "@/lib/status-labels";
 
 export async function exportAssetsToExcel(
   selectedFields?: string[],
   assetIds?: number[]
 ): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.device.export", "没有导出设备的权限");
+  if (denied) return denied;
 
+  // 数据范围过滤（统一口径）：显式选中的 id 也叠加范围，防止越权导出
+  const scope = await resolveAssetScope(user.id);
   const assets = await prisma.asset.findMany({
-    where: assetIds && assetIds.length > 0 ? { id: { in: assetIds } } : undefined,
+    where: {
+      ...(assetIds && assetIds.length > 0 ? { id: { in: assetIds } } : {}),
+      ...(scope ?? {}),
+    },
     orderBy: { assetNo: "asc" },
     include: {
       template: {
@@ -38,7 +49,10 @@ export async function exportAssetsToExcel(
     name: (a) => a.name,
     categoryName: (a) => a.template?.category?.name ?? "",
     templateName: (a) => a.template?.name ?? "",
-    status: (a) => mapStatus(a.status),
+    brand: (a) => a.brand ?? "",
+    model: (a) => a.model ?? "",
+    serialNo: (a) => a.serialNo ?? "",
+    status: (a) => getStatusLabel(a.status),
     employeeName: (a) => a.employee?.name ?? "",
     departmentName: (a) => a.employee?.department?.name ?? "",
     location: (a) => a.location ?? "",
@@ -49,6 +63,9 @@ export async function exportAssetsToExcel(
     name: "设备名称",
     categoryName: "分类",
     templateName: "模板",
+    brand: "品牌",
+    model: "型号",
+    serialNo: "序列号",
     status: "状态",
     employeeName: "使用人",
     departmentName: "部门",
@@ -88,7 +105,9 @@ export async function exportAssetsToExcel(
 export async function exportComponentsToExcel(): Promise<
   ActionResult<{ buffer: number[]; fileName: string }>
 > {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.component.view", "没有查看/导出配件的权限");
+  if (denied) return denied;
 
   const models = await prisma.componentModel.findMany({
     orderBy: { id: "asc" },
@@ -131,9 +150,14 @@ const EMPLOYEE_FIELDS: Record<string, { label: string; get: (e: any) => string |
 export async function exportEmployeesToExcel(
   selectedFields?: string[]
 ): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "employee.view", "没有查看/导出员工的权限");
+  if (denied) return denied;
 
+  // 数据范围过滤（统一口径）：仅导出可见部门员工
+  const scope = await resolveEmployeeScope(user.id);
   const emps = await prisma.employee.findMany({
+    where: scope,
     orderBy: { employeeNo: "asc" },
     include: {
       department: { select: { name: true } },
@@ -167,14 +191,119 @@ export async function exportEmployeesToExcel(
   };
 }
 
-function mapStatus(status: string): string {
-  const map: Record<string, string> = {
-    IDLE: "闲置",
-    IN_USE: "在用",
-    IN_MAINTENANCE: "维修中",
-    SCRAPPED: "报废",
+// 「我办理的记录」导出（/approvals/done）
+// "use server" 文件只能导出 async 函数，中文文案映射在文件内本地定义
+const HANDLED_BIZ_LABEL: Record<string, string> = {
+  ASSET_UPGRADE: "升级",
+  ASSET_SCRAP: "报废",
+  ASSET_RETURN: "退回",
+  ASSET_REPLACE: "更换",
+  ASSET_REPAIR: "维修",
+  ASSET_DEPART: "离职",
+  ASSET_PURCHASE: "加购",
+};
+
+const HANDLED_STATUS_LABEL: Record<string, string> = {
+  PENDING: "审批中",
+  APPROVED: "已通过",
+  REJECTED: "已驳回",
+  CANCELLED: "已撤销",
+};
+
+const HANDLED_ACTION_LABEL: Record<string, string> = {
+  APPROVE: "审批通过",
+  REJECT: "驳回",
+  EXECUTE: "执行",
+};
+
+export async function exportHandledRecordsToExcel(
+  query?: HandledRecordQuery
+): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "approval.done.export", "没有导出办理记录的权限");
+  if (denied) return denied;
+
+  const res = await getMyHandledRecords(query);
+  if (!res.success) return { success: false, error: res.error };
+
+  const rows = res.data.map((r) => ({
+    "单号": r.requestNo,
+    "申请标题": r.title,
+    "业务类型": HANDLED_BIZ_LABEL[r.businessType] ?? r.businessType,
+    "状态": HANDLED_STATUS_LABEL[r.status] ?? r.status,
+    "发起人": r.initiatorName,
+    "部门": r.departmentName ?? "",
+    "配件类型": r.componentCategoryName ?? "",
+    "我的动作": r.actions.map((a) => HANDLED_ACTION_LABEL[a] ?? a).join("、"),
+    "办理时间": formatDateTime(r.lastActedAt),
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, "办理记录");
+
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  return {
+    success: true,
+    data: {
+      buffer: Array.from(buf),
+      fileName: `办理记录_${formatDate()}.xlsx`,
+    },
   };
-  return map[status] ?? status;
+}
+
+// 「我的抄送」导出（/approvals/cc）
+export async function exportCcRecordsToExcel(
+  query?: CcRecordQuery
+): Promise<ActionResult<{ buffer: number[]; fileName: string }>> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "approval.cc.export", "没有导出抄送记录的权限");
+  if (denied) return denied;
+
+  const res = await getMyCcRecords(query);
+  if (!res.success) return { success: false, error: res.error };
+
+  const rows = res.data.map((r) => ({
+    "单号": r.requestNo,
+    "申请标题": r.title,
+    "业务类型": HANDLED_BIZ_LABEL[r.businessType] ?? r.businessType,
+    "状态": HANDLED_STATUS_LABEL[r.status] ?? r.status,
+    "发起人": r.initiatorName,
+    "部门": r.departmentName ?? "",
+    "配件类型": r.componentCategoryName ?? "",
+    "抄送时间": formatDateTime(r.ccAt),
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, "抄送记录");
+
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  return {
+    success: true,
+    data: {
+      buffer: Array.from(buf),
+      fileName: `抄送记录_${formatDate()}.xlsx`,
+    },
+  };
+}
+
+function formatDateTime(d: Date | string | null): string {
+  if (!d) return "";
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** 去掉库存不足的机器编码前缀（导入错误行直接展示给用户，只留中文文案） */
+function stripStockPrefix(message: unknown): unknown {
+  if (typeof message !== "string") return message;
+  return message.startsWith(INSUFFICIENT_STOCK_PREFIX)
+    ? message.slice(INSUFFICIENT_STOCK_PREFIX.length)
+    : message;
 }
 
 function formatDate(): string {
@@ -189,7 +318,10 @@ function formatDate(): string {
 export async function importEmployeesFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  // 导入员工会批量创建登录账号（登录名=工号、默认密码），仅限拥有账号管理模块「导入员工」权限的账号
+  const denied = await guardPermission(user, "employee.import", "导入员工需要账号管理权限");
+  if (denied) return denied;
 
   try {
     const wb = XLSX.read(input.buffer);
@@ -199,6 +331,10 @@ export async function importEmployeesFromExcel(
     // 缓存部门名 → ID 映射
     const allDepts = await prisma.department.findMany({ select: { id: true, name: true } });
     const deptMap = new Map(allDepts.map((d) => [d.name, d.id]));
+
+    // 导入员工默认角色：普通员工（EMPLOYEE）
+    const empRole = await prisma.role.findUnique({ where: { key: "EMPLOYEE" } });
+    const defaultEmpRoleId = empRole?.id ?? null;
 
     let importedCount = 0;
     const errors: string[] = [];
@@ -229,8 +365,22 @@ export async function importEmployeesFromExcel(
       }
 
       try {
-        await prisma.employee.create({
-          data: { employeeNo, name, departmentId, phone, email },
+        await prisma.$transaction(async (tx) => {
+          const emp = await tx.employee.create({
+            data: { employeeNo, name, departmentId, phone, email },
+          });
+          // 导入即自动创建登录账号：登录名=工号、默认密码 123456、首登强制改密
+          const hashed = await bcrypt.hash("123456", 10);
+          await tx.admin.create({
+            data: {
+              username: employeeNo,
+              password: hashed,
+              roleId: defaultEmpRoleId,
+              displayName: name,
+              employeeId: emp.id,
+              mustChangePassword: true,
+            },
+          });
         });
         importedCount++;
       } catch (e) {
@@ -252,7 +402,7 @@ export async function importAssetsFromExcel(
   input: { buffer: number[] }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  const denied = await guardPermission(user, "asset.import.execute", "没有设备导入权限");
   if (denied) return denied;
 
   try {
@@ -265,7 +415,7 @@ export async function importAssetsFromExcel(
     const allTemplates = await prisma.deviceTemplate.findMany({
       include: {
         category: { select: { id: true, code: true, numberingRule: true } },
-        components: true,
+        components: { include: { model: { select: { name: true } } } },
       },
     });
     const templateMap = new Map(allTemplates.map((t) => [t.name, t]));
@@ -303,16 +453,29 @@ export async function importAssetsFromExcel(
           continue;
         }
 
-        const employeeId = employeeName ? (employeeMap.get(employeeName) ?? undefined) : undefined;
+        // 使用人填了但查不到：不允许静默降级为闲置（会造成「想分配却入库」的数据错位），整行报错跳过
+        let employeeId: number | undefined;
+        if (employeeName) {
+          const found = employeeMap.get(employeeName);
+          if (!found) {
+            errors.push(`第${i + 2}行: 使用人"${employeeName}"不存在`);
+            continue;
+          }
+          employeeId = found;
+        }
 
         // 使用事务保证编号生成与资产创建的原子性，并尊重模板分类的 numberingRule
         await prisma.$transaction(async (tx) => {
+          // 按模板 BOM 出库配件（与「新建设备」同一语义：库存不足则本行跳过）
+          await consumeBomStock(tx, template, 1, user.username);
+
           const prefix = template.category?.code ?? "EQ";
           const assetNo = await generateAssetNo(
             tx,
             prefix,
             template.category?.numberingRule
           );
+          // 与「新建设备」同一口径：没填使用人即入闲置池
           const status = employeeId ? "IN_USE" : "IDLE";
 
           const createdAsset = await tx.asset.create({
@@ -325,7 +488,7 @@ export async function importAssetsFromExcel(
             },
           });
 
-          // 复制模板 BOM 配件到设备（仅记录配置，不扣减库存）
+          // 复制模板 BOM 配件到设备（配件已在上面按 BOM 出库扣减）
           if (template.components && template.components.length > 0) {
             await tx.assetComponent.createMany({
               data: template.components.map((bom) => ({
@@ -365,7 +528,7 @@ export async function importAssetsFromExcel(
 
         importedCount++;
       } catch (e: any) {
-        errors.push(`第${i + 2}行: ${cleanErrorMessage(e?.message)}`);
+        errors.push(`第${i + 2}行: ${cleanErrorMessage(stripStockPrefix(e?.message))}`);
       }
     }
 
@@ -378,7 +541,9 @@ export async function importAssetsFromExcel(
 export async function importComponentModelsFromExcel(
   input: { buffer: Buffer }
 ): Promise<ActionResult<{ importedCount: number; errors: string[] }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.component.create", "导入配件型号需要新增配件权限");
+  if (denied) return denied;
 
   try {
     const wb = XLSX.read(input.buffer);

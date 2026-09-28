@@ -638,6 +638,176 @@ describe("自动导入设备", () => {
     expect(diskComps).toHaveLength(2);
   });
 
+  it("Excel 缺少设备分类的行被跳过并计入错误", async () => {
+    const rows = [
+      {
+        "使用人": "张三",
+        "部门": "技术部",
+        "设备分类": "显示器",
+        "设备分类编号": "MON",
+      },
+      {
+        "使用人": "李四",
+        "部门": "技术部",
+        // 缺设备分类
+      },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "设备导入");
+    const fileBuffer = Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+
+    const result = await importAssetsFromExcelAuto({ buffer: Array.from(fileBuffer) });
+    expect(result.success).toBe(true);
+    const data = unwrap(result);
+    expect(data.importedCount).toBe(1);
+    expect(data.errors).toHaveLength(1);
+    expect(data.errors[0]).toContain("设备分类");
+
+    const assets = await prisma.asset.findMany();
+    expect(assets).toHaveLength(1);
+  });
+
+  it("Excel 未填设备名称时按「使用人 + 设备分类」生成名称", async () => {
+    const rows = [
+      {
+        "使用人": "张三",
+        "部门": "技术部",
+        "设备分类": "显示器",
+        "设备分类编号": "MON",
+      },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "设备导入");
+    const fileBuffer = Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+
+    const result = await importAssetsFromExcelAuto({ buffer: Array.from(fileBuffer) });
+    expect(result.success).toBe(true);
+    expect(unwrap(result).importedCount).toBe(1);
+
+    const assets = await prisma.asset.findMany();
+    expect(assets).toHaveLength(1);
+    expect(assets[0].name).toBe("张三的显示器");
+  });
+
+  it("Excel 的品牌/型号/序列号写入设备自身字段", async () => {
+    const rows = [
+      {
+        "使用人": "张三",
+        "部门": "技术部",
+        "设备名称": "张三的显示器",
+        "设备分类": "显示器",
+        "设备分类编号": "MON",
+        "品牌": "戴尔",
+        "型号": "U2723QE",
+        "序列号": "CN-0M0N0001",
+      },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "设备导入");
+    const fileBuffer = Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+
+    const result = await importAssetsFromExcelAuto({ buffer: Array.from(fileBuffer) });
+    expect(result.success).toBe(true);
+    expect(unwrap(result).importedCount).toBe(1);
+
+    const asset = await prisma.asset.findFirst();
+    expect(asset).not.toBeNull();
+    expect(asset!.brand).toBe("戴尔");
+    expect(asset!.model).toBe("U2723QE");
+    expect(asset!.serialNo).toBe("CN-0M0N0001");
+  });
+
+  it("设备层分类的列（显示器）不再被当作配件导入", async () => {
+    const rows = [
+      {
+        "使用人": "赵六",
+        "部门": "财务部",
+        "设备名称": "赵六的电脑主机",
+        "设备分类": "电脑主机",
+        "设备分类编号": "PC",
+        "CPU型号": "i5-12400",
+        "CPU品牌": "Intel",
+        "内存型号": "8GB DDR4",
+        "内存品牌": "Kingston",
+        "显示器型号": "24寸 IPS 显示器",
+        "显示器品牌": "Dell",
+      },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "设备导入");
+    const fileBuffer = Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+
+    const result = await importAssetsFromExcelAuto({ buffer: Array.from(fileBuffer) });
+    expect(result.success).toBe(true);
+    expect(unwrap(result).importedCount).toBe(1);
+
+    // 显示器已是设备层：不再生成「显示器」配件分类
+    const monitorCategory = await prisma.componentCategory.findUnique({
+      where: { name: "显示器" },
+    });
+    expect(monitorCategory).toBeNull();
+
+    // 配件层列（CPU / 内存）仍照常生成配件
+    const asset = await prisma.asset.findFirst({
+      include: { components: { include: { model: { include: { category: true } } } } },
+    });
+    const componentCategories = asset!.components
+      .map((c) => c.model.category.name)
+      .sort();
+    expect(componentCategories).toEqual(["CPU", "内存"]);
+  });
+
+  it("配件列通用扫描：新增配件列（电源）可导入，设备层列仍排除", async () => {
+    const rows = [
+      {
+        "使用人": "钱七",
+        "部门": "技术部",
+        "设备名称": "钱七的电脑主机",
+        "设备分类": "电脑主机",
+        "设备分类编号": "PC",
+        "CPU型号": "i5-12400",
+        "CPU品牌": "Intel",
+        "电源型号": "500W 金牌电源",
+        "电源品牌": "长城",
+        "显示器型号": "27寸 4K",
+        "显示器品牌": "LG",
+      },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "设备导入");
+    const fileBuffer = Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+
+    const result = await importAssetsFromExcelAuto({ buffer: Array.from(fileBuffer) });
+    expect(result.success).toBe(true);
+    expect(unwrap(result).importedCount).toBe(1);
+
+    const powerCategory = await prisma.componentCategory.findUnique({
+      where: { name: "电源" },
+    });
+    expect(powerCategory).not.toBeNull();
+    expect(
+      await prisma.componentCategory.findUnique({ where: { name: "显示器" } })
+    ).toBeNull();
+
+    const asset = await prisma.asset.findFirst({
+      include: { components: { include: { model: { include: { category: true } } } } },
+    });
+    expect(asset!.components.map((c) => c.model.category.name).sort()).toEqual([
+      "CPU",
+      "电源",
+    ]);
+  });
+
   it("Excel格式支持内存1_内存2_硬盘1_硬盘2 多配件列", async () => {
     const rows = [
       {

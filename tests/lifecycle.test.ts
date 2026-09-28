@@ -6,6 +6,9 @@ import {
   transferAssets,
   upgradeAssetComponent,
   scrapAssets,
+  maintenanceStart,
+  maintenanceComplete,
+  adjustAssetComponents,
 } from "@/actions/lifecycle.actions";
 import { createAsset } from "@/actions/asset.actions";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
@@ -80,7 +83,7 @@ async function createIdleAsset(template: any, name: string) {
 
 describe("分配", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {
@@ -229,20 +232,20 @@ describe("分配", () => {
       expect(result.success).toBe(false);
     });
 
-    it("可以分配库存（IN_STOCK）状态的设备", async () => {
+    it("可以分配闲置（IDLE）状态的设备", async () => {
       const { emp, template } = await setupFullData();
-      // 创建 IN_STOCK 状态的设备
+      // 创建 IDLE 状态的设备
       const cat = await prisma.assetCategory.findUnique({
         where: { id: template.categoryId },
       });
       const prefix = cat!.code;
-      const assetNo = `${prefix}-STOCK-001`;
+      const assetNo = `${prefix}-IDLE-001`;
       const asset = await prisma.asset.create({
         data: {
           assetNo,
-          name: "库存设备",
+          name: "闲置设备",
           templateId: template.id,
-          status: "IN_STOCK",
+          status: "IDLE",
         },
       });
 
@@ -262,7 +265,7 @@ describe("分配", () => {
 
 describe("归还", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {
@@ -348,7 +351,7 @@ describe("归还", () => {
 
 describe("调拨", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {
@@ -456,7 +459,7 @@ describe("调拨", () => {
 
 describe("升级", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {
@@ -575,7 +578,7 @@ describe("升级", () => {
 
 describe("报废", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {
@@ -643,6 +646,25 @@ describe("报废", () => {
       expect(unwrapError(result)).toContain("已报废");
     });
 
+    it("已被申请预占的设备不能报废（RESERVED 不参与人工流转）", async () => {
+      const { template } = await setupFullData();
+      const asset = await createIdleAsset(template, "电脑1");
+      await prisma.asset.update({
+        where: { id: asset.id },
+        data: { status: "RESERVED", reservedFromStatus: "IDLE" },
+      });
+
+      const result = await scrapAssets({
+        assetIds: [asset.id],
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(false);
+      // 预占关系不被破坏，避免审批执行时把已报废机复活为 IDLE
+      const after = await prisma.asset.findUnique({ where: { id: asset.id } });
+      expect(after?.status).toBe("RESERVED");
+    });
+
     it("批量报废多台设备", async () => {
       const { emp, template } = await setupFullData();
       const asset1 = await createIdleAsset(template, "电脑1");
@@ -685,5 +707,63 @@ describe("报废", () => {
       const a1 = await prisma.asset.findUnique({ where: { id: asset1.id } });
       expect(a1?.status).toBe("IN_USE");
     });
+  });
+});
+
+describe("生命周期写操作权限校验", () => {
+  beforeEach(() => {
+    setTestUser({ id: 99999, username: "no-perm", permissions: [] });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
+  it("无 asset.manage 权限时分配被拒", async () => {
+    const r = await allocateAssets({ assetIds: [1], employeeId: 1, operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时归还被拒", async () => {
+    const r = await returnAssets({ assetIds: [1], operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时调拨被拒", async () => {
+    const r = await transferAssets({ assetIds: [1], toEmployeeId: 1, operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时升级配件被拒", async () => {
+    const r = await upgradeAssetComponent({ assetId: 1, modelId: 1, newModelId: 2, quantity: 1, operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时报废被拒", async () => {
+    const r = await scrapAssets({ assetIds: [1], operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时送修被拒", async () => {
+    const r = await maintenanceStart({ assetIds: [1], operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时维修完成被拒", async () => {
+    const r = await maintenanceComplete({ assetIds: [1], operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.manage 权限时调整配件配置被拒", async () => {
+    const r = await adjustAssetComponents({ assetId: 1, adjustments: [{ modelId: 1, quantityDelta: 1 }], operator: "x" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
   });
 });

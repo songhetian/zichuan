@@ -12,7 +12,7 @@ import { setTestUser } from "@/lib/auth";
 
 describe("配件分类 CRUD", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {
@@ -218,5 +218,33 @@ describe("配件分类 CRUD", () => {
       expect(result.success).toBe(false);
       expect(unwrapError(result)).toBeDefined();
     });
+  });
+});
+
+describe("配件分类写操作权限校验", () => {
+  beforeEach(() => {
+    setTestUser({ id: 99999, username: "no-perm", permissions: [] });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
+  it("无 asset.compcategory.create 权限时新增被拒", async () => {
+    const r = await createComponentCategory({ name: "CPU" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.compcategory.update 权限时编辑被拒", async () => {
+    const r = await updateComponentCategory(1, { name: "改名" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.compcategory.delete 权限时删除被拒", async () => {
+    const r = await deleteComponentCategory(1);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
   });
 });

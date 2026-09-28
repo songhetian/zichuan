@@ -44,7 +44,24 @@ export interface LifecycleViewRow {
   employeeName: string | null;
   departmentName: string | null;
   departmentId: number | null;
-  request: { requestNo: string; businessType: string; title: string; status: string } | null;
+  request: {
+    id: number;
+    requestNo: string;
+    businessType: string;
+    title: string;
+    status: string;
+    initiatorName: string;
+    submittedAt: Date;
+    finishedAt: Date | null;
+    currentNodeName: string | null;
+    tasks: {
+      nodeName: string;
+      assigneeName: string;
+      status: string;
+      comment: string | null;
+      actedAt: Date | null;
+    }[];
+  } | null;
   remark: string | null;
   createdAt: Date;
 }
@@ -127,7 +144,29 @@ export async function getAssetLifecycleView(
             },
           },
         },
-        request: { select: { requestNo: true, businessType: true, title: true, status: true } },
+        request: {
+          select: {
+            id: true,
+            requestNo: true,
+            businessType: true,
+            title: true,
+            status: true,
+            initiator: { select: { displayName: true, username: true } },
+            submittedAt: true,
+            finishedAt: true,
+            currentNode: { select: { name: true } },
+            tasks: {
+              orderBy: { id: "asc" },
+              select: {
+                node: { select: { name: true } },
+                assignee: { select: { displayName: true, username: true } },
+                status: true,
+                comment: true,
+                actedAt: true,
+              },
+            },
+          },
+        },
       },
     }),
     prisma.lifecycleLog.count({ where }),
@@ -160,15 +199,27 @@ export async function getAssetLifecycleView(
       fromStatus: log.fromStatus as string | null,
       toStatus: log.toStatus as string | null,
       operator: log.operator,
-      employeeName: lifeEmp?.name ?? null,
+      employeeName: lifeEmp?.name ?? assetEmp?.name ?? null,
       departmentName: dept?.name ?? null,
       departmentId: dept?.id ?? null,
       request: log.request
         ? {
+            id: log.request.id,
             requestNo: log.request.requestNo,
             businessType: log.request.businessType,
             title: log.request.title,
             status: log.request.status,
+            initiatorName: log.request.initiator.displayName ?? log.request.initiator.username ?? "未知",
+            submittedAt: log.request.submittedAt,
+            finishedAt: log.request.finishedAt,
+            currentNodeName: log.request.currentNode?.name ?? null,
+            tasks: log.request.tasks.map((t) => ({
+              nodeName: t.node.name,
+              assigneeName: t.assignee.displayName ?? t.assignee.username ?? "未知",
+              status: t.status,
+              comment: t.comment,
+              actedAt: t.actedAt,
+            })),
           }
         : null,
       remark: log.remark,

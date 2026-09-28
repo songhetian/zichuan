@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Clock,
 } from "lucide-react";
+import { getStatusLabel } from "@/lib/status-labels";
 
 interface LifecycleLog {
   id: number;
@@ -95,13 +96,6 @@ const actionConfig: Record<
   },
 };
 
-const statusLabelMap: Record<string, string> = {
-  IDLE: "闲置",
-  IN_USE: "在用",
-  IN_MAINTENANCE: "维修中",
-  SCRAPPED: "报废",
-};
-
 export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
   if (logs.length === 0) {
     return (
@@ -162,17 +156,17 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
                         log.fromStatus !== log.toStatus && (
                           <div className="flex items-center gap-1 text-sm">
                             <span className="text-muted-foreground">
-                              {statusLabelMap[log.fromStatus] ?? log.fromStatus}
+                              {getStatusLabel(log.fromStatus)}
                             </span>
                             <span className="text-muted-foreground">→</span>
                             <span className="font-medium">
-                              {statusLabelMap[log.toStatus] ?? log.toStatus}
+                              {getStatusLabel(log.toStatus)}
                             </span>
                           </div>
                         )}
                       {!log.fromStatus && log.toStatus && (
                         <span className="text-sm font-medium">
-                          {statusLabelMap[log.toStatus] ?? log.toStatus}
+                          {getStatusLabel(log.toStatus)}
                         </span>
                       )}
                     </div>

@@ -31,6 +31,9 @@ export default async function AssetsPage() {
     ? templatesResult.data.map((t) => ({
         id: t.id,
         name: t.name,
+        categoryId: t.categoryId,
+        brand: t.brand,
+        model: t.model,
         components: t.components.map((c) => ({
           modelId: c.modelId,
           modelName: c.modelName,

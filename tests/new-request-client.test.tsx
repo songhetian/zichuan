@@ -19,6 +19,8 @@ vi.mock("@/hooks/use-toast", () => ({
 
 vi.mock("@/actions/approval.actions", () => ({
   submitApprovalRequest: vi.fn(),
+  // 提交成功后组件会查询我的待办以决定是否提醒；默认无待办
+  getMyTodoTasks: vi.fn().mockResolvedValue({ success: true, data: [] }),
 }));
 
 const assets = [
@@ -48,7 +50,8 @@ const delegation = [
 
 async function pickCombobox(user: ReturnType<typeof userEvent.setup>, label: string, optionLabel: string) {
   await user.click(screen.getByRole("combobox", { name: label }));
-  await user.click(screen.getByRole("option", { name: optionLabel }));
+  // 选项以「名称/姓名」为主行展示，编号/工号为副行；用正则按主行匹配
+  await user.click(screen.getByRole("option", { name: new RegExp(optionLabel) }));
 }
 
 beforeEach(() => {
@@ -88,7 +91,7 @@ describe("发起申请页 6 类业务类型（下拉框）", () => {
     render(<NewRequestClient assets={assets} assetCats={assetCats} employees={employees} />);
 
     await user.type(screen.getByLabelText("申请标题"), "申请升级内存");
-    await pickCombobox(user, "选择设备", "PC-001 · 办公笔记本");
+    await pickCombobox(user, "选择设备", "办公笔记本");
     await pickCombobox(user, "选择配件类别", "内存");
     await pickCombobox(user, "选择动作", "升级");
     await user.type(screen.getByLabelText("申请原因"), "内存不够用");
@@ -114,7 +117,7 @@ describe("发起申请页 6 类业务类型（下拉框）", () => {
     await pickCombobox(user, "选择业务类型", "设备退回");
 
     await user.type(screen.getByLabelText("申请标题"), "申请退回笔记本");
-    await pickCombobox(user, "选择设备", "PC-002 · 设计工作站");
+    await pickCombobox(user, "选择设备", "设计工作站");
     await user.type(screen.getByLabelText("退回原因"), "不再需要");
     await user.click(screen.getByRole("button", { name: "提交申请" }));
 
@@ -145,7 +148,7 @@ describe("发起申请页 6 类业务类型（下拉框）", () => {
     expect(screen.queryByRole("combobox", { name: "为谁申请" })).toBeNull();
 
     await user.type(screen.getByLabelText("申请标题"), "张三维申请离职");
-    await pickCombobox(user, "选择离职员工", "E001 · 张三");
+    await pickCombobox(user, "选择离职员工", "张三");
     await user.type(screen.getByLabelText("离职原因"), "个人原因");
     await user.click(screen.getByRole("button", { name: "提交申请" }));
 
@@ -204,9 +207,9 @@ describe("主管代员工申请（delegation）", () => {
     expect(screen.getByRole("combobox", { name: "为谁申请" })).toBeInTheDocument();
 
     // 选择下属王五
-    await pickCombobox(user, "为谁申请", "E009 · 王五");
+    await pickCombobox(user, "为谁申请", "王五");
     // 设备下拉应只剩下属设备
-    await pickCombobox(user, "选择设备", "PC-003 · 王五电脑");
+    await pickCombobox(user, "选择设备", "王五电脑");
     await user.type(screen.getByLabelText("申请标题"), "代报废王五电脑");
     await user.type(screen.getByLabelText("报废原因"), "主板损坏");
     await user.click(screen.getByRole("button", { name: "提交申请" }));
@@ -231,9 +234,10 @@ describe("主管代员工申请（delegation）", () => {
         delegation={delegation}
       />
     );
-    await user.type(screen.getByLabelText("申请标题"), "本人报废");
+    // 先选业务类型再填标题：切换业务类型会清空标题
     await pickCombobox(user, "选择业务类型", "资产报废");
-    await pickCombobox(user, "选择设备", "PC-001 · 办公笔记本");
+    await user.type(screen.getByLabelText("申请标题"), "本人报废");
+    await pickCombobox(user, "选择设备", "办公笔记本");
     await user.type(screen.getByLabelText("报废原因"), "老旧");
     await user.click(screen.getByRole("button", { name: "提交申请" }));
 

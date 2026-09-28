@@ -52,20 +52,20 @@ interface BomTableProps {
 }
 
 // ============================================================
-// 分类配色：语义化颜色映射（左侧色条 + 标签）
+// 分类配色：语义化颜色映射（左侧色条 + 标签）—— 避开橘色系
 // ============================================================
 const CATEGORY_COLOR_MAP: Record<string, string> = {
-  CPU: "bg-blue-500",
-  内存: "bg-purple-500",
-  硬盘: "bg-amber-500",
+  CPU: "bg-indigo-500",
+  内存: "bg-violet-500",
+  硬盘: "bg-blue-500",
   显卡: "bg-emerald-500",
   网卡: "bg-sky-500",
   主板: "bg-rose-500",
-  电源: "bg-orange-500",
-  散热: "bg-cyan-500",
-  显示器: "bg-indigo-500",
+  电源: "bg-cyan-500",
+  散热: "bg-teal-500",
+  显示器: "bg-purple-500",
   键盘: "bg-pink-500",
-  鼠标: "bg-teal-500",
+  鼠标: "bg-fuchsia-500",
 };
 
 function getCategoryColor(name?: string): string {
@@ -301,11 +301,11 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               onFocus={() => setSearchFocused(true)}
               onKeyDown={handleSearchKeyDown}
               placeholder="搜索配件名称、品牌或分类..."
-              className="w-full h-9 pl-9 pr-3 rounded-md border border-border bg-background text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
+              className="w-full h-10 pl-9 pr-3 rounded-md border border-input bg-background text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
             />
             {/* 搜索下拉结果 */}
             {showSearchDropdown && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-background border border-border rounded-md shadow-lg max-h-[280px] overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-[280px] overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
                 {filteredModels.length > 0 ? (
                   filteredModels.map((model, idx) => (
                     <button
@@ -314,8 +314,8 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                       onMouseEnter={() => setHighlightIndex(idx)}
                       onClick={() => handleAddById(model.id)}
                       className={cn(
-                        "w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors",
-                        idx === highlightIndex ? "bg-accent" : "hover:bg-accent/50"
+                        "w-full flex items-center gap-2.5 rounded-sm px-2.5 py-2 text-left text-sm transition-colors",
+                        idx === highlightIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
                       )}
                     >
                       <span className={cn("w-1 h-4 rounded-full shrink-0", getCategoryDotClass(model.categoryName))} />
@@ -338,11 +338,11 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           </div>
 
           {/* 数量输入 */}
-          <div className="flex items-center border border-border rounded-md overflow-hidden shrink-0">
+          <div className="flex items-center border border-input rounded-md overflow-hidden shrink-0">
             <button
               type="button"
               onClick={() => setNewQuantity(String(Math.max(1, Number(newQuantity) - 1)))}
-              className="px-2.5 h-9 text-xs hover:bg-secondary transition-colors text-muted-foreground"
+              className="px-3 h-10 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               −
             </button>
@@ -351,12 +351,12 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               min="1"
               value={newQuantity}
               onChange={(e) => setNewQuantity(e.target.value)}
-              className="w-12 h-9 text-center text-sm border-x border-border bg-background outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-12 h-10 text-center text-sm border-x border-input bg-background outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <button
               type="button"
               onClick={() => setNewQuantity(String(Number(newQuantity) + 1))}
-              className="px-2.5 h-9 text-xs hover:bg-secondary transition-colors text-muted-foreground"
+              className="px-3 h-10 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               +
             </button>
@@ -365,14 +365,13 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           {/* 添加按钮（仅在有搜索词时高亮） */}
           <Button
             type="button"
-            size="sm"
             disabled={!searchKeyword.trim() || filteredModels.length === 0}
             onClick={() => {
               if (filteredModels[highlightIndex]) {
                 handleAddById(filteredModels[highlightIndex].id);
               }
             }}
-            className="h-9 px-4 shrink-0"
+            className="h-10 px-4 shrink-0"
           >
             <Plus className="h-4 w-4 mr-1" />
             添加
@@ -385,7 +384,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
             type="button"
             onClick={() => setCopyOpen(true)}
             disabled={!templates.length}
-            className="h-9 w-9 shrink-0"
+            className="h-10 w-10 shrink-0"
             title="从其他模板复制配件"
           >
             <Copy className="h-4 w-4" />
@@ -459,9 +458,9 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               <button
                 type="button"
                 onClick={() => setBatchOpen(true)}
-                className="inline-flex items-center gap-0.5 h-6 px-2 rounded text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-1 h-6 px-2 rounded text-xs text-primary transition-colors hover:bg-accent"
               >
-                共 {filteredModels.length} 项
+                批量添加（{filteredModels.length}）
                 <Plus className="h-3 w-3" />
               </button>
             )}
@@ -480,8 +479,8 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               onDragOver={(e) => handleDragOver(e, index)}
               onDragEnd={handleDragEnd}
               className={cn(
-                "flex items-center gap-3 p-2.5 rounded-md border bg-card transition-colors duration-150",
-                "hover:border-primary/30",
+                "group flex items-center gap-3 rounded-md border border-border bg-background p-2.5 transition-colors duration-150",
+                "hover:border-primary/40",
                 draggedIndex === index && "opacity-50 border-primary"
               )}
             >
@@ -489,7 +488,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               <div className={cn("w-0.5 h-8 rounded-full shrink-0", getCategoryDotClass(c.categoryName))} />
 
               {/* 拖拽手柄 */}
-              <div className="cursor-move text-muted-foreground/60 hover:text-foreground transition-colors">
+              <div className="cursor-move text-muted-foreground/50 transition-colors group-hover:text-muted-foreground">
                 <GripVertical className="h-4 w-4" />
               </div>
 
@@ -507,21 +506,21 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               </div>
 
               {/* 数量步进器 */}
-              <div className="flex items-center border border-border rounded-md overflow-hidden shrink-0">
+              <div className="flex items-center border border-input rounded-md overflow-hidden shrink-0">
                 <button
                   type="button"
                   onClick={() => handleQuantityChange(c.modelId, String(Math.max(1, c.quantity - 1)))}
-                  className="px-2 h-7 text-xs hover:bg-secondary transition-colors text-muted-foreground"
+                  className="px-2 h-7 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   −
                 </button>
-                <span className="w-9 h-7 flex items-center justify-center text-sm font-normal border-x border-border">
+                <span className="w-9 h-7 flex items-center justify-center text-sm font-normal border-x border-input">
                   {c.quantity}
                 </span>
                 <button
                   type="button"
                   onClick={() => handleQuantityChange(c.modelId, String(c.quantity + 1))}
-                  className="px-2 h-7 text-xs hover:bg-secondary transition-colors text-muted-foreground"
+                  className="px-2 h-7 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   +
                 </button>
@@ -531,7 +530,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-red-50 shrink-0"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 title="移除"
                 type="button"
                 onClick={() => handleRemove(c.modelId)}
@@ -541,9 +540,9 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
             </div>
           ))
         ) : (
-          <div className="text-center py-6 border border-dashed border-border rounded-md">
+          <div className="rounded-md border border-dashed border-border bg-background/60 py-8 text-center">
             <p className="text-sm text-muted-foreground">暂无配件配置</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">通过上方搜索或快速添加来配置配件清单</p>
+            <p className="mt-1 text-xs text-muted-foreground/70">通过上方搜索或快速添加来配置配件清单</p>
           </div>
         )}
       </div>

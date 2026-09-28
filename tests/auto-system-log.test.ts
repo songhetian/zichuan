@@ -70,7 +70,7 @@ async function createIdleAsset(template: any, name: string) {
 
 describe("系统日志自动记录", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {

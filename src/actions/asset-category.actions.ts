@@ -1,10 +1,11 @@
-﻿"use server";
+"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 function generateCodeFromName(name: string): string {
   const chars = name.split("");
@@ -58,7 +59,9 @@ export async function moveAssetCategory(
   id: number,
   input: z.infer<typeof moveSchema>
 ): Promise<ActionResult<{ id: number; parentId: number | null }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.category.update", "没有编辑分类的权限");
+  if (denied) return denied;
 
   const validated = moveSchema.safeParse(input);
   if (!validated.success) {
@@ -109,7 +112,9 @@ type CategoryResult = {
 export async function createAssetCategory(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<CategoryResult>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.category.create", "没有新增分类的权限");
+  if (denied) return denied;
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -169,7 +174,9 @@ export async function updateAssetCategory(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<CategoryResult>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.category.update", "没有编辑分类的权限");
+  if (denied) return denied;
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -194,7 +201,9 @@ export async function updateAssetCategory(
 export async function deleteAssetCategory(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.category.delete", "没有删除分类的权限");
+  if (denied) return denied;
 
   const existing = await prisma.assetCategory.findUnique({ where: { id } });
   if (!existing) return { success: false, error: "设备分类不存在" };

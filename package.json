@@ -24,7 +24,8 @@
     "test:ui": "vitest run --config vitest.frontend.config.ts",
     "db": "node scripts/dev-db.js",
     "free-port": "node scripts/free-port.js",
-    "docker": "node scripts/docker.js"
+    "docker": "node scripts/docker.js",
+    "audit:workflow": "node scripts/audit-workflow-final-role.mjs"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

@@ -151,6 +151,18 @@ describe("统计报表", () => {
       expect(unwrap(result)).toBeDefined();
       expect(Array.isArray(unwrap(result))).toBe(true);
     });
+
+    it("返回恰好 N 个且月份键唯一的桶（不因 29–31 日月份溢出而重复/缺失）", async () => {
+      await setupStatsData();
+
+      const result = await getLifecycleTrend({ months: 6 });
+
+      expect(result.success).toBe(true);
+      const data = unwrap(result);
+      expect(data).toHaveLength(6);
+      const keys = data.map((d) => d.month);
+      expect(new Set(keys).size).toBe(6);
+    });
   });
 
   describe("getAssetStats — 按员工统计", () => {
@@ -193,10 +205,10 @@ describe("统计报表", () => {
       expect(data.byStatus.SCRAPPED).toBe(0);
     });
 
-    it("有 asset.manage 权限者可统计全部资产", async () => {
-      const { emp1 } = await setupStatsData();
+    it("有 asset.manage 权限且无部门归属的账号可统计全部资产（数据范围回退 ALL）", async () => {
+      await setupStatsData();
       const admin = await prisma.admin.create({
-        data: { username: "statmgr", password: "x", employeeId: emp1.id },
+        data: { username: "statmgr", password: "x" },
       });
       setTestUser({ id: admin.id, username: "statmgr", permissions: ["asset.manage"] });
 
@@ -205,6 +217,21 @@ describe("统计报表", () => {
       expect(result.success).toBe(true);
       const data = unwrap(result);
       expect(data.total).toBe(6);
+    });
+
+    it("有 asset.manage 权限但绑定部门的账号仅统计本部门资产（与设备列表同口径）", async () => {
+      const { emp1 } = await setupStatsData();
+      const admin = await prisma.admin.create({
+        data: { username: "statmgr2", password: "x", employeeId: emp1.id },
+      });
+      setTestUser({ id: admin.id, username: "statmgr2", permissions: ["asset.manage"] });
+
+      const result = await getAssetStats();
+
+      expect(result.success).toBe(true);
+      const data = unwrap(result);
+      // 技术部（emp1/emp2）名下：DN-0002、DN-0003、WL-0001 = 3 台；无归属的闲置/维修/报废池不计入部门范围
+      expect(data.total).toBe(3);
     });
   });
 });

@@ -6,13 +6,14 @@ import {
   getAssetCategoryById,
   updateAssetCategory,
   deleteAssetCategory,
+  moveAssetCategory,
 } from "@/actions/asset-category.actions";
 import { prisma } from "@/lib/prisma";
 import { setTestUser } from "@/lib/auth";
 
 describe("设备分类 CRUD", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {
@@ -141,5 +142,39 @@ describe("设备分类 CRUD", () => {
       expect(result.success).toBe(false);
       expect(unwrapError(result)).toContain("模板");
     });
+  });
+});
+
+describe("设备分类写操作权限校验", () => {
+  beforeEach(() => {
+    setTestUser({ id: 99999, username: "no-perm", permissions: [] });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
+  it("无 asset.category.create 权限时新增被拒", async () => {
+    const r = await createAssetCategory({ name: "计算机", code: "DN" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.category.update 权限时编辑被拒", async () => {
+    const r = await updateAssetCategory(1, { name: "改名" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.category.delete 权限时删除被拒", async () => {
+    const r = await deleteAssetCategory(1);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 asset.category.update 权限时移动被拒", async () => {
+    const r = await moveAssetCategory(1, { parentId: 2 });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
   });
 });

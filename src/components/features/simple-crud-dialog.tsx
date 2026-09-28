@@ -18,14 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/hooks/use-toast";
 
 export interface FieldConfig {
   key: string;
   label: string;
-  type: "text" | "password" | "select";
+  type: "text" | "password" | "select" | "searchSelect";
   placeholder?: string;
-  options?: { value: string; label: string }[];
+  searchPlaceholder?: string;
+  options?: { value: string; label: string; description?: string }[];
   optional?: boolean;
   hint?: string;
 }
@@ -81,18 +83,23 @@ export function SimpleCrudDialog({
   const handleSubmit = async () => {
     if (!isValid()) return;
     setLoading(true);
-    const result = await onSubmit(values);
-    setLoading(false);
-    if (result.success) {
-      toast({ title: mode === "create" ? "创建成功" : "更新成功" });
-      handleOpenChange(false);
-      setValues({});
-    } else {
-      toast({
-        title: mode === "create" ? "创建失败" : "更新失败",
-        description: result.error,
-        variant: "destructive",
-      });
+    try {
+      const result = await onSubmit(values);
+      if (result.success) {
+        toast({ title: mode === "create" ? "创建成功" : "更新成功" });
+        handleOpenChange(false);
+        setValues({});
+      } else {
+        toast({
+          title: mode === "create" ? "创建失败" : "更新失败",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -106,19 +113,30 @@ export function SimpleCrudDialog({
           {fields.map((field) => (
             <div key={field.key} className="space-y-2">
               <Label>{field.label}{field.optional ? "（可选）" : ""}</Label>
-              {field.type === "select" ? (
-                <Select value={values[field.key] || ""} onValueChange={(v) => handleChange(field.key, v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={field.placeholder} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {field.options?.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {field.type === "select" || field.type === "searchSelect" ? (
+                field.type === "searchSelect" ? (
+                  <SearchableSelect
+                    options={field.options ?? []}
+                    value={values[field.key] || ""}
+                    onValueChange={(v) => handleChange(field.key, v)}
+                    placeholder={field.placeholder}
+                    searchPlaceholder={field.searchPlaceholder}
+                    className="w-full"
+                  />
+                ) : (
+                  <Select value={values[field.key] || ""} onValueChange={(v) => handleChange(field.key, v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={field.placeholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.options?.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
               ) : (
                 <Input
                   type={field.type === "password" ? "password" : "text"}

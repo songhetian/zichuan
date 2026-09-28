@@ -30,7 +30,33 @@ function makeInitial(): AssetLifecycleViewData {
         departmentName: "技术部",
         operator: "admin",
         remark: "单位主体",
-        request: { requestNo: "AP-202609-0001", businessType: "ASSET_SCRAP", title: "报废测试主机", status: "EXECUTED" },
+        request: {
+          id: 101,
+          requestNo: "AP-202609-0001",
+          businessType: "ASSET_SCRAP",
+          title: "报废测试主机",
+          status: "EXECUTED",
+          initiatorName: "王芳",
+          submittedAt: new Date("2026-09-01T01:00:00.000Z"),
+          finishedAt: new Date("2026-09-01T02:00:00.000Z"),
+          currentNodeName: null,
+          tasks: [
+            {
+              nodeName: "部门负责人审批",
+              assigneeName: "李雷",
+              status: "APPROVED",
+              comment: "同意",
+              actedAt: new Date("2026-09-01T01:30:00.000Z"),
+            },
+            {
+              nodeName: "资产管理员审批",
+              assigneeName: "王芳",
+              status: "APPROVED",
+              comment: "确认无在用资产",
+              actedAt: new Date("2026-09-01T02:00:00.000Z"),
+            },
+          ],
+        },
       },
       {
         id: 2,
@@ -74,8 +100,15 @@ describe("设备生命周期-关联申请弹出框", () => {
 
     expect(screen.getByText("AP-202609-0001")).toBeInTheDocument();
     expect(screen.getByText("资产报废")).toBeInTheDocument();
-    expect(screen.getByText("已执行")).toBeInTheDocument();
+    // 状态在头部徽标与元信息条各出现一次
+    expect(screen.getAllByText("已执行").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("报废测试主机")).toBeInTheDocument();
+    // 审批流程时间轴：提交 + 各节点 + 终态
+    expect(screen.getByText("提交申请")).toBeInTheDocument();
+    expect(screen.getByText("部门负责人审批")).toBeInTheDocument();
+    expect(screen.getByText("资产管理员审批")).toBeInTheDocument();
+    expect(screen.getByText((t) => t.includes("李雷"))).toBeInTheDocument();
+    expect(screen.getAllByText((t) => t.includes("王芳")).length).toBeGreaterThanOrEqual(1);
   });
 
   it("无关联申请的记录不显示「查看」按钮", () => {

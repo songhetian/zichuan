@@ -19,7 +19,7 @@ import { setTestUser } from "@/lib/auth";
 
 describe("部门 CRUD", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["department.update"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["system.account.manage"] });
   });
 
   afterEach(() => {
@@ -123,7 +123,7 @@ describe("部门 CRUD", () => {
 
 describe("员工 CRUD", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["system.account.manage"] });
   });
 
   afterEach(() => {
@@ -166,7 +166,7 @@ describe("员工 CRUD", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(unwrapError(result)).toContain("工号");
+      expect(unwrapError(result)).toContain("已存在");
     });
 
     it("必填字段不能为空", async () => {
@@ -361,5 +361,46 @@ describe("员工 CRUD", () => {
       const result = await deleteEmployee(99999);
       expect(result.success).toBe(false);
     });
+  });
+});
+
+describe("员工/部门写操作权限校验", () => {
+  beforeEach(() => {
+    setTestUser({ id: 99999, username: "no-perm", permissions: [] });
+  });
+
+  afterEach(() => {
+    setTestUser(null);
+  });
+
+  it("无 system.account.manage 权限时新建员工被拒", async () => {
+    const dept = await prisma.department.create({ data: { name: "技术部" } });
+    const r = await createEmployee({ name: "张三", departmentId: dept.id });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 system.account.manage 权限时编辑员工被拒", async () => {
+    const r = await updateEmployee(1, { name: "改名" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 system.account.manage 权限时删除员工被拒", async () => {
+    const r = await deleteEmployee(1);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 department.create 权限时新建部门被拒", async () => {
+    const r = await createDepartment({ name: "技术部" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
+  });
+
+  it("无 department.delete 权限时删除部门被拒", async () => {
+    const r = await deleteDepartment(1);
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toContain("权限");
   });
 });

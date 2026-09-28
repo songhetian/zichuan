@@ -3,7 +3,6 @@ const STATUS_LABELS: Record<string, string> = {
   IN_USE: "在用",
   IN_MAINTENANCE: "维修中",
   SCRAPPED: "报废",
-  IN_STOCK: "库存",
   RESERVED: "预占",
 };
 

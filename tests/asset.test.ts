@@ -8,6 +8,7 @@ import {
   deleteAsset,
 } from "@/actions/asset.actions";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
+import { allocateAssets } from "@/actions/lifecycle.actions";
 import { prisma } from "@/lib/prisma";
 import { setTestUser } from "@/lib/auth";
 
@@ -52,86 +53,190 @@ describe("设备实体 CRUD", () => {
   });
 
   describe("createAsset", () => {
-    it("可以按模板生成设备并自动分配编号", async () => {
-      const { template } = await setupTestData();
-
-      const result = await createAsset({
-        templateId: template.id,
-        name: "张三的办公电脑",
-        operator: "admin",
-      });
-
-      expect(result.success).toBe(true);
-      expect(unwrap(result).assetNo).toMatch(/^DN-\d{4}$/);
-      expect(unwrap(result).name).toBe("张三的办公电脑");
-      expect(unwrap(result).status).toBe("IDLE");
-      expect(unwrap(result).templateId).toBe(template.id);
-      // 复制模板 BOM 配件到设备（仅记录配置，不扣减库存）
-      expect(unwrap(result).components).toHaveLength(2);
-    });
-
-    it("生成设备时不扣减配件库存（整机模式，与配件库存解耦）", async () => {
+    it("按模板生成设备：名称取模板名，状态为库存", async () => {
       const { template, cpu, ram } = await setupTestData();
       await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
       await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
 
-      await createAsset({ templateId: template.id, name: "电脑1", operator: "admin" });
-
-      const cpuStock = await prisma.componentStock.findUnique({
-        where: { modelId: cpu.id },
-      });
-      const ramStock = await prisma.componentStock.findUnique({
-        where: { modelId: ram.id },
+      const result = await createAsset({
+        templateId: template.id,
+        operator: "admin",
       });
 
-      expect(cpuStock?.quantity).toBe(10); // 不扣减
-      expect(ramStock?.quantity).toBe(10); // 不扣减
+      expect(result.success).toBe(true);
+      const [asset] = unwrap(result);
+      expect(asset.assetNo).toMatch(/^DN-\d{4}$/);
+      // 名称由系统维护：不填使用人即入闲置池，名称取模板名
+      expect(asset.name).toBe("标准办公电脑");
+      expect(asset.status).toBe("IDLE");
+      expect(asset.templateId).toBe(template.id);
+      // 复制模板 BOM 配件到设备
+      expect(asset.components).toHaveLength(2);
     });
 
-    it("生成设备时记录生命周期日志", async () => {
-      const { template } = await setupTestData();
+    it("传 quantity 时批量生成 N 台，编号连续递增且名称均为模板名", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
 
       const result = await createAsset({
         templateId: template.id,
-        name: "电脑1",
+        quantity: 3,
+        operator: "admin",
+      });
+
+      const assets = unwrap(result);
+      expect(assets).toHaveLength(3);
+      expect(assets.map((a) => a.assetNo)).toEqual(["DN-0001", "DN-0002", "DN-0003"]);
+      expect(assets.every((a) => a.name === "标准办公电脑")).toBe(true);
+      expect(assets.every((a) => a.status === "IDLE")).toBe(true);
+    });
+
+    it("按模板 BOM × 数量扣减配件库存", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+
+      const result = await createAsset({
+        templateId: template.id,
+        quantity: 3,
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(true);
+      // 模板每台用 1 CPU + 2 内存，3 台共出库 3 / 6
+      const cpuStock = await prisma.componentStock.findUnique({ where: { modelId: cpu.id } });
+      const ramStock = await prisma.componentStock.findUnique({ where: { modelId: ram.id } });
+      expect(cpuStock?.quantity).toBe(7);
+      expect(ramStock?.quantity).toBe(4);
+    });
+
+    it("扣减库存时写入 ASSET_BUILD（组装设备出库）流水", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+
+      await createAsset({ templateId: template.id, quantity: 2, operator: "admin" });
+
+      const logs = await prisma.componentStockLog.findMany({
+        where: { type: "ASSET_BUILD" },
+      });
+      expect(logs).toHaveLength(2);
+      expect(logs.find((l) => l.modelId === cpu.id)?.quantity).toBe(-2);
+      expect(logs.find((l) => l.modelId === ram.id)?.quantity).toBe(-4);
+    });
+
+    it("配件库存不足时整单拒绝，不产生任何设备、不扣任何库存", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 3, operator: "admin" });
+
+      // 3 台需 3 CPU + 6 内存 → 内存不够
+      const result = await createAsset({
+        templateId: template.id,
+        quantity: 3,
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(false);
+      // 提示停留在模板口径：最多还能建几台、卡在哪个配件上（不把配件账本摊给操作者）
+      expect(unwrapError(result)).toContain("最多可建 1 台");
+      expect(unwrapError(result)).toContain("本次要建 3 台");
+      expect(unwrapError(result)).toContain("16GB DDR4");
+
+      expect(await prisma.asset.count()).toBe(0);
+      // 只有两条入库流水，没有半台设备的出库记录
+      expect(await prisma.componentStockLog.count()).toBe(2);
+      const cpuStock = await prisma.componentStock.findUnique({ where: { modelId: cpu.id } });
+      const ramStock = await prisma.componentStock.findUnique({ where: { modelId: ram.id } });
+      expect(cpuStock?.quantity).toBe(10);
+      expect(ramStock?.quantity).toBe(3);
+    });
+
+    it("无 BOM 的外设模板不扣库存即可批量建档", async () => {
+      const category = await prisma.assetCategory.create({
+        data: { name: "显示器", code: "MON" },
+      });
+      const template = await prisma.deviceTemplate.create({
+        data: { name: "戴尔显示器", categoryId: category.id },
+      });
+
+      const result = await createAsset({
+        templateId: template.id,
+        quantity: 5,
+        operator: "admin",
+      });
+
+      const assets = unwrap(result);
+      expect(assets).toHaveLength(5);
+      expect(assets[0].assetNo).toBe("MON-0001");
+      expect(assets[4].assetNo).toBe("MON-0005");
+      expect(assets.every((a) => a.name === "戴尔显示器")).toBe(true);
+    });
+
+    it("生成设备时记录生命周期日志", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+
+      const result = await createAsset({
+        templateId: template.id,
         operator: "admin",
       });
 
       const logs = await prisma.lifecycleLog.findMany({
-        where: { assetId: unwrap(result).id },
+        where: { assetId: unwrap(result)[0].id },
       });
       expect(logs).toHaveLength(1);
       expect(logs[0].action).toBe("CREATED");
       expect(logs[0].operator).toBe("admin");
     });
 
-    it("多台设备编号自动递增", async () => {
-      const { template } = await setupTestData();
-
-      const r1 = await createAsset({ templateId: template.id, name: "电脑1", operator: "admin" });
-      const r2 = await createAsset({ templateId: template.id, name: "电脑2", operator: "admin" });
-
-      expect(unwrap(r1).assetNo).toBe("DN-0001");
-      expect(unwrap(r2).assetNo).toBe("DN-0002");
-    });
-
-    it("配件库存不足时也能创建成功（不校验库存）", async () => {
-      const { template } = await setupTestData();
+    it("填了使用人即建档即分配：状态「在用」，名称改为「{使用人}的{设备分类}」", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+      const dept = await prisma.department.create({ data: { name: "技术部" } });
+      const employee = await prisma.employee.create({
+        data: { employeeNo: "E1001", name: "张三", departmentId: dept.id },
+      });
 
       const result = await createAsset({
         templateId: template.id,
-        name: "电脑1",
+        employeeId: employee.id,
         operator: "admin",
       });
 
-      expect(result.success).toBe(true);
-      expect(unwrap(result).assetNo).toMatch(/^DN-\d{4}$/);
+      const asset = unwrap(result)[0];
+      expect(asset.status).toBe("IN_USE");
+      expect(asset.employeeId).toBe(employee.id);
+      expect(asset.name).toBe("张三的计算机设备");
+
+      const logs = await prisma.lifecycleLog.findMany({ where: { assetId: asset.id } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].action).toBe("ALLOCATED");
+      expect(logs[0].toStatus).toBe("IN_USE");
+    });
+
+    it("使用人不存在时拒绝建档", async () => {
+      const { template, cpu, ram } = await setupTestData();
+      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
+      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+
+      const result = await createAsset({
+        templateId: template.id,
+        employeeId: 99999,
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(false);
+      expect(unwrapError(result)).toBe("使用人不存在");
+      expect(await prisma.asset.count()).toBe(0);
     });
 
     it("模板不存在时生成失败", async () => {
       const result = await createAsset({
         templateId: 99999,
-        name: "电脑1",
         operator: "admin",
       });
 
@@ -139,19 +244,25 @@ describe("设备实体 CRUD", () => {
       expect(unwrapError(result)).toContain("模板不存在");
     });
 
-    it("设备名称不能为空", async () => {
-      const { template, cpu, ram } = await setupTestData();
-      await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
-      await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
+    it("未选择模板时给出明确错误", async () => {
+      const result = await createAsset({ operator: "admin" } as never);
+
+      expect(result.success).toBe(false);
+      expect(unwrapError(result)).toContain("设备模板");
+    });
+
+    it("数量必须为正整数", async () => {
+      const { template } = await setupTestData();
 
       const result = await createAsset({
         templateId: template.id,
-        name: "",
+        quantity: 0,
         operator: "admin",
       });
 
       expect(result.success).toBe(false);
     });
+
   });
 
   describe("getAssets", () => {
@@ -160,8 +271,8 @@ describe("设备实体 CRUD", () => {
       await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
       await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
 
-      await createAsset({ templateId: template.id, name: "电脑1", operator: "admin" });
-      await createAsset({ templateId: template.id, name: "电脑2", operator: "admin" });
+      await createAsset({ templateId: template.id, operator: "admin" });
+      await createAsset({ templateId: template.id, operator: "admin" });
 
       const result = await getAssets();
 
@@ -179,18 +290,19 @@ describe("设备实体 CRUD", () => {
         data: { employeeNo: "E001", name: "张三", departmentId: dept.id },
       });
 
-      const asset1 = await createAsset({ templateId: template.id, name: "电脑1", operator: "admin" });
+      // 建档默认闲置，其中一台改成在用
+      const asset1 = await createAsset({ templateId: template.id, operator: "admin" });
       await prisma.asset.update({
-        where: { id: unwrap(asset1).id },
+        where: { id: unwrap(asset1)[0].id },
         data: { status: "IN_USE", employeeId: emp.id },
       });
 
-      await createAsset({ templateId: template.id, name: "电脑2", operator: "admin" });
+      const asset2 = await createAsset({ templateId: template.id, operator: "admin" });
 
       const result = await getAssets({ status: "IDLE" });
 
       expect(unwrap(result).length).toBe(1);
-      expect(unwrap(result)[0].name).toBe("电脑2");
+      expect(unwrap(result)[0].assetNo).toBe(unwrap(asset2)[0].assetNo);
     });
 
     it("可以按分类筛选", async () => {
@@ -205,27 +317,38 @@ describe("设备实体 CRUD", () => {
         data: { name: "路由器", categoryId: cat2.id },
       });
 
-      await createAsset({ templateId: template.id, name: "电脑", operator: "admin" });
-      await createAsset({ templateId: template2.id, name: "路由器", operator: "admin" });
+      const pc = await createAsset({ templateId: template.id, operator: "admin" });
+      await createAsset({ templateId: template2.id, operator: "admin" });
 
       const result = await getAssets({ categoryId: assetCat.id });
 
       expect(unwrap(result).length).toBe(1);
-      expect(unwrap(result)[0].name).toBe("电脑");
+      expect(unwrap(result)[0].assetNo).toBe(unwrap(pc)[0].assetNo);
     });
 
-    it("可以按关键词搜索", async () => {
+    it("可以按关键词搜索到使用人名下的设备", async () => {
       const { template, cpu, ram } = await setupTestData();
       await purchaseStockIn({ modelId: cpu.id, quantity: 10, operator: "admin" });
       await purchaseStockIn({ modelId: ram.id, quantity: 10, operator: "admin" });
 
-      await createAsset({ templateId: template.id, name: "张三的电脑", operator: "admin" });
-      await createAsset({ templateId: template.id, name: "李四的电脑", operator: "admin" });
+      const dept = await prisma.department.create({ data: { name: "技术部" } });
+      const emp = await prisma.employee.create({
+        data: { employeeNo: "E002", name: "张三", departmentId: dept.id },
+      });
+
+      const mine = await createAsset({ templateId: template.id, operator: "admin" });
+      await createAsset({ templateId: template.id, operator: "admin" });
+      // 分配后设备名变为「{使用人}的{设备分类}」
+      await allocateAssets({
+        assetIds: [unwrap(mine)[0].id],
+        employeeId: emp.id,
+        operator: "admin",
+      });
 
       const result = await getAssets({ keyword: "张三" });
 
       expect(unwrap(result).length).toBe(1);
-      expect(unwrap(result)[0].name).toBe("张三的电脑");
+      expect(unwrap(result)[0].name).toBe("张三的计算机设备");
     });
 
     it("空数据库返回空数组", async () => {
@@ -306,15 +429,15 @@ describe("设备实体 CRUD", () => {
       });
 
       // 创建设备
-      await createAsset({ templateId: template1.id, name: "低配电脑", operator: "admin" });
-      await createAsset({ templateId: template2.id, name: "高配电脑", operator: "admin" });
+      await createAsset({ templateId: template1.id, operator: "admin" });
+      const highMem = await createAsset({ templateId: template2.id, operator: "admin" });
 
       // 测试：筛选内存 >= 16GB 的设备
       const result1 = await getAssets({ memoryMinGB: 16 });
       expect(result1.success).toBe(true);
       const data1 = unwrap(result1);
       expect(data1.length).toBe(1);
-      expect(data1[0].name).toBe("高配电脑");
+      expect(data1[0].assetNo).toBe(unwrap(highMem)[0].assetNo);
 
       // 测试：筛选内存 >= 8GB 的设备（应该都满足）
       const result2 = await getAssets({ memoryMinGB: 8 });
@@ -396,15 +519,15 @@ describe("设备实体 CRUD", () => {
       });
 
       // 创建设备
-      await createAsset({ templateId: template1.id, name: "低配电脑", operator: "admin" });
-      await createAsset({ templateId: template2.id, name: "高配电脑", operator: "admin" });
+      await createAsset({ templateId: template1.id, operator: "admin" });
+      const bigDisk = await createAsset({ templateId: template2.id, operator: "admin" });
 
       // 测试：筛选硬盘 >= 500GB 的设备
       const result1 = await getAssets({ diskMinGB: 500 });
       expect(result1.success).toBe(true);
       const data1 = unwrap(result1);
       expect(data1.length).toBe(1);
-      expect(data1[0].name).toBe("高配电脑");
+      expect(data1[0].assetNo).toBe(unwrap(bigDisk)[0].assetNo);
 
       // 测试：筛选硬盘 >= 200GB 的设备（应该都满足）
       const result2 = await getAssets({ diskMinGB: 200 });
@@ -459,7 +582,7 @@ describe("设备实体 CRUD", () => {
       });
 
       // 创建设备
-      await createAsset({ templateId: template.id, name: "双通道电脑", operator: "admin" });
+      await createAsset({ templateId: template.id, operator: "admin" });
 
       // 测试：筛选内存 >= 16GB 的设备（两条8GB = 16GB，应该满足）
       const result1 = await getAssets({ memoryMinGB: 16 });
@@ -482,14 +605,13 @@ describe("设备实体 CRUD", () => {
 
       const created = await createAsset({
         templateId: template.id,
-        name: "电脑1",
         operator: "admin",
       });
 
-      const result = await getAssetById(unwrap(created).id);
+      const result = await getAssetById(unwrap(created)[0].id);
 
       expect(result.success).toBe(true);
-      expect(unwrap(result).name).toBe("电脑1");
+      expect(unwrap(result).name).toBe("标准办公电脑");
       expect(unwrap(result).components).toHaveLength(2);
       expect(unwrap(result).lifecycleLogs).toHaveLength(1);
     });
@@ -508,11 +630,10 @@ describe("设备实体 CRUD", () => {
 
       const created = await createAsset({
         templateId: template.id,
-        name: "电脑1",
         operator: "admin",
       });
 
-      const result = await updateAsset(unwrap(created).id, {
+      const result = await updateAsset(unwrap(created)[0].id, {
         name: "新名称",
         location: "办公室 A",
         notes: "备注信息",
@@ -538,24 +659,23 @@ describe("设备实体 CRUD", () => {
 
       const created = await createAsset({
         templateId: template.id,
-        name: "电脑1",
         operator: "admin",
       });
 
-      const result = await deleteAsset(unwrap(created).id);
+      const result = await deleteAsset(unwrap(created)[0].id);
 
       expect(result.success).toBe(true);
 
-      const asset = await prisma.asset.findUnique({ where: { id: unwrap(created).id } });
+      const asset = await prisma.asset.findUnique({ where: { id: unwrap(created)[0].id } });
       expect(asset).toBeNull();
 
       const components = await prisma.assetComponent.findMany({
-        where: { assetId: unwrap(created).id },
+        where: { assetId: unwrap(created)[0].id },
       });
       expect(components).toHaveLength(0);
 
       const logs = await prisma.lifecycleLog.findMany({
-        where: { assetId: unwrap(created).id },
+        where: { assetId: unwrap(created)[0].id },
       });
       expect(logs).toHaveLength(0);
     });

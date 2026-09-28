@@ -69,6 +69,36 @@ describe("设备模板 CRUD", () => {
       expect(unwrap(result).components).toHaveLength(0);
     });
 
+    it("可以创建带品牌 / 型号的模板（建档时带出到设备）", async () => {
+      const { assetCat } = await setupTestData();
+
+      const result = await createDeviceTemplate({
+        name: "戴尔显示器",
+        categoryId: assetCat.id,
+        brand: "戴尔",
+        model: "U2723QE",
+        components: [],
+      });
+
+      expect(result.success).toBe(true);
+      expect(unwrap(result).brand).toBe("戴尔");
+      expect(unwrap(result).model).toBe("U2723QE");
+    });
+
+    it("不填品牌 / 型号时为空（两字段均可空）", async () => {
+      const { assetCat } = await setupTestData();
+
+      const result = await createDeviceTemplate({
+        name: "空模板",
+        categoryId: assetCat.id,
+        components: [],
+      });
+
+      expect(result.success).toBe(true);
+      expect(unwrap(result).brand).toBeNull();
+      expect(unwrap(result).model).toBeNull();
+    });
+
     it("同一分类下模板名称不能重复", async () => {
       const { assetCat } = await setupTestData();
 
@@ -270,6 +300,26 @@ describe("设备模板 CRUD", () => {
       expect(result.success).toBe(true);
       expect(unwrap(result).components).toHaveLength(1);
       expect(unwrap(result).components[0].modelId).toBe(cpu.id);
+    });
+
+    it("可以更新模板的品牌 / 型号", async () => {
+      const { assetCat } = await setupTestData();
+      const created = await createDeviceTemplate({
+        name: "显示器",
+        categoryId: assetCat.id,
+        brand: "戴尔",
+        model: "U2723QE",
+        components: [],
+      });
+
+      const result = await updateDeviceTemplate(unwrap(created).id, {
+        brand: "AOC",
+        model: "Q27G2S",
+      });
+
+      expect(result.success).toBe(true);
+      expect(unwrap(result).brand).toBe("AOC");
+      expect(unwrap(result).model).toBe("Q27G2S");
     });
 
     it("同一分类下更新名称不能与已有模板重复", async () => {

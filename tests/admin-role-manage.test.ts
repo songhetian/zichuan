@@ -24,6 +24,18 @@ async function seedRole(key: string, name: string, permissions: string[]) {
   return role;
 }
 
+// 自建部门 + 员工（dependency：Employee 必填 departmentId；编号/部门名用递增计数保证全局唯一）
+let seedSeq = 0;
+async function seedEmployee(name: string) {
+  seedSeq += 1;
+  const dept = await prisma.department.create({
+    data: { name: `测试部-${Date.now()}-${seedSeq}` },
+  });
+  return prisma.employee.create({
+    data: { employeeNo: `SEED-${Date.now()}-${seedSeq}`, name, departmentId: dept.id },
+  });
+}
+
 describe("用户/角色管理（M2）", () => {
   beforeEach(async () => {
     await prisma.admin.deleteMany();
@@ -43,11 +55,13 @@ describe("用户/角色管理（M2）", () => {
     });
     setTestUser({ id: boss.id, username: "boss" });
 
+    const zsEmp = await seedEmployee("张三");
     await createAdmin({
       username: "zhangsan",
       password: "pass123",
       roleId: empRole.id,
       displayName: "张三",
+      employeeId: zsEmp.id,
     });
 
     const result = await getAdmins();
@@ -70,7 +84,12 @@ describe("用户/角色管理（M2）", () => {
     setTestUser({ id: boss.id, username: "boss" });
 
     const created = unwrap(
-      await createAdmin({ username: "zhangsan", password: "pass123", roleId: empRole.id })
+      await createAdmin({
+        username: "zhangsan",
+        password: "pass123",
+        roleId: empRole.id,
+        employeeId: (await seedEmployee("张三")).id,
+      })
     );
 
     const result = await updateAdminRole(created.id, deptRole.id);
@@ -92,7 +111,12 @@ describe("用户/角色管理（M2）", () => {
     setTestUser({ id: boss.id, username: "boss" });
 
     const created = unwrap(
-      await createAdmin({ username: "zhangsan", password: "pass123", roleId: empRole.id })
+      await createAdmin({
+        username: "zhangsan",
+        password: "pass123",
+        roleId: empRole.id,
+        employeeId: (await seedEmployee("张三")).id,
+      })
     );
     const disabled = await setAdminActive(created.id, false);
     expect(disabled.success).toBe(true);
@@ -124,7 +148,12 @@ describe("用户/角色管理（M2）", () => {
     setTestUser({ id: boss.id, username: "boss" });
 
     const created = unwrap(
-      await createAdmin({ username: "zhangsan", password: "pass123", roleId: empRole.id })
+      await createAdmin({
+        username: "zhangsan",
+        password: "pass123",
+        roleId: empRole.id,
+        employeeId: (await seedEmployee("张三")).id,
+      })
     );
 
     const result = await updateAdminRole(created.id, 99999);

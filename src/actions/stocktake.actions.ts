@@ -2,10 +2,10 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { AssetStatus, StocktakeResult } from "@prisma/client";
+import { AssetStatus, StocktakeResult, Prisma } from "@prisma/client";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
-import { guardPermission } from "@/lib/permissions";
+import { guardPermission, resolveAssetScope } from "@/lib/permissions";
 import { parseStocktakeExcel, normalizeResult, buildStocktakeAbnormalExcel, StocktakeAbnormalRow } from "@/lib/stocktake-excel";
 
 const createSchema = z.object({
@@ -40,19 +40,16 @@ export async function createStocktakeSession(
 
   const { name, description, statusFilter, categoryId, departmentId, operator } = validated.data;
 
-  const where: Record<string, unknown> = {};
-  if (statusFilter) where.status = statusFilter;
-
-  if (categoryId) {
-    where.template = { categoryId };
-  }
-
-  if (departmentId) {
-    where.employee = { departmentId };
-  }
+  // 数据范围过滤（统一口径）：盘点范围不得越出账号可见资产（按 AND 叠加，避免与筛选条件互相覆盖）
+  const scope = await resolveAssetScope(user.id);
+  const conditions: Prisma.AssetWhereInput[] = [];
+  if (statusFilter) conditions.push({ status: statusFilter });
+  if (categoryId) conditions.push({ template: { categoryId } });
+  if (departmentId) conditions.push({ employee: { departmentId } });
+  if (scope) conditions.push(scope);
 
   const assets = await prisma.asset.findMany({
-    where,
+    where: conditions.length > 0 ? { AND: conditions } : {},
     select: { id: true, status: true },
   });
 
@@ -300,6 +297,10 @@ export async function importStocktakeFile(
   sessionId: number,
   uploadBuffer: ArrayBuffer | Uint8Array
 ): Promise<ActionResult<{ updated: number; unknown: string[]; rows: number }>> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return denied;
+
   const bytes =
     uploadBuffer instanceof ArrayBuffer ? new Uint8Array(uploadBuffer) : uploadBuffer;
   const buffer = Buffer.from(bytes as Uint8Array);

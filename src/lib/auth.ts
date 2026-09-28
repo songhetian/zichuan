@@ -41,6 +41,8 @@ export interface SessionData {
 export interface SessionUser {
   id: number;
   username: string;
+  /** 首登强制改密标记（实时查库，不随会话缓存）：为 true 时服务端守卫强制跳转 /force-password */
+  mustChangePassword?: boolean;
 }
 
 // ============================================================
@@ -132,8 +134,12 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       // 只读上下文不可写 cookie，忽略
     }
     // 真实会话必须校验账号仍为启用状态（停用/离职后会话不再有效）
-    await assertActiveAccount(session.userId);
-    return { id: session.userId, username: session.username };
+    const account = await loadActiveAccount(session.userId);
+    return {
+      id: session.userId,
+      username: session.username,
+      mustChangePassword: account.mustChangePassword,
+    };
   } catch {
     return null;
   }
@@ -145,13 +151,23 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
  * 仅作用于真实会话；测试注入（_testUser）不经过此校验。
  */
 export async function assertActiveAccount(userId: number): Promise<void> {
+  await loadActiveAccount(userId);
+}
+
+/**
+ * 载入启用中的账号并附带首登强制改密标记（供 getCurrentUser 复用，避免重复查库）。
+ */
+async function loadActiveAccount(
+  userId: number
+): Promise<{ mustChangePassword: boolean }> {
   const admin = await prisma.admin.findUnique({
     where: { id: userId },
-    select: { isActive: true },
+    select: { isActive: true, mustChangePassword: true },
   });
   if (!admin || !admin.isActive) {
     throw new Error("UNAUTHORIZED");
   }
+  return { mustChangePassword: admin.mustChangePassword };
 }
 
 export async function requireAuth(): Promise<SessionUser> {

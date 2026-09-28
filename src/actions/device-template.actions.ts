@@ -19,12 +19,16 @@ const bomItemSchema = z.object({
 const createSchema = z.object({
   name: z.string().min(1, "模板名称不能为空"),
   categoryId: z.number(),
+  brand: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
   components: z.array(bomItemSchema),
 });
 
 const updateSchema = z.object({
   name: z.string().min(1, "模板名称不能为空").optional(),
   categoryId: z.number().optional(),
+  brand: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
   components: z.array(bomItemSchema).optional(),
 });
 
@@ -40,6 +44,8 @@ type TemplateWithComponents = {
   id: number;
   name: string;
   categoryId: number;
+  brand: string | null;
+  model: string | null;
   createdAt: string;
   components: {
     id: number;
@@ -55,6 +61,8 @@ type PrismaTemplate = {
   id: number;
   name: string;
   categoryId: number;
+  brand: string | null;
+  model: string | null;
   createdAt: Date;
   components: {
     id: number;
@@ -66,12 +74,14 @@ type PrismaTemplate = {
 
 function formatTemplate(template: PrismaTemplate | null): TemplateWithComponents {
   if (!template) {
-    return { id: 0, name: "", categoryId: 0, createdAt: "", components: [] };
+    return { id: 0, name: "", categoryId: 0, brand: null, model: null, createdAt: "", components: [] };
   }
   return {
     id: template.id,
     name: template.name,
     categoryId: template.categoryId,
+    brand: template.brand,
+    model: template.model,
     createdAt: template.createdAt.toISOString(),
     components: template.components.map((c) => ({
       id: c.id,
@@ -119,7 +129,7 @@ export async function createDeviceTemplate(
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
   }
 
-  const { name, categoryId, components } = validated.data;
+  const { name, categoryId, brand, model, components } = validated.data;
 
   // 检查分类是否存在
   const category = await prisma.assetCategory.findUnique({ where: { id: categoryId } });
@@ -136,7 +146,7 @@ export async function createDeviceTemplate(
   try {
     const template = await prisma.$transaction(async (tx) => {
       const created = await tx.deviceTemplate.create({
-        data: { name, categoryId },
+        data: { name, categoryId, brand: brand ?? null, model: model ?? null },
       });
 
       if (components.length > 0) {
@@ -251,9 +261,12 @@ export async function updateDeviceTemplate(
 
   try {
     const template = await prisma.$transaction(async (tx) => {
-      const updateData: Partial<Pick<typeof validated.data, 'name' | 'categoryId'>> = {};
+      const updateData: Partial<Pick<typeof validated.data, 'name' | 'categoryId' | 'brand' | 'model'>> = {};
       if (validated.data.name != null) updateData.name = validated.data.name;
       if (validated.data.categoryId != null) updateData.categoryId = validated.data.categoryId;
+      // 品牌/型号允许传 null 清空
+      if (validated.data.brand !== undefined) updateData.brand = validated.data.brand;
+      if (validated.data.model !== undefined) updateData.model = validated.data.model;
 
       if (Object.keys(updateData).length > 0) {
         await tx.deviceTemplate.update({ where: { id }, data: updateData });

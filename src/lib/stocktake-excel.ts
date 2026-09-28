@@ -48,6 +48,7 @@ export const EXPECTED_STATUS_LABEL: Record<string, string> = {
   IN_USE: "在用",
   IN_MAINTENANCE: "维修中",
   SCRAPPED: "已报废",
+  RESERVED: "预占",
 };
 
 export const ACTUAL_RESULT_LABEL: Record<string, string> = {

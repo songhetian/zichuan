@@ -1,10 +1,11 @@
-﻿"use server";
+"use server";
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { guardPermission } from "@/lib/permissions";
 
 // ============================================================
 // Schema 校验
@@ -27,7 +28,9 @@ const updateSchema = z.object({
 export async function createComponentCategory(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.compcategory.create", "没有新增配件分类的权限");
+  if (denied) return denied;
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -93,7 +96,9 @@ export async function updateComponentCategory(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<{ id: number; name: string; parentId: number | null }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.compcategory.update", "没有编辑配件分类的权限");
+  if (denied) return denied;
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -126,7 +131,9 @@ export async function updateComponentCategory(
 export async function deleteComponentCategory(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.compcategory.delete", "没有删除配件分类的权限");
+  if (denied) return denied;
 
   // 检查分类是否存在
   const existing = await prisma.componentCategory.findUnique({ where: { id } });

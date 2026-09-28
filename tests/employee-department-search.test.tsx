@@ -53,13 +53,13 @@ afterEach(() => {
 describe("员工弹窗部门下拉可搜索", () => {
   it("新建员工：部门下拉支持搜索过滤并回填", async () => {
     const user = userEvent.setup();
-    render(<EmployeeListClient employees={[]} departments={departments} />);
+    render(<EmployeeListClient employees={[]} departments={departments} canManageAccounts />);
 
     await user.click(screen.getByRole("button", { name: "新建员工" }));
 
     // 打开部门下拉，出现搜索输入区
-    await user.click(screen.getByRole("combobox"));
-    const searchInput = screen.getByPlaceholderText("选择部门（搜索）");
+    await user.click(screen.getByRole("combobox", { name: "部门" }));
+    const searchInput = screen.getByPlaceholderText("搜索...");
     expect(searchInput).toBeInTheDocument();
 
     // 按名称模糊过滤
@@ -71,26 +71,26 @@ describe("员工弹窗部门下拉可搜索", () => {
 
     // 选中后回填到触发按钮
     await user.click(screen.getByText("财务部"));
-    expect(screen.getByRole("combobox")).toHaveTextContent("财务部");
+    expect(screen.getByRole("combobox", { name: "部门" })).toHaveTextContent("财务部");
   });
 
   it("编辑员工：部门回显初始值，且可搜索切换", async () => {
     const user = userEvent.setup();
-    render(<EmployeeListClient employees={employees} departments={departments} />);
+    render(<EmployeeListClient employees={employees} departments={departments} canManageAccounts />);
 
     await user.click(screen.getByTitle("编辑"));
 
     // 回显员工原部门
-    expect(screen.getByRole("combobox")).toHaveTextContent("技术部");
+    expect(screen.getByRole("combobox", { name: "部门" })).toHaveTextContent("技术部");
 
     // 可搜索并切换到财务部
-    await user.click(screen.getByRole("combobox"));
-    const searchInput = screen.getByPlaceholderText("选择部门（搜索）");
+    await user.click(screen.getByRole("combobox", { name: "部门" }));
+    const searchInput = screen.getByPlaceholderText("搜索...");
     await user.type(searchInput, "财务");
     await user.click(screen.getByText("财务部"));
 
     await waitFor(() => {
-      expect(screen.getByRole("combobox")).toHaveTextContent("财务部");
+      expect(screen.getByRole("combobox", { name: "部门" })).toHaveTextContent("财务部");
     });
   });
 });

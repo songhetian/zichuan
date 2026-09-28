@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, Info } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface ConfirmDialogProps {
   open: boolean
@@ -39,6 +40,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const [internalLoading, setInternalLoading] = useState(false)
   const isLoading = loadingProp ?? internalLoading
+  const { toast } = useToast()
 
   const handleConfirm = useCallback(async () => {
     if (isLoading) return
@@ -46,10 +48,12 @@ export function ConfirmDialog({
     try {
       setInternalLoading(true)
       await onConfirm()
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" })
     } finally {
       setInternalLoading(false)
     }
-  }, [isLoading, onConfirm])
+  }, [isLoading, onConfirm, toast])
 
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!isLoading) onOpenChange(value) }}>

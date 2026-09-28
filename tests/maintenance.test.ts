@@ -34,7 +34,7 @@ async function setupIdleAsset() {
 
 describe("送修", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {
@@ -102,6 +102,24 @@ describe("送修", () => {
       expect(unwrapError(result)).toContain("已报废");
     });
 
+    it("已被申请预占的设备不能送修（RESERVED 不参与人工流转）", async () => {
+      const { asset } = await setupIdleAsset();
+      await prisma.asset.update({
+        where: { id: asset.id },
+        data: { status: "RESERVED", reservedFromStatus: "IDLE" },
+      });
+
+      const result = await maintenanceStart({
+        assetIds: [asset.id],
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(false);
+      // 预占关系不被破坏
+      const after = await prisma.asset.findUnique({ where: { id: asset.id } });
+      expect(after?.status).toBe("RESERVED");
+    });
+
     it("维修中的设备不能重复送修", async () => {
       const { asset } = await setupIdleAsset();
       await prisma.asset.update({
@@ -156,7 +174,7 @@ describe("送修", () => {
 
 describe("维修完成", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage"] });
   });
 
   afterEach(() => {
@@ -188,6 +206,32 @@ describe("维修完成", () => {
       expect(completeLog!.fromStatus).toBe("IN_MAINTENANCE");
       expect(completeLog!.toStatus).toBe("IDLE");
       expect(completeLog!.remark).toBe("更换屏幕");
+    });
+
+    it("在用设备维修完成后回归闲置池：清空使用人并还原模板名", async () => {
+      const { asset } = await setupIdleAsset();
+      const dept = await prisma.department.create({ data: { name: "技术部" } });
+      const emp = await prisma.employee.create({
+        data: { employeeNo: "E001", name: "张三", departmentId: dept.id },
+      });
+      // 在用设备（名称跟随归属）送修中 → 维修完成
+      await prisma.asset.update({
+        where: { id: asset.id },
+        data: { status: "IN_MAINTENANCE", employeeId: emp.id, name: "张三的计算机设备" },
+      });
+
+      const result = await maintenanceComplete({
+        assetIds: [asset.id],
+        operator: "admin",
+      });
+
+      expect(result.success).toBe(true);
+
+      const updated = await prisma.asset.findUnique({ where: { id: asset.id } });
+      expect(updated?.status).toBe("IDLE");
+      // 闲置是唯一可分配池：池内设备无归属，使用人清空、名称还原为模板名
+      expect(updated?.employeeId).toBeNull();
+      expect(updated?.name).toBe("标准办公电脑");
     });
 
     it("非维修中的设备不能标记完成", async () => {

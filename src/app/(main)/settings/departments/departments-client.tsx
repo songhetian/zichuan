@@ -24,6 +24,7 @@ import {
 import { ActionButtons } from "@/components/features/action-buttons";
 import { SimpleCrudDialog } from "@/components/features/simple-crud-dialog";
 import { filterItemsByText } from "@/lib/list-search";
+import { useToast } from "@/hooks/use-toast";
 
 type Department = {
   id: number;
@@ -49,6 +50,7 @@ export function DepartmentsClient({
   const [search, setSearch] = useState("");
   const [managerDept, setManagerDept] = useState<Department | null>(null);
   const router = useRouter();
+  const { toast } = useToast();
 
   // 按部门名称过滤
   const filteredDepartments = useMemo(
@@ -61,34 +63,50 @@ export function DepartmentsClient({
 
   const managerOptions = employees.map((e) => ({
     value: String(e.id),
-    label: `${e.employeeNo} · ${e.name}`,
+    label: e.name,
+    description: e.employeeNo,
   }));
 
   const handleCreate = async (name: string) => {
-    const result = await createDepartment({ name });
-    if (result.success) {
-      setDepartments([
-        ...departments,
-        { id: result.data.id, name: result.data.name, managerId: null, manager: null },
-      ]);
+    try {
+      const result = await createDepartment({ name });
+      if (result.success) {
+        setDepartments([
+          ...departments,
+          { id: result.data.id, name: result.data.name, managerId: null, manager: null },
+        ]);
+      }
+      return result;
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+      return { success: false, error: "" };
     }
-    return result;
   };
 
   const handleEdit = async (id: number, name: string) => {
-    const result = await updateDepartment(id, { name });
-    if (result.success) {
-      setDepartments(departments.map((d) => (d.id === id ? { ...d, name: result.data.name } : d)));
+    try {
+      const result = await updateDepartment(id, { name });
+      if (result.success) {
+        setDepartments(departments.map((d) => (d.id === id ? { ...d, name: result.data.name } : d)));
+      }
+      return result;
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+      return { success: false, error: "" };
     }
-    return result;
   };
 
   const handleDelete = async (id: number) => {
-    const result = await deleteDepartment(id);
-    if (result.success) {
-      setDepartments(departments.filter((d) => d.id !== id));
+    try {
+      const result = await deleteDepartment(id);
+      if (result.success) {
+        setDepartments(departments.filter((d) => d.id !== id));
+      }
+      return result;
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+      return { success: false, error: "" };
     }
-    return result;
   };
 
   const handleSetManager = async (values: Record<string, string>) => {
@@ -97,17 +115,22 @@ export function DepartmentsClient({
     const manager = raw ? employees.find((e) => e.id === Number(raw)) : undefined;
     const managerId = manager ? manager.id : null;
 
-    const result = await updateDepartment(managerDept.id, { managerId });
-    if (result.success) {
-      setDepartments(
-        departments.map((d) =>
-          d.id === managerDept.id
-            ? { ...d, managerId, manager: manager ? { id: manager.id, name: manager.name } : null }
-            : d,
-        ),
-      );
+    try {
+      const result = await updateDepartment(managerDept.id, { managerId });
+      if (result.success) {
+        setDepartments(
+          departments.map((d) =>
+            d.id === managerDept.id
+              ? { ...d, managerId, manager: manager ? { id: manager.id, name: manager.name } : null }
+              : d,
+          ),
+        );
+      }
+      return result;
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+      return { success: false, error: "" };
     }
-    return result;
   };
 
   return (
@@ -201,8 +224,9 @@ export function DepartmentsClient({
           {
             key: "managerId",
             label: "部门负责人",
-            type: "select",
+            type: "searchSelect",
             placeholder: "选择部门负责人",
+            searchPlaceholder: "输入姓名或工号搜索",
             options: managerOptions,
             optional: true,
             hint: "选择该部门主管；留空可清除负责人",

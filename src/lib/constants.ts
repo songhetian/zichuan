@@ -9,6 +9,7 @@ export const ASSET_STATUS_LABEL_MAP: Record<string, string> = {
   IN_USE: "在用",
   IN_MAINTENANCE: "维修中",
   SCRAPPED: "报废",
+  RESERVED: "预占",
 };
 
 /** 资产状态 → ECharts 颜色（暖纸·台账色系） */
@@ -18,6 +19,27 @@ export const ASSET_STATUS_COLOR_MAP: Record<string, string> = {
   IN_MAINTENANCE: "#b97a34",
   SCRAPPED: "#b3452e",
 };
+
+/**
+ * 配件层分类名（与「设备层」相对）
+ *
+ * 判据：不满足设备层三条判据中的任何一条 —— 即「装在主机里、无独立序列号、不单独走审批」的可插拔件。
+ * 清单与 CONTEXT.md「Device Layer / Component Layer」一节保持一致，由
+ * tests/laptop-monitor-detection.test.ts 的同步用例守着，改一处必须改另一处。
+ *
+ * 用途：Excel 导入时【只认】这些分类名的「{分类名}型号」列。用白名单而非「排除设备层」的黑名单，
+ * 是为了让清单外的列（「台式机型号」「规格型号」「设备型号」…）一律不被误当成配件。
+ */
+export const COMPONENT_LAYER_CATEGORIES = [
+  "CPU",
+  "内存",
+  "硬盘",
+  "主板",
+  "显卡",
+  "电源",
+  "键盘",
+  "鼠标",
+];
 
 /** 资产状态 → Badge className (用于 StatusBadge 组件) */
 export const ASSET_STATUS_BADGE_MAP: Record<string, { label: string; className: string }> = {

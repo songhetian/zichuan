@@ -277,6 +277,62 @@ describe("配件型号 CRUD", () => {
       expect(unwrapError(result)).toBeDefined();
     });
 
+    it("被设备模板引用时不能删除", async () => {
+      const cat = await createTestCategory();
+      const created = await createComponentModel({
+        name: "被模板引用",
+        categoryId: cat.id,
+      });
+
+      // 建一个设备模板并引用该型号（配置 BOM）
+      const assetCat = await prisma.assetCategory.create({
+        data: { name: "计算机设备", code: "DN" },
+      });
+      const tpl = await prisma.deviceTemplate.create({
+        data: { name: "标准办公电脑", categoryId: assetCat.id },
+      });
+      await prisma.templateComponent.create({
+        data: { templateId: tpl.id, modelId: unwrap(created).id, quantity: 1 },
+      });
+
+      const result = await deleteComponentModel(unwrap(created).id);
+
+      expect(result.success).toBe(false);
+      expect(unwrapError(result)).toContain("引用");
+      // 型号仍然存在
+      const still = await prisma.componentModel.findUnique({
+        where: { id: unwrap(created).id },
+      });
+      expect(still).not.toBeNull();
+    });
+
+    it("被设备配置引用时不能删除", async () => {
+      const cat = await createTestCategory();
+      const created = await createComponentModel({
+        name: "被设备引用",
+        categoryId: cat.id,
+      });
+
+      // 建一台设备并在其配置中引用该型号
+      const assetCat = await prisma.assetCategory.create({
+        data: { name: "计算机设备", code: "DN2" },
+      });
+      const tpl = await prisma.deviceTemplate.create({
+        data: { name: "标准办公电脑2", categoryId: assetCat.id },
+      });
+      const asset = await prisma.asset.create({
+        data: { assetNo: "DN-9001", name: "电脑9", templateId: tpl.id, status: "IDLE" },
+      });
+      await prisma.assetComponent.create({
+        data: { assetId: asset.id, modelId: unwrap(created).id, quantity: 1 },
+      });
+
+      const result = await deleteComponentModel(unwrap(created).id);
+
+      expect(result.success).toBe(false);
+      expect(unwrapError(result)).toContain("引用");
+    });
+
     it("ID 不存在时删除失败", async () => {
       const result = await deleteComponentModel(99999);
 

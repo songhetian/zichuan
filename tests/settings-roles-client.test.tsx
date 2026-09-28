@@ -16,15 +16,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/actions/admin.actions", () => ({
   getRoles: vi.fn(),
   updateRolePermissions: vi.fn(),
-  setRoleDepartmentScope: vi.fn(),
 }));
 
 const modules = PERMISSION_MODULES;
-
-const departments = [
-  { id: 1, name: "技术部" },
-  { id: 2, name: "财务部" },
-];
 
 const roles = [
   {
@@ -51,7 +45,7 @@ afterEach(() => {
 describe("角色权限管理界面", () => {
   it("渲染角色及其权限点名称", async () => {
     const user = userEvent.setup();
-    render(<RolesClient initialRoles={roles} modules={modules} departments={departments} />);
+    render(<RolesClient initialRoles={roles} modules={modules} />);
 
     expect(screen.getByText("普通员工")).toBeInTheDocument();
     await user.click(screen.getAllByTitle("编辑权限")[0]);
@@ -65,9 +59,8 @@ describe("角色权限管理界面", () => {
       success: true,
       data: { id: 2 },
     });
-    (adminActions.setRoleDepartmentScope as any).mockResolvedValue({ success: true, data: { id: 2 } });
     (adminActions.getRoles as any).mockResolvedValue({ success: true, data: roles });
-    render(<RolesClient initialRoles={roles} modules={modules} departments={departments} />);
+    render(<RolesClient initialRoles={roles} modules={modules} />);
 
     await user.click(screen.getAllByTitle("编辑权限")[1]);
 
@@ -83,33 +76,5 @@ describe("角色权限管理界面", () => {
       ]);
     });
     expect(adminActions.getRoles).toHaveBeenCalled();
-  });
-
-  it("数据范围：可选「指定部门」并勾选部门，保存时调用 setRoleDepartmentScope", async () => {
-    const user = userEvent.setup();
-    (adminActions.updateRolePermissions as any).mockResolvedValue({ success: true, data: {} });
-    (adminActions.setRoleDepartmentScope as any).mockResolvedValue({ success: true, data: {} });
-    (adminActions.getRoles as any).mockResolvedValue({ success: true, data: roles });
-    render(<RolesClient initialRoles={roles} modules={modules} departments={departments} />);
-
-    await user.click(screen.getAllByTitle("编辑权限")[0]);
-
-    // 默认「全部」
-    expect(screen.getByLabelText("数据范围-全部")).toBeChecked();
-
-    // 切换「指定部门」→ 出现部门勾选 → 选「技术部」
-    await user.click(screen.getByLabelText("数据范围-指定部门"));
-    const techCheckbox = screen.getByRole("checkbox", { name: "范围部门-技术部" });
-    await user.click(techCheckbox);
-    expect(techCheckbox).toBeChecked();
-
-    await user.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => {
-      expect(adminActions.setRoleDepartmentScope).toHaveBeenCalledWith(1, {
-        scope: "SPEC",
-        departmentIds: [1],
-      });
-    });
   });
 });

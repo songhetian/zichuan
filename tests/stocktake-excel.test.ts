@@ -304,6 +304,17 @@ describe("Excel 盘点对账", () => {
   });
 
   describe("importStocktakeFile — 组合 action（上传文件）", () => {
+    it("e0) 无 asset.manage 权限被拒（上传入口自身带权限校验）", async () => {
+      const { sessionId } = await seedStocktakeEnv();
+      const noPerm = await seedAccount("noperm2", "NO_PERM", []);
+      setTestUser(noPerm);
+      const buffer = buildExcelBuffer([{ "设备编号": "DN-0001", "实际状态": "盘亏" }]);
+      const r = await importStocktakeFile(sessionId, buffer);
+      expect(r.success).toBe(false);
+      if (r.success) return;
+      expect(r.error).toContain("权限");
+    });
+
     it("e) 上传中文 Excel → 对账 → 更新实际状态", async () => {
       const { assetMgr, a1, a2, sessionId } = await seedStocktakeEnv();
       setTestUser(assetMgr);

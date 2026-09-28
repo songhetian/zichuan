@@ -210,6 +210,9 @@ interface AssetItem {
   employeeId: number | null;
   employeeName: string | null;
   departmentName: string | null;
+  brand: string | null;
+  model: string | null;
+  serialNo: string | null;
   createdAt: Date | string;
   purchaseDate: Date | null;
   warrantyMonths: number | null;
@@ -221,7 +224,7 @@ interface AssetItem {
 
 interface AssetListClientProps {
   assets: AssetItem[];
-  templates: { id: number; name: string; components: { modelId: number; modelName: string; modelBrand: string | null; quantity: number }[] }[];
+  templates: { id: number; name: string; categoryId: number; brand?: string | null; model?: string | null; components: { modelId: number; modelName: string; modelBrand: string | null; quantity: number }[] }[];
   categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
   employees: { id: number; name: string; departmentName: string }[];
   departments: { id: number; name: string }[];
@@ -241,12 +244,18 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
+  const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
+  const [serialNo, setSerialNo] = useState("");
   const [notes, setNotes] = useState("");
   const { toast } = useToast();
 
   const handleOpen = (v: boolean) => {
     if (v && asset) {
       setName(asset.name);
+      setBrand(asset.brand ?? "");
+      setModel(asset.model ?? "");
+      setSerialNo(asset.serialNo ?? "");
       setNotes(asset.notes ?? "");
     }
     onOpenChange(v);
@@ -259,17 +268,25 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
       return;
     }
     setLoading(true);
-    const result = await updateAsset(asset.id, {
-      name: name.trim(),
-      notes: notes.trim() || null,
-    });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "更新成功" });
-      onOpenChange(false);
-      router.refresh();
-    } else {
-      toast({ title: "更新失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await updateAsset(asset.id, {
+        name: name.trim(),
+        brand: brand.trim() || null,
+        model: model.trim() || null,
+        serialNo: serialNo.trim() || null,
+        notes: notes.trim() || null,
+      });
+      if (result.success) {
+        toast({ title: "更新成功" });
+        onOpenChange(false);
+        router.refresh();
+      } else {
+        toast({ title: "更新失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -284,6 +301,20 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
           <div className="space-y-2">
             <Label>设备名称</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入设备名称" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>品牌</Label>
+              <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="选填，如 戴尔" />
+            </div>
+            <div className="space-y-2">
+              <Label>型号</Label>
+              <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="选填，如 U2723QE" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>序列号</Label>
+            <Input value={serialNo} onChange={(e) => setSerialNo(e.target.value)} placeholder="选填，设备序列号（不作唯一校验）" />
           </div>
           <div className="space-y-2">
             <Label>备注</Label>
@@ -318,6 +349,8 @@ function ActionButtons({
   const { toast } = useToast();
   const canEdit = usePermission("asset.device.update");
   const canDelete = usePermission("asset.device.delete");
+  // 分配/归还/调拨/送修/维修完成/报废在后端均要求 asset.manage
+  const canManage = usePermission("asset.manage");
   const [scrapOpen, setScrapOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
@@ -330,46 +363,55 @@ function ActionButtons({
   const [transferEmployeeId, setTransferEmployeeId] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 悬浮预览（300ms延迟）
-  const preview = useHoverPreview(300);
-
   const handleScrap = async () => {
-    const result = await scrapAssets({
-      assetIds: [asset.id],
-      operator: "admin",
-      remark: "手动报废",
-    });
-    if (result.success) {
-      toast({ title: "报废成功" });
-      router.refresh();
-    } else {
-      toast({ title: "报废失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await scrapAssets({
+        assetIds: [asset.id],
+        operator: "admin",
+        remark: "手动报废",
+      });
+      if (result.success) {
+        toast({ title: "报废成功" });
+        router.refresh();
+      } else {
+        toast({ title: "报废失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
     }
     setScrapOpen(false);
   };
 
   const handleDelete = async () => {
-    const result = await deleteAsset(asset.id);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      router.refresh();
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await deleteAsset(asset.id);
+      if (result.success) {
+        toast({ title: "删除成功" });
+        router.refresh();
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
     }
     setDeleteOpen(false);
   };
 
   const handleReturn = async () => {
-    const result = await returnAssets({
-      assetIds: [asset.id],
-      operator: "admin",
-      remark: "列表快捷归还",
-    });
-    if (result.success) {
-      toast({ title: "归还成功" });
-      router.refresh();
-    } else {
-      toast({ title: "归还失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await returnAssets({
+        assetIds: [asset.id],
+        operator: "admin",
+        remark: "列表快捷归还",
+      });
+      if (result.success) {
+        toast({ title: "归还成功" });
+        router.refresh();
+      } else {
+        toast({ title: "归还失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
     }
     setReturnOpen(false);
   };
@@ -377,47 +419,60 @@ function ActionButtons({
   const handleAllocate = async () => {
     if (!allocateEmployeeId) return;
     setLoading(true);
-    const result = await allocateAssets({
-      assetIds: [asset.id],
-      employeeId: Number(allocateEmployeeId),
-      operator: "admin",
-      remark: "列表快捷分配",
-    });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "分配成功" });
-      setAllocateOpen(false);
-      setAllocateEmployeeId("");
-      router.refresh();
-    } else {
-      toast({ title: "分配失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await allocateAssets({
+        assetIds: [asset.id],
+        employeeId: Number(allocateEmployeeId),
+        operator: "admin",
+        remark: "列表快捷分配",
+      });
+      if (result.success) {
+        toast({ title: "分配成功" });
+        setAllocateOpen(false);
+        setAllocateEmployeeId("");
+        router.refresh();
+      } else {
+        toast({ title: "分配失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleMaintenance = async () => {
-    const result = await maintenanceStart({
-      assetIds: [asset.id],
-      operator: "admin",
-    });
-    if (result.success) {
-      toast({ title: "送修成功" });
-      router.refresh();
-    } else {
-      toast({ title: "送修失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await maintenanceStart({
+        assetIds: [asset.id],
+        operator: "admin",
+      });
+      if (result.success) {
+        toast({ title: "送修成功" });
+        router.refresh();
+      } else {
+        toast({ title: "送修失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
     }
     setMaintenanceOpen(false);
   };
 
   const handleMaintenanceDone = async () => {
-    const result = await maintenanceComplete({
-      assetIds: [asset.id],
-      operator: "admin",
-    });
-    if (result.success) {
-      toast({ title: "维修完成" });
-      router.refresh();
-    } else {
-      toast({ title: "操作失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await maintenanceComplete({
+        assetIds: [asset.id],
+        operator: "admin",
+      });
+      if (result.success) {
+        toast({ title: "维修完成" });
+        router.refresh();
+      } else {
+        toast({ title: "操作失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
     }
     setMaintenanceCompleteOpen(false);
   };
@@ -425,60 +480,54 @@ function ActionButtons({
   const handleTransfer = async () => {
     if (!transferEmployeeId) return;
     setLoading(true);
-    const result = await transferAssets({
-      assetIds: [asset.id],
-      toEmployeeId: Number(transferEmployeeId),
-      operator: "admin",
-      remark: "列表快捷调拨",
-    });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "调拨成功" });
-      setTransferOpen(false);
-      setTransferEmployeeId("");
-      router.refresh();
-    } else {
-      toast({ title: "调拨失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await transferAssets({
+        assetIds: [asset.id],
+        toEmployeeId: Number(transferEmployeeId),
+        operator: "admin",
+        remark: "列表快捷调拨",
+      });
+      if (result.success) {
+        toast({ title: "调拨成功" });
+        setTransferOpen(false);
+        setTransferEmployeeId("");
+        router.refresh();
+      } else {
+        toast({ title: "调拨失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <>
       <div className="flex items-center gap-0.5 justify-center">
-        <Popover open={preview.isOpen} onOpenChange={() => {}}>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600"
-              title="查看配置"
-              aria-label="查看配置"
-              onClick={() => router.push(`/assets/${asset.id}`)}
-              onMouseEnter={preview.handleMouseEnter}
-              onMouseLeave={preview.handleMouseLeave}
-            >
-              <Eye className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-72 p-0"
-            side="left"
-            align="center"
-            onMouseEnter={preview.handleMouseEnter}
-            onMouseLeave={preview.handleMouseLeave}
-          >
-            <AssetPreviewContent asset={asset} />
-          </PopoverContent>
-        </Popover>
-        {canEdit && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:bg-blue-50 hover:text-blue-600" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-4 w-4" />
+        {canManage && asset.status === "IDLE" && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="分配" aria-label="分配" onClick={() => setAllocateOpen(true)}>
+            <UserPlus className="h-4 w-4" />
           </Button>
         )}
-        {canDelete && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="h-4 w-4" />
+        {canManage && asset.status === "IN_USE" && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="归还" aria-label="归还" onClick={() => setReturnOpen(true)}>
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        )}
+        {canManage && asset.status === "IN_MAINTENANCE" && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="维修完成" aria-label="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
+            <CheckCircle2 className="h-4 w-4" />
+          </Button>
+        )}
+        {canManage && asset.status === "IN_USE" && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-cyan-500 hover:bg-cyan-50 hover:text-cyan-600" title="调拨" aria-label="调拨" onClick={() => setTransferOpen(true)}>
+            <ArrowRightLeft className="h-4 w-4" />
+          </Button>
+        )}
+        {canManage && asset.status !== "SCRAPPED" && asset.status !== "IN_MAINTENANCE" && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-amber-500 hover:bg-amber-50 hover:text-amber-600" title="送修" aria-label="送修" onClick={() => setMaintenanceOpen(true)}>
+            <Wrench className="h-4 w-4" />
           </Button>
         )}
         <DropdownMenu>
@@ -487,35 +536,27 @@ function ActionButtons({
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-32">
-            {asset.status === "IDLE" && (
-              <DropdownMenuItem onSelect={() => setAllocateOpen(true)}>
-                <UserPlus className="mr-2 h-4 w-4 text-emerald-500" />分配
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem onSelect={() => router.push(`/assets/${asset.id}`)}>
+              <Eye className="mr-2 h-4 w-4 text-blue-500" />查看配置
+            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+                <Pencil className="mr-2 h-4 w-4 text-blue-500" />编辑
               </DropdownMenuItem>
             )}
-            {asset.status === "IN_USE" && (
-              <DropdownMenuItem onSelect={() => setReturnOpen(true)}>
-                <RotateCcw className="mr-2 h-4 w-4 text-emerald-500" />归还
-              </DropdownMenuItem>
-            )}
-            {asset.status === "IN_MAINTENANCE" && (
-              <DropdownMenuItem onSelect={() => setMaintenanceCompleteOpen(true)}>
-                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />维修完成
-              </DropdownMenuItem>
-            )}
-            {asset.status === "IN_USE" && (
-              <DropdownMenuItem onSelect={() => setTransferOpen(true)}>
-                <ArrowRightLeft className="mr-2 h-4 w-4 text-cyan-500" />调拨
-              </DropdownMenuItem>
-            )}
-            {(asset.status === "IDLE" || asset.status === "IN_USE") && (
-              <DropdownMenuItem onSelect={() => setMaintenanceOpen(true)}>
-                <Wrench className="mr-2 h-4 w-4 text-amber-500" />送修
-              </DropdownMenuItem>
-            )}
-            {asset.status !== "SCRAPPED" && (
+            <DropdownMenuSeparator />
+            {canManage && asset.status !== "SCRAPPED" && (
               <DropdownMenuItem onSelect={() => setScrapOpen(true)} className="text-orange-600 focus:text-orange-700">
                 <Ban className="mr-2 h-4 w-4" />报废
+              </DropdownMenuItem>
+            )}
+            {canDelete && (
+              <DropdownMenuItem
+                onSelect={() => setDeleteOpen(true)}
+                className="text-red-600 focus:text-red-700"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />删除
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -653,7 +694,7 @@ function AssetNoCell({ asset }: { asset: AssetItem }) {
     <Popover open={preview.isOpen} onOpenChange={() => {}}>
       <PopoverTrigger asChild>
         <div
-          className="text-left cursor-pointer group min-w-0"
+          className="text-center cursor-pointer group min-w-0"
           onClick={() => router.push(`/assets/${asset.id}`)}
           onMouseEnter={preview.handleMouseEnter}
           onMouseLeave={preview.handleMouseLeave}
@@ -707,7 +748,6 @@ function getColumns(
     },
     {
       accessorKey: "assetNo",
-      meta: { align: "left" as const },
       header: "编号/名称",
       size: 200,
       minSize: 180,
@@ -715,12 +755,28 @@ function getColumns(
     },
     {
       accessorKey: "categoryName",
-      meta: { align: "left" as const },
       header: "分类",
     },
     {
+      accessorKey: "brand",
+      header: "品牌",
+      size: 120,
+      cell: ({ row }) => row.original.brand || <span className="text-muted-foreground text-xs">-</span>,
+    },
+    {
+      accessorKey: "model",
+      header: "型号",
+      size: 140,
+      cell: ({ row }) => row.original.model || <span className="text-muted-foreground text-xs">-</span>,
+    },
+    {
+      accessorKey: "serialNo",
+      header: "序列号",
+      size: 150,
+      cell: ({ row }) => row.original.serialNo || <span className="text-muted-foreground text-xs">-</span>,
+    },
+    {
       id: "config",
-      meta: { align: "left" as const },
       header: "配置",
       enableSorting: false,
       size: 180,
@@ -733,7 +789,7 @@ function getColumns(
           return <span className="text-muted-foreground text-xs">-</span>;
         }
         return (
-          <div className="text-xs text-left whitespace-nowrap overflow-hidden text-ellipsis">
+          <div className="text-xs text-center whitespace-nowrap overflow-hidden text-ellipsis">
             <span className="text-foreground/80">{summary.cpu}</span>
             <span className="text-muted-foreground"> / {summary.memory} / {summary.disk}</span>
           </div>
@@ -764,7 +820,6 @@ function getColumns(
     },
     {
       accessorKey: "createdAt",
-      meta: { align: "left" as const },
       header: "创建时间",
       size: 170,
       cell: ({ row }) =>
@@ -774,8 +829,8 @@ function getColumns(
       id: "actions",
       meta: { align: "center" as const },
       header: "操作",
-      size: 200,
-      minSize: 180,
+      size: 176,
+      minSize: 168,
       cell: ({ row }) => {
         const asset = row.original;
         return <ActionButtons asset={asset} employees={employees} />;
@@ -797,7 +852,6 @@ interface AdvancedFilterBarProps {
   onEmployeeChange: (v: string) => void;
   onMemoryChange: (v: string) => void;
   onDiskChange: (v: string) => void;
-  onClear: () => void;
   departments: { id: number; name: string }[];
   employees: { id: number; name: string; departmentName: string }[];
 }
@@ -811,7 +865,6 @@ export function AdvancedFilterBar({
   onEmployeeChange,
   onMemoryChange,
   onDiskChange,
-  onClear,
   departments,
   employees,
 }: AdvancedFilterBarProps) {
@@ -855,16 +908,6 @@ export function AdvancedFilterBar({
         className="w-[120px]"
         min="0"
       />
-      {(departmentFilter !== "all" || employeeFilter !== "all" || memoryMinGB || diskMinGB) && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClear}
-        >
-          <X className="h-4 w-4 mr-1" />
-          清除筛选
-        </Button>
-      )}
     </>
   );
 }
@@ -886,6 +929,8 @@ export function AssetListClient({
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [employeeFilter, setEmployeeFilter] = useState<string>("all");
   const [keyword, setKeyword] = useState("");
+  // 默认收起低频列（序列号）。品牌/型号默认展示
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>(["serialNo"]);
   const [memoryMinGB, setMemoryMinGB] = useState<string>("");
   const [diskMinGB, setDiskMinGB] = useState<string>("");
   const [importFrom, setImportFrom] = useState<string>("");
@@ -910,16 +955,29 @@ export function AssetListClient({
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // 状态流转与批量流转动作在后端统一要求 asset.manage，前端同门控，避免无权限用户点了才报错
+  const canManage = usePermission("asset.manage");
+  const canDeleteAsset = usePermission("asset.device.delete");
 
   // 从 URL 参数初始化筛选状态
   useEffect(() => {
     const status = searchParams.get("status");
-    if (status && ["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED", "IN_STOCK"].includes(status)) {
+    if (status && ["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED", "RESERVED"].includes(status)) {
       setStatusFilter(status);
     }
   }, [searchParams]);
 
-  const columns = getColumns(employees);
+  const columns = getColumns(employees).filter((c) => {
+    const id = c.id ?? (c as { accessorKey?: string }).accessorKey ?? "";
+    return !hiddenColumns.includes(id);
+  });
+
+  // 列显隐控件（品牌 / 型号 / 序列号）
+  const columnControlOptions = [
+    { id: "brand", label: "品牌" },
+    { id: "model", label: "型号" },
+    { id: "serialNo", label: "序列号" },
+  ].map((opt) => ({ ...opt, visible: !hiddenColumns.includes(opt.id) }));
 
   // 构建部门名 -> ID 的映射，用于筛选
   const departmentNameMap = new Map(departments.map((d) => [d.name, d.id]));
@@ -939,6 +997,9 @@ export function AssetListClient({
       !keyword ||
       asset.assetNo.toLowerCase().includes(keyword.toLowerCase()) ||
       asset.name.toLowerCase().includes(keyword.toLowerCase()) ||
+      (asset.brand ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
+      (asset.model ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
+      (asset.serialNo ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
       (asset.employeeName ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
       asset.components.some((c) =>
         (c.modelName ?? "").toLowerCase().includes(keyword.toLowerCase()) ||
@@ -1007,6 +1068,9 @@ export function AssetListClient({
     name: asset.name,
     categoryName: asset.categoryName,
     templateName: asset.templateName,
+    brand: asset.brand ?? "",
+    model: asset.model ?? "",
+    serialNo: asset.serialNo ?? "",
     status: asset.status,
     employeeName: asset.employeeName,
     departmentName: asset.departmentName,
@@ -1018,6 +1082,9 @@ export function AssetListClient({
     { key: "name", label: "设备名称" },
     { key: "categoryName", label: "分类" },
     { key: "templateName", label: "模板" },
+    { key: "brand", label: "品牌" },
+    { key: "model", label: "型号" },
+    { key: "serialNo", label: "序列号" },
     { key: "status", label: "状态" },
     { key: "employeeName", label: "使用人" },
     { key: "departmentName", label: "部门" },
@@ -1097,21 +1164,26 @@ export function AssetListClient({
   const handleBatchAllocate = async () => {
     if (!batchAllocateEmployeeId || selectedAssets.length === 0) return;
     setBatchLoading(true);
-    const result = await allocateAssets({
-      assetIds: selectedAssets.map((a) => a.id),
-      employeeId: Number(batchAllocateEmployeeId),
-      operator: "admin",
-      remark: "批量分配",
-    });
-    setBatchLoading(false);
-    if (result.success) {
-      toast({ title: "批量分配成功" });
-      setBatchAllocateOpen(false);
-      setBatchAllocateEmployeeId("");
-      setSelectedAssets([]);
-      router.refresh();
-    } else {
-      toast({ title: "批量分配失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await allocateAssets({
+        assetIds: selectedAssets.map((a) => a.id),
+        employeeId: Number(batchAllocateEmployeeId),
+        operator: "admin",
+        remark: "批量分配",
+      });
+      if (result.success) {
+        toast({ title: "批量分配成功" });
+        setBatchAllocateOpen(false);
+        setBatchAllocateEmployeeId("");
+        setSelectedAssets([]);
+        router.refresh();
+      } else {
+        toast({ title: "批量分配失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -1119,19 +1191,24 @@ export function AssetListClient({
   const handleBatchReturn = async () => {
     if (selectedAssets.length === 0) return;
     setBatchLoading(true);
-    const result = await returnAssets({
-      assetIds: selectedAssets.map((a) => a.id),
-      operator: "admin",
-      remark: "批量归还",
-    });
-    setBatchLoading(false);
-    if (result.success) {
-      toast({ title: "批量归还成功" });
-      setBatchReturnOpen(false);
-      setSelectedAssets([]);
-      router.refresh();
-    } else {
-      toast({ title: "批量归还失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await returnAssets({
+        assetIds: selectedAssets.map((a) => a.id),
+        operator: "admin",
+        remark: "批量归还",
+      });
+      if (result.success) {
+        toast({ title: "批量归还成功" });
+        setBatchReturnOpen(false);
+        setSelectedAssets([]);
+        router.refresh();
+      } else {
+        toast({ title: "批量归还失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -1139,19 +1216,24 @@ export function AssetListClient({
   const handleBatchScrap = async () => {
     if (selectedAssets.length === 0) return;
     setBatchLoading(true);
-    const result = await scrapAssets({
-      assetIds: selectedAssets.map((a) => a.id),
-      operator: "admin",
-      remark: "批量报废",
-    });
-    setBatchLoading(false);
-    if (result.success) {
-      toast({ title: "批量报废成功" });
-      setBatchScrapOpen(false);
-      setSelectedAssets([]);
-      router.refresh();
-    } else {
-      toast({ title: "批量报废失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await scrapAssets({
+        assetIds: selectedAssets.map((a) => a.id),
+        operator: "admin",
+        remark: "批量报废",
+      });
+      if (result.success) {
+        toast({ title: "批量报废成功" });
+        setBatchScrapOpen(false);
+        setSelectedAssets([]);
+        router.refresh();
+      } else {
+        toast({ title: "批量报废失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -1159,21 +1241,26 @@ export function AssetListClient({
   const handleBatchTransfer = async () => {
     if (!batchTransferEmployeeId || selectedAssets.length === 0) return;
     setBatchLoading(true);
-    const result = await transferAssets({
-      assetIds: selectedAssets.map((a) => a.id),
-      toEmployeeId: Number(batchTransferEmployeeId),
-      operator: "admin",
-      remark: "批量调拨",
-    });
-    setBatchLoading(false);
-    if (result.success) {
-      toast({ title: "批量调拨成功" });
-      setBatchTransferOpen(false);
-      setBatchTransferEmployeeId("");
-      setSelectedAssets([]);
-      router.refresh();
-    } else {
-      toast({ title: "批量调拨失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await transferAssets({
+        assetIds: selectedAssets.map((a) => a.id),
+        toEmployeeId: Number(batchTransferEmployeeId),
+        operator: "admin",
+        remark: "批量调拨",
+      });
+      if (result.success) {
+        toast({ title: "批量调拨成功" });
+        setBatchTransferOpen(false);
+        setBatchTransferEmployeeId("");
+        setSelectedAssets([]);
+        router.refresh();
+      } else {
+        toast({ title: "批量调拨失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -1181,19 +1268,24 @@ export function AssetListClient({
   const handleBatchMaintenance = async () => {
     if (selectedAssets.length === 0) return;
     setBatchLoading(true);
-    const result = await maintenanceStart({
-      assetIds: selectedAssets.map((a) => a.id),
-      operator: "admin",
-      remark: "批量送修",
-    });
-    setBatchLoading(false);
-    if (result.success) {
-      toast({ title: "批量送修成功" });
-      setBatchMaintenanceOpen(false);
-      setSelectedAssets([]);
-      router.refresh();
-    } else {
-      toast({ title: "批量送修失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await maintenanceStart({
+        assetIds: selectedAssets.map((a) => a.id),
+        operator: "admin",
+        remark: "批量送修",
+      });
+      if (result.success) {
+        toast({ title: "批量送修成功" });
+        setBatchMaintenanceOpen(false);
+        setSelectedAssets([]);
+        router.refresh();
+      } else {
+        toast({ title: "批量送修失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -1203,12 +1295,21 @@ export function AssetListClient({
     setBatchLoading(true);
     let ok = 0;
     let fail = 0;
-    for (const a of selectedAssets) {
-      const r = await deleteAsset(a.id);
-      if (r.success) ok++;
-      else fail++;
+    try {
+      for (const a of selectedAssets) {
+        const r = await deleteAsset(a.id);
+        if (r.success) ok++;
+        else fail++;
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+      setBatchDeleteOpen(false);
+      setSelectedAssets([]);
+      router.refresh();
+      return;
+    } finally {
+      setBatchLoading(false);
     }
-    setBatchLoading(false);
     if (fail === 0) {
       toast({ title: `批量删除成功，共 ${ok} 台` });
     } else {
@@ -1262,61 +1363,67 @@ export function AssetListClient({
             已选择 {selectedAssets.length} 项
           </span>
           <div className="flex items-center gap-2 ml-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBatchAllocateOpen(true)}
-              disabled={batchLoading}
-            >
-              <UserPlus className="mr-1 h-3 w-3" />
-              批量分配
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBatchReturnOpen(true)}
-              disabled={batchLoading}
-            >
-              <RotateCcw className="mr-1 h-3 w-3" />
-              批量归还
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBatchTransferOpen(true)}
-              disabled={batchLoading}
-            >
-              <ArrowRightLeft className="mr-1 h-3 w-3" />
-              批量调拨
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBatchMaintenanceOpen(true)}
-              disabled={batchLoading}
-            >
-              <Wrench className="mr-1 h-3 w-3" />
-              批量送修
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBatchScrapOpen(true)}
-              disabled={batchLoading}
-            >
-              <Ban className="mr-1 h-3 w-3" />
-              批量报废
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setBatchDeleteOpen(true)}
-              disabled={batchLoading}
-              className="border-red-200 text-red-600 hover:bg-red-50"
-            >
-              <Trash2 className="mr-1 h-3 w-3" />
-              批量删除
-            </Button>
+            {canManage && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBatchAllocateOpen(true)}
+                  disabled={batchLoading}
+                >
+                  <UserPlus className="mr-1 h-3 w-3" />
+                  批量分配
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBatchReturnOpen(true)}
+                  disabled={batchLoading}
+                >
+                  <RotateCcw className="mr-1 h-3 w-3" />
+                  批量归还
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBatchTransferOpen(true)}
+                  disabled={batchLoading}
+                >
+                  <ArrowRightLeft className="mr-1 h-3 w-3" />
+                  批量调拨
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBatchMaintenanceOpen(true)}
+                  disabled={batchLoading}
+                >
+                  <Wrench className="mr-1 h-3 w-3" />
+                  批量送修
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBatchScrapOpen(true)}
+                  disabled={batchLoading}
+                >
+                  <Ban className="mr-1 h-3 w-3" />
+                  批量报废
+                </Button>
+              </>
+            )}
+            {canDeleteAsset && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBatchDeleteOpen(true)}
+                disabled={batchLoading}
+                className="border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="mr-1 h-3 w-3" />
+                批量删除
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -1332,7 +1439,7 @@ export function AssetListClient({
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="搜索编号、名称、使用人或配件型号..."
+            placeholder="搜索编号、名称、品牌、型号、序列号或使用人..."
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             className="pl-9 pr-8"
@@ -1358,7 +1465,7 @@ export function AssetListClient({
             { value: "IN_USE", label: "在用" },
             { value: "IN_MAINTENANCE", label: "维修中" },
             { value: "SCRAPPED", label: "报废" },
-            { value: "IN_STOCK", label: "库存" },
+            { value: "RESERVED", label: "预占" },
           ]}
         />
         <SearchableSelect
@@ -1398,15 +1505,43 @@ export function AssetListClient({
           onEmployeeChange={setEmployeeFilter}
           onMemoryChange={setMemoryMinGB}
           onDiskChange={setDiskMinGB}
-          onClear={() => {
-            setDepartmentFilter("all");
-            setEmployeeFilter("all");
-            setMemoryMinGB("");
-            setDiskMinGB("");
-          }}
           departments={departments}
           employees={employees}
         />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="h-8 ml-auto text-muted-foreground" title="设置表格显示列">
+              <Eye className="mr-1 h-3.5 w-3.5" />
+              列设置
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-56">
+            <div className="mb-1 px-1 text-xs font-medium text-muted-foreground">显示列</div>
+            <div className="space-y-0.5">
+              {columnControlOptions.map((opt) => (
+                <label
+                  key={opt.id}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent/40"
+                >
+                  <Checkbox
+                    aria-label={`列显隐-${opt.label}`}
+                    checked={opt.visible}
+                    onCheckedChange={(v) =>
+                      setHiddenColumns((prev) =>
+                        v
+                          ? prev.filter((id) => id !== opt.id)
+                          : prev.includes(opt.id)
+                          ? prev
+                          : [...prev, opt.id]
+                      )
+                    }
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
       <DataTable
         columns={columns}
@@ -1415,7 +1550,13 @@ export function AssetListClient({
         onRowSelectionChange={setSelectedAssets}
         defaultSorting={[{ id: "createdAt", desc: true }]}
       />
-      <CreateAssetDialog open={createOpen} onOpenChange={setCreateOpen} templates={templates} />
+      <CreateAssetDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        templates={templates}
+        categories={categories}
+        employees={employees}
+      />
 
       {/* 批量分配对话框 */}
       <Dialog open={batchAllocateOpen} onOpenChange={(v) => { if (!v) setBatchAllocateEmployeeId(""); setBatchAllocateOpen(v); }}>

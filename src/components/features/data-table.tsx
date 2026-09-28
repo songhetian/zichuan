@@ -111,7 +111,7 @@ export function DataTable<TData, TValue>({
               <TableRow key={headerGroup.id} className="group sticky top-0 z-10 bg-secondary/80 backdrop-blur-md border-b border-border/80">
                 {headerGroup.headers.map((header) => {
                   const align = (header.column.columnDef.meta as { align?: string } | undefined)?.align
-                  const alignClass = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"
+                  const alignClass = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
                   return (
                   <TableHead key={header.id} style={getColStyle(header.column)} className={`font-medium h-11 text-sm text-muted-foreground whitespace-nowrap ${alignClass}`}>
                     {header.isPlaceholder
@@ -119,10 +119,11 @@ export function DataTable<TData, TValue>({
                       : header.column.getCanSort() ? (
                           <button
                             onClick={header.column.getToggleSortingHandler()}
-                            className={`flex items-center gap-1 w-full h-full text-muted-foreground hover:text-foreground transition-colors ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}
+                            className={`relative flex items-center w-full h-full text-muted-foreground hover:text-foreground transition-colors ${align === "left" ? "justify-start" : align === "right" ? "justify-end" : "justify-center"}`}
                           >
                             <span className="whitespace-nowrap">{flexRender(header.column.columnDef.header, header.getContext())}</span>
-                            <ArrowUpDown className={`h-3 w-3 shrink-0 ${header.column.getIsSorted() === 'asc' ? 'rotate-0' : header.column.getIsSorted() === 'desc' ? 'rotate-180' : 'opacity-0 group-hover:opacity-50'}`} />
+                            {/* 排序图标绝对定位在列末尾，不占位，避免表头文字相对内容错位 */}
+                            <ArrowUpDown className={`absolute right-1 h-3 w-3 shrink-0 ${header.column.getIsSorted() === 'asc' ? 'rotate-0 opacity-100' : header.column.getIsSorted() === 'desc' ? 'rotate-180 opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
                           </button>
                         ) : (
                           flexRender(header.column.columnDef.header, header.getContext())
@@ -145,7 +146,7 @@ export function DataTable<TData, TValue>({
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef.meta as { align?: string } | undefined)?.align
-                        const alignClass = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"
+                        const alignClass = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
                         return (
                         <TableCell key={cell.id} style={getColStyle(cell.column)} className={`py-2.5 align-middle ${alignClass}`}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}

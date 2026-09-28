@@ -25,7 +25,7 @@ export function LoginForm() {
     setError("")
 
     if (!username.trim()) {
-      setError("请输入用户名")
+      setError("请输入工号")
       return
     }
     if (!password.trim()) {
@@ -38,7 +38,12 @@ export function LoginForm() {
       const result = await login({ username, password, remember })
       if (result.success) {
         authLogin(username)
-        router.push("/dashboard")
+        // 首次登录（默认密码）强制修改密码
+        if (result.data.mustChangePassword) {
+          router.replace("/force-password")
+        } else {
+          router.push("/dashboard")
+        }
       } else {
         setError(result.error)
       }
@@ -69,12 +74,12 @@ export function LoginForm() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">用户名</Label>
+              <Label htmlFor="username">工号</Label>
               <Input
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="请输入用户名"
+                placeholder="请输入工号"
               />
             </div>
             <div className="space-y-2">

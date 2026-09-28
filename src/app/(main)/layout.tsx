@@ -13,5 +13,10 @@ export default async function MainLayout({
     redirect("/login");
   }
 
+  // 首登强制改密：服务端守卫，禁止绕过 /force-password 直接进入系统
+  if (user.mustChangePassword) {
+    redirect("/force-password");
+  }
+
   return <MainLayoutClient username={user.username} userId={user.id}>{children}</MainLayoutClient>;
 }

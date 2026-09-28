@@ -67,7 +67,7 @@ async function seedApprovedReplace(opts?: {
       assetNo: "DN-0002",
       name: "待分配的备用电脑",
       templateId: template.id,
-      status: "IN_STOCK",
+      status: "IDLE",
       employeeId: null,
     },
   });
@@ -171,6 +171,24 @@ describe("待执行变更：executeReplaceChange（执行更换）", () => {
     expect(req.executedAt).not.toBeNull();
   });
 
+  it("原机无使用人时，新机回闲置池（不得出现「在用但无人」的矛盾态）", async () => {
+    const org = await seedApprovedReplace();
+    // 模拟管理员对闲置旧机发起更换：旧机无归属
+    await prisma.asset.update({
+      where: { id: org.oldAsset.id },
+      data: { employeeId: null, reservedFromStatus: "IDLE" },
+    });
+    await login(org.assetMgr);
+
+    const r = await executeReplaceChange(org.request.id, org.newAsset.id);
+    expect(r.success).toBe(true);
+
+    const newAfter = await prisma.asset.findUniqueOrThrow({ where: { id: org.newAsset.id } });
+    expect(newAfter.status).toBe("IDLE");
+    expect(newAfter.employeeId).toBeNull();
+    expect(newAfter.name).toBe("标准办公电脑");
+  });
+
   it("已执行后再次执行 → 拒绝（幂等）", async () => {
     const org = await seedApprovedReplace();
     await login(org.assetMgr);
@@ -202,7 +220,7 @@ describe("待执行变更：executeReplaceChange（执行更换）", () => {
     expect(r.error).toContain("不可用");
   });
 
-  it("无执行权限账号 → 拒绝执行", async () => {
+  it("非末节点角色账号 → 拒绝执行", async () => {
     const org = await seedApprovedReplace();
     const staff = await seedAccount("staff", "EMPLOYEE", ["approval.submit"]);
     await login(staff);
@@ -210,18 +228,18 @@ describe("待执行变更：executeReplaceChange（执行更换）", () => {
     const r = await executeReplaceChange(org.request.id, org.newAsset.id);
     expect(r.success).toBe(false);
     if (r.success) return;
-    expect(r.error).toContain("执行权限");
+    expect(r.error).toContain("不满足执行条件或已执行");
   });
 
-  it("仅有 asset.upgrade.execute 无 asset.replace.execute → 拒绝执行更换", async () => {
+  it("末节点角色之外的角色（UPGRADE_ONLY）→ 拒绝执行更换", async () => {
     const org = await seedApprovedReplace();
-    // 有升级执行权限，但未授予更换执行权限
-    const upgradeOnly = await seedAccount("upgradeonly", "UPGRADE_ONLY", ["asset.upgrade.execute"]);
+    // 更换单末节点角色为 ASSET_MANAGER，该账号角色 UPGRADE_ONLY → 角色不匹配被拒
+    const upgradeOnly = await seedAccount("upgradeonly", "UPGRADE_ONLY", []);
     await login(upgradeOnly);
 
     const r = await executeReplaceChange(org.request.id, org.newAsset.id);
     expect(r.success).toBe(false);
     if (r.success) return;
-    expect(r.error).toContain("执行权限");
+    expect(r.error).toContain("不满足执行条件或已执行");
   });
 });

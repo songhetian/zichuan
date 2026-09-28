@@ -24,13 +24,13 @@ describe("DataTable 列对齐", () => {
     cleanup()
   })
 
-  it("默认不强制 text-center，表头应由基础组件决定（默认左对齐）", () => {
+  it("默认表头居中对齐", () => {
     render(<DataTable columns={columns} data={data} />)
 
     const headers = screen.getAllByRole("columnheader")
     // "名称" 列头 — 取第一个 th 匹配
     const nameHeader = screen.getAllByText("名称")[0].closest("th")
-    expect(nameHeader?.className).not.toContain("text-center")
+    expect(nameHeader?.className).toContain("text-center")
   })
 
   it("meta.align 为 center 的列，表头应有 text-center", () => {
@@ -40,11 +40,11 @@ describe("DataTable 列对齐", () => {
     expect(statusHeader?.className).toContain("text-center")
   })
 
-  it("默认单元格不强制 text-center", () => {
+  it("默认单元格居中对齐", () => {
     render(<DataTable columns={columns} data={data} />)
 
     const cell = screen.getAllByText("测试设备")[0].closest("td")
-    expect(cell?.className).not.toContain("text-center")
+    expect(cell?.className).toContain("text-center")
   })
 
   it("meta.align 为 center 的列，单元格应有 text-center", () => {

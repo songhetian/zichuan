@@ -24,7 +24,7 @@ describe("SearchableSelect 搜索过滤", () => {
     expect(screen.getByText("闲置")).toBeDefined()
     expect(screen.getByText("维修中")).toBeDefined()
 
-    const searchInput = screen.getByPlaceholderText("全部状态（搜索）")
+    const searchInput = screen.getByPlaceholderText("搜索...")
     await user.type(searchInput, "维修")
 
     await waitFor(() => {
@@ -39,7 +39,7 @@ describe("SearchableSelect 搜索过滤", () => {
     render(<SearchableSelect options={options} value="" onValueChange={() => {}} placeholder="全部状态" emptyText="没有匹配的选项" />)
 
     await openSelect(user)
-    const searchInput = screen.getByPlaceholderText("全部状态（搜索）")
+    const searchInput = screen.getByPlaceholderText("搜索...")
     await user.type(searchInput, "不存在的词")
 
     await waitFor(() => {

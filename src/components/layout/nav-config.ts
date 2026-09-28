@@ -1,6 +1,6 @@
 import {
   Monitor, Cpu, Users, ClipboardList, Bell, ClipboardCheck,
-  Settings, FileText, LayoutDashboard, Package, Building2, ShieldCheck, UserCircle,
+  Settings, FileText, LayoutDashboard, Package, Building2, ShieldCheck, UserCircle, Warehouse,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react";
 
@@ -44,7 +44,6 @@ export const navItems: NavItem[] = [
       { href: "/assets", label: "设备列表", perm: "asset.device.view" },
       { href: "/lifecycle", label: "设备生命周期", perm: "asset.manage" },
       { href: "/templates", label: "设备模板", perm: "asset.template.view" },
-      { href: "/stock/in", label: "批量入库", perm: "asset.import.view" },
       { href: "/settings/asset-categories", label: "设备分类", perm: "asset.category.view" },
     ],
   },
@@ -56,10 +55,13 @@ export const navItems: NavItem[] = [
     children: [
       { href: "/components/models", label: "配件库存", perm: "asset.component.view" },
       { href: "/components/stock", label: "库存流水", perm: "asset.stockflow.view" },
+      { href: "/components/purchase-request", label: "加购配件", perm: "asset.purchase.view" },
+      { href: "/components/purchase", label: "采购留痕", perm: "asset.purchase.view" },
       { href: "/settings/component-categories", label: "配件分类", perm: "asset.compcategory.view" },
     ],
   },
   { href: "/stocktake", label: "库存盘点", icon: ClipboardCheck, perm: "asset.stocktake.view", section: "业务管理" },
+  { href: "/inventory", label: "库存分析", icon: Warehouse, perm: "asset.manage", section: "业务管理" },
   { href: "/employees", label: "员工管理", icon: Users, perm: "employee.view", section: "业务管理" },
   { href: "/settings/departments", label: "部门管理", icon: Building2, perm: "department.view", section: "业务管理" },
 
@@ -73,14 +75,15 @@ export const navItems: NavItem[] = [
       { href: "/approvals/new", label: "发起申请", perm: "approval.new.view" },
       { href: "/approvals/my", label: "我的申请", perm: "approval.my.view" },
       { href: "/approvals/todo", label: "我的待办", perm: "approval.todo.view" },
+      { href: "/approvals/done", label: "我办理的记录", perm: "approval.done.view" },
+      { href: "/approvals/cc", label: "我的抄送", perm: "approval.cc.view" },
       { href: "/approvals/execute", label: "待执行变更", perm: "asset.upgrade.view" },
     ],
   },
 
   // ==== 系统 ====
   { href: "/logs", label: "系统日志", icon: FileText, perm: "system.account.manage", section: "系统" },
-  { href: "/settings/users", label: "用户管理", icon: Users, perm: "user.view", section: "系统" },
-  { href: "/settings/roles", label: "角色权限", icon: ShieldCheck, perm: "role.view", section: "系统" },
+  { href: "/settings/roles", label: "角色权限", icon: ShieldCheck, perm: "system.account.manage", section: "系统" },
   { href: "/settings/account", label: "账号设置", icon: UserCircle, perm: undefined, section: "系统" },
   {
     href: "/settings",

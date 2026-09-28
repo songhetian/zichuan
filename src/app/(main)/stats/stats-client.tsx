@@ -4,6 +4,7 @@ import ReactECharts from "echarts-for-react";
 import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Monitor, Package, Wrench, Trash2, Users } from "lucide-react";
+import { getStatusLabel } from "@/lib/status-labels";
 
 interface AssetStats {
   total: number;
@@ -33,18 +34,12 @@ interface StatsClientProps {
   trendData: TrendData[];
 }
 
-const STATUS_LABEL_MAP: Record<string, string> = {
-  IDLE: "闲置",
-  IN_USE: "在用",
-  IN_MAINTENANCE: "维修中",
-  SCRAPPED: "报废",
-};
-
 const STATUS_COLOR_MAP: Record<string, string> = {
   IDLE: "#94a3b8",
   IN_USE: "#22c55e",
   IN_MAINTENANCE: "#eab308",
   SCRAPPED: "#ef4444",
+  RESERVED: "#8b5cf6",
 };
 
 function NoData() {
@@ -61,7 +56,7 @@ function PieChart({ assetStats }: { assetStats: AssetStats | null }) {
   const data = Object.entries(assetStats.byStatus)
     .filter(([, value]) => value > 0)
     .map(([key, value]) => ({
-      name: STATUS_LABEL_MAP[key] ?? key,
+      name: getStatusLabel(key),
       value,
       itemStyle: { color: STATUS_COLOR_MAP[key] ?? "#3b82f6" },
     }));

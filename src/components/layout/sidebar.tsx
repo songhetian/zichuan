@@ -140,10 +140,10 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
           </div>
           {!collapsed && (
             <div className="ml-3 min-w-0">
-              <p className="truncate font-display text-[15px] font-semibold leading-tight tracking-tight text-foreground">
+              <p className="truncate font-display text-[15px] leading-tight tracking-tight text-foreground">
                 资产管理系统
               </p>
-              <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
+              <p className="text-[10px] font-normal uppercase tracking-[0.18em] text-muted-foreground/60">
                 Asset Center
               </p>
             </div>
@@ -167,7 +167,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                             "flex w-full items-center justify-center rounded-lg p-2 transition-all duration-200",
                             isParentActive
                               ? "bg-primary/10 text-primary"
-                              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                              : "text-foreground/80 hover:bg-secondary hover:text-foreground"
                           )}
                         >
                           <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -187,8 +187,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                                 className={cn(
                                   "relative flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors duration-150",
                                   isChildActive
-                                    ? "bg-primary/10 font-medium text-primary"
-                                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                    ? "bg-primary/10 text-primary"
+                                    : "text-foreground/80 hover:bg-secondary hover:text-foreground"
                                 )}
                               >
                                 {isChildActive && (
@@ -213,7 +213,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                           "flex w-full items-center justify-center rounded-lg p-2 transition-all duration-200",
                           active
                             ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            : "text-foreground/80 hover:bg-secondary hover:text-foreground"
                         )}
                       >
                         <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -237,7 +237,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                     title={section}
                   >
                     <span className="h-[3px] w-[3px] rounded-full bg-primary/50" />
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/55">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
                       {section}
                     </span>
                     <span className="pointer-events-none h-px flex-1 bg-gradient-to-r from-border/80 to-transparent" />
@@ -257,8 +257,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                               className={cn(
                                 "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                                 isParentActive
-                                  ? "bg-primary/[0.07] font-semibold text-primary"
-                                  : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                                  ? "bg-primary/[0.07] text-primary"
+                                  : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
                               )}
                             >
                               {isParentActive && (
@@ -282,10 +282,10 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                                       key={child.href}
                                       href={child.href}
                                       className={cn(
-                                        "relative rounded-md px-3 py-[7px] text-[13px] transition-colors duration-150",
+                                        "relative rounded-md px-3 py-[7px] text-[13.5px] transition-colors duration-150",
                                         isChildActive
-                                          ? "font-medium text-primary"
-                                          : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                                          ? "text-primary"
+                                          : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
                                       )}
                                     >
                                       {isChildActive && (
@@ -308,8 +308,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                           className={cn(
                             "nav-enter group relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                             active
-                              ? "bg-primary/[0.07] font-semibold text-primary"
-                              : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                              ? "bg-primary/[0.07] text-primary"
+                              : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
                           )}
                           style={{ animationDelay: `${index * 0.03}s` }}
                         >
@@ -346,7 +346,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                 ) : (
                   <>
                     <PanelLeftClose className="h-4 w-4 shrink-0" />
-                    <span className="ml-2 text-sm whitespace-nowrap">收起菜单</span>
+                    <span className="ml-2 text-[13.5px] whitespace-nowrap">收起菜单</span>
                   </>
                 )}
               </Button>
@@ -382,7 +382,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
           <nav className="sidebar-nav flex flex-col gap-0.5">
             {groups.map(({ section, items }) => (
               <div key={section} className="flex flex-col">
-                <p className="mt-1 first:mt-0 mb-1 flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/55">
+                <p className="mt-1 first:mt-0 mb-1 flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
                   <span className="h-[3px] w-[3px] rounded-full bg-primary/50" />
                   {section}
                 </p>
@@ -399,8 +399,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                             className={cn(
                               "relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                               isParentActive
-                                ? "bg-primary/[0.07] font-semibold text-primary"
-                                : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                                ? "bg-primary/[0.07] text-primary"
+                                : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
                             )}
                           >
                             <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -422,10 +422,10 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                                     href={child.href}
                                     onClick={() => {}}
                                     className={cn(
-                                      "relative rounded-md px-3 py-[7px] text-[13px] transition-colors duration-150",
+                                      "relative rounded-md px-3 py-[7px] text-[13.5px] transition-colors duration-150",
                                       isChildActive
-                                        ? "font-medium text-primary"
-                                        : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                                        ? "text-primary"
+                                        : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
                                     )}
                                   >
                                     {isChildActive && (
@@ -450,8 +450,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                         className={cn(
                           "relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                           active
-                            ? "bg-primary/[0.07] font-semibold text-primary"
-                            : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
+                            ? "bg-primary/[0.07] text-primary"
+                            : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
                         )}
                       >
                         {active && (

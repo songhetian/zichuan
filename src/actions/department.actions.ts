@@ -20,7 +20,9 @@ const updateSchema = z.object({
 export async function createDepartment(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<{ id: number; name: string }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "department.create", "没有新增部门的权限");
+  if (denied) return denied;
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -122,7 +124,9 @@ export async function updateDepartment(
 export async function deleteDepartment(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "department.delete", "没有删除部门的权限");
+  if (denied) return denied;
 
   const existing = await prisma.department.findUnique({ where: { id } });
   if (!existing) {

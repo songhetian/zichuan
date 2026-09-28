@@ -210,6 +210,15 @@ export async function deleteComponentModel(
     return { success: false, error: "该型号有库存流水记录，无法删除" };
   }
 
+  // 检查是否被设备模板 BOM 或设备配置引用（外键为 Restrict，直接删会抛未捕获的 P2003）
+  const [templateRefCount, assetRefCount] = await Promise.all([
+    prisma.templateComponent.count({ where: { modelId: id } }),
+    prisma.assetComponent.count({ where: { modelId: id } }),
+  ]);
+  if (templateRefCount > 0 || assetRefCount > 0) {
+    return { success: false, error: "该型号已被设备模板或设备配置引用，无法删除" };
+  }
+
   // 删除型号（级联删除库存记录，由 Prisma onDelete 处理或手动删）
   await prisma.$transaction([
     prisma.componentStock.deleteMany({ where: { modelId: id } }),

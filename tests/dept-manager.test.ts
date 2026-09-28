@@ -10,7 +10,7 @@ import { setTestUser } from "@/lib/auth";
 
 describe("部门主管（M1：managerId 读写）", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin", permissions: ["department.update"] });
+    setTestUser({ id: 1, username: "admin", permissions: ["department.update", "department.create"] });
   });
 
   afterEach(() => {

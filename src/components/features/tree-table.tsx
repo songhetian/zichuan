@@ -183,7 +183,7 @@ export function TreeTable<T extends TreeNode>({
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  style={{ width: col.width, textAlign: col.align || "left" }}
+                  style={{ width: col.width, textAlign: col.align || "center" }}
                 >
                   {col.header}
                 </TableHead>
@@ -246,7 +246,7 @@ export function TreeTable<T extends TreeNode>({
                     {columns.map((col, idx) => (
                       <TableCell
                         key={col.key}
-                        style={{ width: col.width, textAlign: col.align || "left" }}
+                        style={{ width: col.width, textAlign: col.align || "center" }}
                       >
                         <span
                           style={{ paddingLeft: `${idx === 0 ? row._depth * 24 : 0}px` }}

@@ -71,17 +71,18 @@ export function buildCategoryByDepartmentData(
   return { departments, categories, matrix };
 }
 
+// 统一配色：与首页状态分布环状图同族（以主基调 #2455D9 打头，兼容亮/暗主题）
 const CATEGORY_PALETTE = [
-  "#0d9488", // teal-600
-  "#6366f1", // indigo-500
-  "#f59e0b", // amber-500
-  "#ef4444", // red-500
-  "#10b981", // emerald-500
-  "#8b5cf6", // violet-500
-  "#ec4899", // pink-500
-  "#14b8a6", // teal-500
-  "#f97316", // orange-500
-  "#3b82f6", // blue-500
+  "#2455D9", // 主基调蓝
+  "#0d9488", // teal
+  "#f59e0b", // amber
+  "#8b5cf6", // violet
+  "#ef4444", // red
+  "#0ea5e9", // sky
+  "#10b981", // emerald
+  "#f97316", // orange
+  "#64748b", // slate
+  "#ec4899", // pink
 ];
 
 export interface CategoryChartColors {
@@ -109,19 +110,24 @@ export function buildCategoryByDepartmentOption(
 ): Record<string, unknown> {
   const selectedIndex = category ? data.categories.indexOf(category) : -1;
 
-  const buildSeries = (cat: string, row: number[], index: number) => ({
+  const buildSeries = (cat: string, row: number[], index: number, isTop: boolean) => ({
     name: cat,
     type: "bar",
     stack: "total",
+    barMaxWidth: 42,
     emphasis: { focus: "series" },
-    itemStyle: { color: CATEGORY_PALETTE[index % CATEGORY_PALETTE.length] },
+    itemStyle: {
+      color: CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
+      // 仅最上层分段做圆角，堆叠柱视觉更利落
+      borderRadius: isTop ? [6, 6, 0, 0] : 0,
+    },
     data: row,
   });
 
   const series =
     selectedIndex >= 0
-      ? [buildSeries(data.categories[selectedIndex], data.matrix[selectedIndex] ?? [], selectedIndex)]
-      : data.categories.map((cat, i) => buildSeries(cat, data.matrix[i] ?? [], i));
+      ? [buildSeries(data.categories[selectedIndex], data.matrix[selectedIndex] ?? [], selectedIndex, true)]
+      : data.categories.map((cat, i) => buildSeries(cat, data.matrix[i] ?? [], i, i === data.categories.length - 1));
 
   return {
     tooltip: {

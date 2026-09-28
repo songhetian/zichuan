@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 
 const data = {
   total: 10,
-  byStatus: { IDLE: 2, IN_USE: 5, IN_MAINTENANCE: 1, SCRAPPED: 2, IN_STOCK: 0 },
+  byStatus: { IDLE: 2, IN_USE: 5, IN_MAINTENANCE: 1, SCRAPPED: 2 },
   categoryByDepartment: { departments: ["技术部"], categories: ["笔记本电脑"], matrix: [[3]] },
   recentLogs: [
     { id: 1, action: "ALLOCATED", assetNo: "DN-0001", operator: "admin", createdAt: new Date() },

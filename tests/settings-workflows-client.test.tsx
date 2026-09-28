@@ -47,6 +47,22 @@ const definitions = [
   },
 ];
 
+const scrapDefinitions = [
+  {
+    id: 9,
+    name: "资产报废流程",
+    version: 1,
+    status: "DRAFT",
+    publishedAt: null,
+    nodeCount: 2,
+  },
+];
+
+const summary = {
+  ASSET_UPGRADE: { total: 2, published: 1 },
+  ASSET_SCRAP: { total: 1, published: 1 },
+};
+
 const detail2 = {
   id: 2,
   name: "升级配件流程 v2",
@@ -84,14 +100,78 @@ const detail2 = {
   ],
 };
 
+const scrapDetail = {
+  id: 9,
+  name: "资产报废流程",
+  businessType: "ASSET_SCRAP",
+  version: 1,
+  status: "DRAFT",
+  publishedAt: null,
+  nodes: [
+    {
+      id: 91,
+      nodeKey: "n1",
+      name: "部门主管审批",
+      sortOrder: 0,
+      assigneeType: "DEPT_MANAGER",
+      assigneeUserId: null,
+      assigneeRole: null,
+      initiatorCanChoose: false,
+      multiMode: "ANY",
+      ccType: "INITIATOR",
+      ccUserIds: null,
+    },
+    {
+      id: 92,
+      nodeKey: "n2",
+      name: "资产管理员审批",
+      sortOrder: 1,
+      assigneeType: "ROLE",
+      assigneeUserId: null,
+      assigneeRole: "ASSET_MANAGER",
+      initiatorCanChoose: false,
+      multiMode: "ANY",
+      ccType: "NONE",
+      ccUserIds: null,
+    },
+  ],
+};
+
+/** 组件重构为「总览卡 + 详情」两段式：默认 mock 列表接口，进入某业务类型详情前调用 */
+function mockList() {
+  (workflowActions.getWorkflowDefinitions as any).mockImplementation((type?: string) =>
+    Promise.resolve({
+      success: true,
+      data: type === "ASSET_SCRAP" ? scrapDefinitions : definitions,
+    })
+  );
+  (workflowActions.getWorkflowConfigSummary as any).mockResolvedValue({
+    success: true,
+    data: summary,
+  });
+}
+
+/** 点击总览卡进入某业务类型的版本列表 */
+async function enterBiz(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(screen.getByRole("button", { name: new RegExp(label) }));
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
 describe("流程配置界面", () => {
-  it("渲染流程版本列表（名称/版本/状态徽标/节点数）", async () => {
+  it("渲染总览卡并可进入版本列表（名称/版本/状态徽标/节点数）", async () => {
+    const user = userEvent.setup();
+    mockList();
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
+
+    // 总览：各类业务类型卡
+    expect(screen.getByRole("button", { name: /升级配件/ })).toBeInTheDocument();
+
+    // 点击「升级配件」卡进入详情，渲染版本列表
+    await enterBiz(user, "升级配件");
 
     expect(screen.getByText("升级配件流程")).toBeInTheDocument();
     expect(screen.getByText("升级配件流程 v2")).toBeInTheDocument();
@@ -107,23 +187,14 @@ describe("流程配置界面", () => {
 
   it("新建版本：填名称后调用 createWorkflowDefinition（带默认节点）", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.createWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: { id: 3, name: "升级配件流程 v3", version: 3, status: "DRAFT" },
     });
-    (workflowActions.getWorkflowDefinitions as any).mockResolvedValue({
-      success: true,
-      data: definitions,
-    });
-    (workflowActions.getWorkflowConfigSummary as any).mockResolvedValue({
-      success: true,
-      data: {
-        ASSET_UPGRADE: { total: 2, published: 1 },
-        ASSET_SCRAP: { total: 1, published: 1 },
-      },
-    });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByRole("button", { name: "新建版本" }));
     await user.type(screen.getByLabelText("流程名称"), "升级配件流程 v3");
     await user.click(screen.getByRole("button", { name: "创建" }));
@@ -146,23 +217,14 @@ describe("流程配置界面", () => {
 
   it("新建版本：可选流程类型，且已配置类型显示提示", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.createWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: { id: 3, name: "资产报废流程 v1", version: 1, status: "DRAFT" },
     });
-    (workflowActions.getWorkflowDefinitions as any).mockResolvedValue({
-      success: true,
-      data: definitions,
-    });
-    (workflowActions.getWorkflowConfigSummary as any).mockResolvedValue({
-      success: true,
-      data: {
-        ASSET_UPGRADE: { total: 2, published: 1 },
-        ASSET_SCRAP: { total: 1, published: 1 },
-      },
-    });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByRole("button", { name: "新建版本" }));
     await user.click(screen.getByRole("combobox"));
     await user.click(await screen.findByRole("option", { name: "资产报废" }));
@@ -178,14 +240,16 @@ describe("流程配置界面", () => {
     });
   });
 
-  it("编辑：点击列表编辑加载并渲染节点链（审批人/抄送描述）", async () => {
+  it("编辑：点击版本卡加载并渲染节点链（审批人/抄送描述）", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
     });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
 
     await waitFor(() => {
@@ -201,6 +265,7 @@ describe("流程配置界面", () => {
 
   it("添加节点：填表单后调用 addWorkflowNode", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
@@ -211,6 +276,7 @@ describe("流程配置界面", () => {
     });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
     await screen.findByText("部门主管审批");
 
@@ -232,6 +298,7 @@ describe("流程配置界面", () => {
 
   it("删除节点：调用 removeWorkflowNode", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
@@ -242,6 +309,7 @@ describe("流程配置界面", () => {
     });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
     await screen.findByText("部门主管审批");
 
@@ -255,6 +323,7 @@ describe("流程配置界面", () => {
 
   it("编辑节点：可配置抄送规则并随保存提交 ccRules", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
@@ -263,18 +332,15 @@ describe("流程配置界面", () => {
       success: true,
       data: { id: 21 },
     });
-    (workflowActions.getWorkflowDefinition as any)
-      .mockResolvedValueOnce({ success: true, data: detail2 })
-      .mockResolvedValue({ success: true, data: detail2 });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
     await screen.findByText("部门主管审批");
 
     // 编辑首个节点（detail2.n1 历史 ccType=INITIATOR，会被自动迁移进 ccRules）
     await user.click(screen.getAllByTitle("编辑节点")[0]);
     await user.click(screen.getByRole("button", { name: "添加规则" }));
-    // 再加一条 ROLE 规则
     await user.click(screen.getByRole("button", { name: "添加规则" }));
     // cc 规则类型下拉（SearchableSelect 无 aria-label，按文本内容取当前均为「发起人本人」的三条）
     const ruleTypeSelects = screen
@@ -306,42 +372,7 @@ describe("流程配置界面", () => {
 
   it("报废流程草稿：节点页具备拖拽排序源 + 编辑/删除按钮（与其他类型一致）", async () => {
     const user = userEvent.setup();
-    const scrapDetail = {
-      id: 9,
-      name: "资产报废流程",
-      businessType: "ASSET_SCRAP",
-      version: 1,
-      status: "DRAFT",
-      publishedAt: null,
-      nodes: [
-        {
-          id: 91,
-          nodeKey: "n1",
-          name: "部门主管审批",
-          sortOrder: 0,
-          assigneeType: "DEPT_MANAGER",
-          assigneeUserId: null,
-          assigneeRole: null,
-          initiatorCanChoose: false,
-          multiMode: "ANY",
-          ccType: "INITIATOR",
-          ccUserIds: null,
-        },
-        {
-          id: 92,
-          nodeKey: "n2",
-          name: "资产管理员审批",
-          sortOrder: 1,
-          assigneeType: "ROLE",
-          assigneeUserId: null,
-          assigneeRole: "ASSET_MANAGER",
-          initiatorCanChoose: false,
-          multiMode: "ANY",
-          ccType: "NONE",
-          ccUserIds: null,
-        },
-      ],
-    };
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: scrapDetail,
@@ -360,10 +391,11 @@ describe("流程配置界面", () => {
       />
     );
 
+    await enterBiz(user, "资产报废");
     await user.click(screen.getByText("资产报废流程"));
     await screen.findByText("部门主管审批");
 
-    // 节点侧具备拖拽排序源（⠿）与编辑/删除按钮
+    // 节点侧具备拖拽排序源（⠿）与编辑/删除按钮（报废非末节点锁定类型，2 个节点均可操作）
     expect(screen.getAllByTitle("拖拽排序").length).toBe(2);
     expect(screen.getAllByTitle("编辑节点").length).toBe(2);
     expect(screen.getAllByTitle("删除节点").length).toBe(2);
@@ -377,46 +409,51 @@ describe("流程配置界面", () => {
     });
   });
 
-  it("升级：末节点资产管理员被固定（徽标展示、删除/上移禁用、无拖拽把手）", async () => {
+  it("升级：末节点资产管理员不再固定，与其他节点同样可编辑（可拖拽、删除/上移可用、无徽标）", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
     });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
     await screen.findByText("部门主管审批");
 
-    // 末节点资产管理员卡片带徽标
-    expect(screen.getByText("末节点·资产管理员")).toBeInTheDocument();
+    // 不再出现「末节点·资产管理员」徽标
+    expect(screen.queryByText("末节点·资产管理员")).toBeNull();
 
-    // 仅首节点可拖拽（末节点固定，出现 1 个拖拽把手）
-    expect(screen.getAllByTitle("拖拽排序")).toHaveLength(1);
+    // 两个节点均有拖拽把手（末端不再固定）
+    expect(screen.getAllByTitle("拖拽排序")).toHaveLength(2);
 
-    // 末节点（资产管理员）上移/删除均禁用，首节点删除可用
+    // 末节点（资产管理员）与其他节点一样，上移/删除均可用
     const upButtons = screen.getAllByTitle("上移");
     const delButtons = screen.getAllByTitle("删除节点");
-    expect(upButtons[1]).toBeDisabled();
-    expect(delButtons[1]).toBeDisabled();
+    expect(upButtons[1]).not.toBeDisabled();
+    expect(delButtons[1]).not.toBeDisabled();
     expect(delButtons[0]).not.toBeDisabled();
   });
 
-  it("升级：编辑末节点资产管理员时审批人类型/角色锁定，但节点名称可编辑", async () => {
+  it("升级：编辑末节点资产管理员时审批人类型/角色可编辑（不再锁定），节点名称可编辑", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
     });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
     await screen.findByText("部门主管审批");
 
     await user.click(screen.getAllByTitle("编辑节点")[1]);
-    // 审批人类型/角色以固定文案呈现，而非可选择下拉
-    expect(screen.getByText(/按角色 · 资产管理员（末节点固定）/)).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /部门主管/ })).toBeNull();
+    // 审批人类型/角色以下拉呈现，而非「末节点固定」只读文案
+    expect(screen.queryByText(/末节点固定/)).toBeNull();
+    expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText("按角色（资产管理员）")).toBeInTheDocument();
     // 名称仍可编辑
     const nameInput = screen.getByLabelText("节点名称");
     await user.clear(nameInput);
@@ -426,6 +463,7 @@ describe("流程配置界面", () => {
 
   it("复制节点：调用 duplicateWorkflowNode", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.getWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: detail2,
@@ -436,6 +474,7 @@ describe("流程配置界面", () => {
     });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
 
+    await enterBiz(user, "升级配件");
     await user.click(screen.getByText("升级配件流程 v2"));
     await screen.findByText("部门主管审批");
 
@@ -448,15 +487,14 @@ describe("流程配置界面", () => {
 
   it("发布草稿版本：调用 publishWorkflowDefinition 并刷新列表", async () => {
     const user = userEvent.setup();
+    mockList();
     (workflowActions.publishWorkflowDefinition as any).mockResolvedValue({
       success: true,
       data: { id: 2, version: 2 },
     });
-    (workflowActions.getWorkflowDefinitions as any).mockResolvedValue({
-      success: true,
-      data: definitions,
-    });
     render(<WorkflowsClient initialDefinitions={definitions as never} />);
+
+    await enterBiz(user, "升级配件");
 
     await user.click(screen.getAllByTitle("发布")[0]);
 

@@ -24,7 +24,7 @@ import {
 import { ChevronRight, ChevronDown, FolderOpen, FileText, MousePointerClick } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { getRoles, updateRolePermissions, setRoleDepartmentScope } from "@/actions/admin.actions";
+import { getRoles, updateRolePermissions } from "@/actions/admin.actions";
 import { PermModule, PermPage } from "@/lib/permissions";
 
 type RoleRow = {
@@ -33,16 +33,11 @@ type RoleRow = {
   name: string;
   isSystem: boolean;
   permissions: string[];
-  departmentScope?: string;
-  departmentIds?: number[];
 };
-
-type Department = { id: number; name: string };
 
 type Props = {
   initialRoles: RoleRow[];
   modules: readonly PermModule[];
-  departments: Department[];
 };
 
 /** 某页面涉及的全部 key（页面级 + 操作级） */
@@ -92,12 +87,10 @@ function Row({
   );
 }
 
-export function RolesClient({ initialRoles, modules, departments }: Props) {
+export function RolesClient({ initialRoles, modules }: Props) {
   const [roles, setRoles] = useState(initialRoles);
   const [editing, setEditing] = useState<RoleRow | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
-  const [scope, setScope] = useState<"ALL" | "SPEC">("ALL");
-  const [scopeDeptIds, setScopeDeptIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [openModules, setOpenModules] = useState<Set<string>>(() => new Set(modules.map((m) => m.parentKey)));
   const { toast } = useToast();
@@ -136,15 +129,17 @@ export function RolesClient({ initialRoles, modules, departments }: Props) {
     moduleKeys(m).every((k) => checked.includes(k));
 
   const refresh = async () => {
-    const result = await getRoles();
-    if (result.success) setRoles(result.data);
+    try {
+      const result = await getRoles();
+      if (result.success) setRoles(result.data);
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
+    }
   };
 
   const openEdit = (role: RoleRow) => {
     setEditing(role);
     setChecked(role.permissions);
-    setScope(role.departmentScope === "SPEC" ? "SPEC" : "ALL");
-    setScopeDeptIds(role.departmentIds ?? []);
     setOpenModules(new Set(modules.map((m) => m.parentKey)));
   };
 
@@ -191,23 +186,19 @@ export function RolesClient({ initialRoles, modules, departments }: Props) {
   const handleSave = async () => {
     if (!editing) return;
     setSaving(true);
-    const [permRes, scopeRes] = await Promise.all([
-      updateRolePermissions(editing.id, checked),
-      setRoleDepartmentScope(editing.id, {
-        scope,
-        departmentIds: scope === "SPEC" ? scopeDeptIds : [],
-      }),
-    ]);
-    setSaving(false);
-    const failed = [permRes.success ? null : permRes.error, scopeRes.success ? null : scopeRes.error]
-      .filter(Boolean)
-      .join("；");
-    if (!failed) {
-      toast({ title: "保存成功" });
-      await refresh();
-      setEditing(null);
-    } else {
-      toast({ title: "保存失败", description: failed, variant: "destructive" });
+    try {
+      const permRes = await updateRolePermissions(editing.id, checked);
+      if (permRes.success) {
+        toast({ title: "保存成功" });
+        await refresh();
+        setEditing(null);
+      } else {
+        toast({ title: "保存失败", description: permRes.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -403,61 +394,6 @@ export function RolesClient({ initialRoles, modules, departments }: Props) {
                 </div>
               );
             })}
-          </div>
-          <div className="mb-2 rounded-md border border-primary/20 bg-primary/5 p-2.5">
-            <div className="text-sm font-medium">数据范围</div>
-            <div className="mt-1.5 flex items-center gap-4 text-sm">
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="radio"
-                  name="dept-scope"
-                  value="ALL"
-                  aria-label="数据范围-全部"
-                  checked={scope === "ALL"}
-                  onChange={() => {
-                    setScope("ALL");
-                    setScopeDeptIds([]);
-                  }}
-                />
-                全部
-              </label>
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="radio"
-                  name="dept-scope"
-                  value="SPEC"
-                  aria-label="数据范围-指定部门"
-                  checked={scope === "SPEC"}
-                  onChange={() => setScope("SPEC")}
-                />
-                指定部门
-              </label>
-            </div>
-            {scope === "SPEC" && (
-              <div className="mt-2 grid grid-cols-2 gap-1">
-                {departments.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">暂无部门，请先在部门管理中创建</span>
-                ) : (
-                  departments.map((d) => {
-                    const on = scopeDeptIds.includes(d.id);
-                    return (
-                      <label key={d.id} className="flex cursor-pointer items-center gap-1.5 text-sm">
-                        <Checkbox
-                          aria-label={`范围部门-${d.name}`}
-                          checked={on}
-                          onCheckedChange={() =>
-                            setScopeDeptIds((prev) =>
-                              on ? prev.filter((x) => x !== d.id) : [...prev, d.id]
-                            )
-                          }
-                        />
-                        {d.name}
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            )}
           </div>
           <div className="flex items-center justify-between border-t pt-3">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

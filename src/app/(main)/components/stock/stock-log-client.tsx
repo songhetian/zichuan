@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { ListSearchInput } from "@/components/ui/list-search-input";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
 import { filterItemsByText } from "@/lib/list-search";
@@ -141,23 +141,27 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
     }
 
     setLoading(true);
-    const result = await purchaseStockIn({
-      modelId: Number(selectedModelId),
-      quantity: qty,
-      operator: "admin",
-      remark: remark.trim() || undefined,
-    });
-    setLoading(false);
-
-    if (result.success) {
-      toast({ title: "入库成功" });
-      setPurchaseInOpen(false);
-      setSelectedModelId("");
-      setQuantity("");
-      setRemark("");
-      router.refresh();
-    } else {
-      toast({ title: "入库失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await purchaseStockIn({
+        modelId: Number(selectedModelId),
+        quantity: qty,
+        operator: "admin",
+        remark: remark.trim() || undefined,
+      });
+      if (result.success) {
+        toast({ title: "入库成功" });
+        setPurchaseInOpen(false);
+        setSelectedModelId("");
+        setQuantity("");
+        setRemark("");
+        router.refresh();
+      } else {
+        toast({ title: "入库失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -174,10 +178,15 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
         title="库存流水"
         description="配件库存的出入库记录"
         action={
-          <Button onClick={() => setPurchaseInOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            采购入库
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => router.push("/components/purchase-request")}>
+              发起加购
+            </Button>
+            <Button onClick={() => setPurchaseInOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              采购入库
+            </Button>
+          </div>
         }
       />
       <div className="flex items-center gap-2 flex-wrap">
@@ -200,21 +209,6 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
           options={typeOptions}
           triggerClassName="w-[160px]"
         />
-        {(search || modelFilter || typeFilter) && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setSearch("");
-              setModelFilter("");
-              setTypeFilter("");
-            }}
-          >
-            <X className="h-4 w-4 mr-1" />
-            重置
-          </Button>
-        )}
       </div>
       <DataTable columns={columns} data={filteredLogs} />
 

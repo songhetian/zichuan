@@ -46,7 +46,7 @@ async function setupExcelData() {
 
 describe("Excel 导出", () => {
   beforeEach(() => {
-    setTestUser({ id: 1, username: "admin" });
+    setTestUser({ id: 1, username: "admin", permissions: ["asset.manage", "system.account.manage"] });
   });
 
   afterEach(() => {
@@ -69,6 +69,61 @@ describe("Excel 导出", () => {
       const result = await exportAssetsToExcel();
       expect(result.success).toBe(true);
       // Buffer 可以存在但设备行数为 0
+    });
+
+    it("导出含品牌 / 型号 / 序列号列", async () => {
+      const { template } = await setupExcelData();
+      await prisma.asset.create({
+        data: {
+          assetNo: "XS-0001",
+          name: "张三的显示器",
+          templateId: template.id,
+          status: "IN_USE",
+          brand: "戴尔",
+          model: "U2723QE",
+          serialNo: "CN-0A1B2C3",
+        },
+      });
+
+      const result = await exportAssetsToExcel();
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      const wb = XLSX.read(Buffer.from(unwrap(result).buffer));
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
+      const monitor = rows.find((r) => r["设备编号"] === "XS-0001");
+
+      expect(monitor?.["品牌"]).toBe("戴尔");
+      expect(monitor?.["型号"]).toBe("U2723QE");
+      expect(monitor?.["序列号"]).toBe("CN-0A1B2C3");
+    });
+
+    it("按字段选择导出时可单独选品牌 / 型号 / 序列号", async () => {
+      const { template } = await setupExcelData();
+      await prisma.asset.create({
+        data: {
+          assetNo: "XS-0002",
+          name: "李四的显示器",
+          templateId: template.id,
+          brand: "AOC",
+          model: "Q27G2S",
+          serialNo: "SN-0002",
+        },
+      });
+
+      const result = await exportAssetsToExcel(["assetNo", "brand", "serialNo"]);
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+
+      const wb = XLSX.read(Buffer.from(unwrap(result).buffer));
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws);
+      const monitor = rows.find((r) => r["设备编号"] === "XS-0002");
+
+      expect(monitor?.["品牌"]).toBe("AOC");
+      expect(monitor?.["序列号"]).toBe("SN-0002");
+      expect(monitor?.["型号"]).toBeUndefined();
     });
   });
 
@@ -112,6 +167,30 @@ describe("Excel 导出", () => {
       expect(row["部门"]).toBeUndefined();
       expect(row["电话"]).toBeUndefined();
       expect(row["邮箱"]).toBeUndefined();
+    });
+  });
+
+  describe("导出权限校验（无权限一律拒绝）", () => {
+    beforeEach(() => {
+      setTestUser({ id: 99999, username: "no-perm", permissions: [] });
+    });
+
+    it("无 asset.device.export 权限时导出设备被拒", async () => {
+      const r = await exportAssetsToExcel();
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error).toContain("权限");
+    });
+
+    it("无 asset.component.view 权限时导出配件被拒", async () => {
+      const r = await exportComponentsToExcel();
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error).toContain("权限");
+    });
+
+    it("无 employee.view 权限时导出员工被拒", async () => {
+      const r = await exportEmployeesToExcel();
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error).toContain("权限");
     });
   });
 });

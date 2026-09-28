@@ -7,15 +7,22 @@ import { Prisma } from "@prisma/client";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { computeAssetCapacities } from "@/lib/asset-capacity";
 import { requireAuth } from "@/lib/auth";
-import { guardPermission, hasPermission, resolveRoleDepartmentScope } from "@/lib/permissions";
+import { guardPermission, resolveAssetScope } from "@/lib/permissions";
+import { consumeBomStock, INSUFFICIENT_STOCK_PREFIX } from "@/lib/bom-stock";
 
 // ============================================================
 // Schema 校验
 // ============================================================
 
+// 模板必选：模板的 BOM 决定每台设备消耗哪些配件（用于扣减配件库存），也决定编号前缀。
+// 无 BOM 的外设（显示器/打印机/交换机）用一个空配件清单的模板即可。
+// 设备名称由系统维护，不接受人工输入：不填使用人即入闲置池（名称取模板名），填了则直接改为「{使用人}的{设备分类}」。
 const createSchema = z.object({
-  templateId: z.number(),
-  name: z.string().min(1, "设备名称不能为空"),
+  templateId: z.number({ required_error: "请选择设备模板" }),
+  quantity: z.number().int().min(1, "数量至少为 1").optional(),
+  // 使用人：填了即建档即分配（状态「在用」），不填则直接进闲置池（状态「闲置」）等待后续分配
+  employeeId: z.number().int().positive().optional(),
+  serialNo: z.string().optional(),
   location: z.string().optional(),
   purchaseDate: z.string().optional(),
   warrantyMonths: z.number().int().optional(),
@@ -25,6 +32,9 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(1, "设备名称不能为空").optional(),
+  brand: z.string().optional().nullable(),
+  model: z.string().optional().nullable(),
+  serialNo: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
   purchaseDate: z.string().optional().nullable(),
   warrantyMonths: z.number().int().optional().nullable(),
@@ -32,7 +42,7 @@ const updateSchema = z.object({
 });
 
 const querySchema = z.object({
-  status: z.enum(["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED", "IN_STOCK"]).optional(),
+  status: z.enum(["IDLE", "IN_USE", "IN_MAINTENANCE", "SCRAPPED"]).optional(),
   categoryId: z.number().optional(),
   employeeId: z.number().optional(),
   keyword: z.string().optional(),
@@ -54,6 +64,9 @@ type AssetDetail = {
   employeeId: number | null;
   employeeName: string | null;
   departmentName: string | null;
+  brand: string | null;
+  model: string | null;
+  serialNo: string | null;
   location: string | null;
   purchaseDate: Date | null;
   warrantyMonths: number | null;
@@ -95,6 +108,9 @@ type PrismaAsset = {
   status: string;
   employeeId: number | null;
   employee?: { name: string; department?: { name: string } | null } | null;
+  brand: string | null;
+  model: string | null;
+  serialNo: string | null;
   location: string | null;
   purchaseDate: Date | null;
   warrantyMonths: number | null;
@@ -131,6 +147,9 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
       employeeId: null,
       employeeName: null,
       departmentName: null,
+      brand: null,
+      model: null,
+      serialNo: null,
       location: null,
       purchaseDate: null,
       warrantyMonths: null,
@@ -152,6 +171,9 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
     employeeId: asset.employeeId,
     employeeName: asset.employee?.name ?? null,
     departmentName: asset.employee?.department?.name ?? null,
+    brand: asset.brand ?? null,
+    model: asset.model ?? null,
+    serialNo: asset.serialNo ?? null,
     location: asset.location ?? null,
     purchaseDate: asset.purchaseDate ?? null,
     warrantyMonths: asset.warrantyMonths ?? null,
@@ -178,22 +200,21 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
 }
 
 // ============================================================
-// Helpers
-// ============================================================
-
-const batchCreateSchema = z.object({
-  templateId: z.number().int().positive("模板ID必须为正整数"),
-  count: z.number().int().min(1, "数量至少为1"),
-  operator: z.string().min(1, "操作人不能为空"),
-});
-
-// ============================================================
 // Actions
 // ============================================================
 
+/**
+ * 按模板批量建档。
+ *
+ * - 模板必选：模板的 BOM 决定每台设备消耗哪些配件，也决定编号前缀。
+ * - quantity 决定一次生成几台，编号在事务内连续递增。
+ * - 配件库存按「每台用量 × 数量」原子扣减并写 ASSET_BUILD（组装设备出库）流水；
+ *   不足则整单拒绝 —— 不产生半台设备、不扣任何库存，提示按模板口径给出「最多可建几台」。
+ * - 设备名称由系统维护：不填使用人即入闲置池（状态「闲置」，名称取模板名）；填了则建档即分配，名称与状态一步到位。
+ */
 export async function createAsset(
   input: z.infer<typeof createSchema>
-): Promise<ActionResult<AssetDetail>> {
+): Promise<ActionResult<AssetDetail[]>> {
   const user = await requireAuth();
   const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
   if (denied) return denied;
@@ -203,80 +224,146 @@ export async function createAsset(
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
   }
 
-  const { templateId, name, location, purchaseDate, warrantyMonths, notes, operator } =
-    validated.data;
+  const {
+    templateId,
+    quantity = 1,
+    employeeId,
+    serialNo,
+    location,
+    purchaseDate,
+    warrantyMonths,
+    notes,
+    operator,
+  } = validated.data;
 
-  // 检查模板是否存在（含 BOM 配件清单）
   const template = await prisma.deviceTemplate.findUnique({
     where: { id: templateId },
-    include: {
-      category: true,
-      components: true,
-    },
+    include: { category: true, components: { include: { model: true } } },
   });
   if (!template) {
     return { success: false, error: "设备模板不存在" };
   }
 
+  // 使用人：填了即建档即分配，没填则直接进可分配池（闲置）
+  let assignee: { id: number; name: string } | null = null;
+  if (employeeId != null) {
+    assignee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, name: true },
+    });
+    if (!assignee) {
+      return { success: false, error: "使用人不存在" };
+    }
+  }
+  const assetName = assignee ? `${assignee.name}的${template.category.name}` : template.name;
+  const assetStatus = assignee ? "IN_USE" : "IDLE";
+
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      // 生成编号
-      const assetNo = await generateAssetNo(tx, template.category.code, template.category.numberingRule);
-
-      // 创建设备
-      const asset = await tx.asset.create({
-        data: {
-          assetNo,
-          name,
-          templateId,
-          status: "IDLE",
-          location: location ?? null,
-          purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
-          warrantyMonths: warrantyMonths ?? null,
-          notes: notes ?? null,
-        },
-      });
-
-      // 复制模板 BOM 配件到设备（仅记录配置，不扣减库存）
-      if (template.components.length > 0) {
-        await tx.assetComponent.createMany({
-          data: template.components.map((bom) => ({
-            assetId: asset.id,
-            modelId: bom.modelId,
-            quantity: bom.quantity,
-          })),
+    const assetIds = await prisma.$transaction(async (tx) => {
+      // 0) R4 唯一性校验：唯一分类设备同一员工至多持有 1 台（新建即分配 / 批量建档同样适用）
+      if (assignee && template.category.unique) {
+        const held = await tx.asset.count({
+          where: {
+            employeeId: assignee.id,
+            template: { categoryId: template.categoryId },
+            status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
+          },
         });
+        if (quantity > 1 || held > 0) {
+          throw new Error(`UNIQUE_VIOLATION:${template.category.name}`);
+        }
       }
 
-      // 记录生命周期日志
-      await tx.lifecycleLog.create({
-        data: {
-          assetId: asset.id,
-          action: "CREATED",
-          toStatus: "IDLE",
-          operator,
-          remark: `按模板 ${template.name} 生成`,
-        },
-      });
+      // 1) 按模板 BOM 出库配件（库存不足则整单拒绝）
+      await consumeBomStock(tx, template, quantity, operator);
 
-      return asset.id;
+      // 2) 逐台建档
+      const ids: number[] = [];
+      for (let i = 0; i < quantity; i++) {
+        const assetNo = await generateAssetNo(
+          tx,
+          template.category.code,
+          template.category.numberingRule
+        );
+
+        const asset = await tx.asset.create({
+          data: {
+            assetNo,
+            name: assetName,
+            templateId,
+            status: assetStatus,
+            employeeId: assignee?.id ?? null,
+            // 品牌/型号挂在模板上，建档统一带出，避免同类设备逐台重复登记
+            brand: template.brand,
+            model: template.model,
+            // 数量>1 为批量建档，序列号对每台唯一无意义：忽略入参统一置空（与前端禁用一致）
+            serialNo: quantity > 1 ? null : (serialNo ?? null),
+            location: location ?? null,
+            purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
+            warrantyMonths: warrantyMonths ?? null,
+            notes: notes ?? null,
+          },
+        });
+
+        // 复制模板 BOM 配件到设备
+        if (template.components.length > 0) {
+          await tx.assetComponent.createMany({
+            data: template.components.map((bom) => ({
+              assetId: asset.id,
+              modelId: bom.modelId,
+              quantity: bom.quantity,
+            })),
+          });
+        }
+
+        // 记录生命周期日志
+        await tx.lifecycleLog.create({
+          data: {
+            assetId: asset.id,
+            action: assignee ? "ALLOCATED" : "CREATED",
+            fromStatus: assignee ? "IDLE" : null,
+            toStatus: assetStatus,
+            employeeId: assignee?.id ?? null,
+            operator,
+            remark: assignee
+              ? `按模板 ${template.name} 建档并分配给 ${assignee.name}`
+              : `按模板 ${template.name} 生成并闲置`,
+          },
+        });
+
+        ids.push(asset.id);
+      }
+
+      return ids;
     });
 
     // 查询完整信息返回
-    const asset = await prisma.asset.findUnique({
-      where: { id: result },
+    const assets = (await prisma.asset.findMany({
+      where: { id: { in: assetIds } },
+      orderBy: { id: "asc" },
       include: {
         template: { select: { name: true, categoryId: true, category: { select: { name: true } } } },
+        employee: { select: { name: true } },
         components: {
           include: { model: { select: { name: true, brand: true, category: { select: { name: true } } } } },
         },
         lifecycleLogs: { orderBy: { createdAt: "desc" } },
       },
-    });
+    })) as unknown as PrismaAsset[];
 
-    return { success: true, data: formatAsset(asset) };
+    return { success: true, data: assets.map(formatAsset) };
   } catch (e) {
     if (e instanceof Error) {
+      if (e.message.startsWith(INSUFFICIENT_STOCK_PREFIX)) {
+        return { success: false, error: e.message.slice(INSUFFICIENT_STOCK_PREFIX.length) };
+      }
+      if (e.message.startsWith("UNIQUE_VIOLATION")) {
+        const categoryNames = e.message.split(":")[1] ?? "";
+        return {
+          success: false,
+          error: `唯一性约束：员工已拥有该分类（${categoryNames}）下的设备，不能重复建档分配`,
+        };
+      }
       if (e.message.includes("Unique constraint")) {
         return { success: false, error: "设备编号已存在，请重试" };
       }
@@ -296,27 +383,6 @@ export async function createAsset(
  * - 否则 dept.data.view 的部门主管/超管 → 仅本部门资产
  * - 否则→ 仅本人名下（asset.view.own），无员工身份则不可见
  */
-async function resolveAssetScope(
-  adminId: number
-): Promise<Prisma.AssetWhereInput | undefined> {
-  if (await hasPermission({ id: adminId }, "asset.manage")) {
-    const scope = await resolveRoleDepartmentScope({ id: adminId });
-    // 限定部门范围：仅该些部门员工持有的设备可操作（闲置/在库池不计入部门范围）
-    return scope === "ALL" ? undefined : { employee: { departmentId: { in: scope } } };
-  }
-  const me = await prisma.admin.findUnique({
-    where: { id: adminId },
-    select: {
-      employeeId: true,
-      employee: { select: { departmentId: true } },
-    },
-  });
-  if ((await hasPermission({ id: adminId }, "dept.data.view")) && me?.employee?.departmentId != null) {
-    return { employee: { departmentId: me.employee.departmentId } };
-  }
-  return { employeeId: me?.employeeId ?? -1 };
-}
-
 export async function getAssets(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<AssetDetail[]>> {
@@ -339,6 +405,9 @@ export async function getAssets(
     where.OR = [
       { assetNo: { contains: keyword } },
       { name: { contains: keyword } },
+      { brand: { contains: keyword } },
+      { model: { contains: keyword } },
+      { serialNo: { contains: keyword } },
     ];
   }
   // 数据范围过滤（越权防护）：asset.manage 全部；否则本部门数据可见 → 本部门；再否则仅本人名下
@@ -470,6 +539,9 @@ export async function updateAsset(
 
   const updateData: Record<string, unknown> = {};
   if (validated.data.name != null) updateData.name = validated.data.name;
+  if (validated.data.brand !== undefined) updateData.brand = validated.data.brand;
+  if (validated.data.model !== undefined) updateData.model = validated.data.model;
+  if (validated.data.serialNo !== undefined) updateData.serialNo = validated.data.serialNo;
   if (validated.data.location !== undefined) updateData.location = validated.data.location;
   if (validated.data.purchaseDate !== undefined) {
     updateData.purchaseDate = validated.data.purchaseDate ? new Date(validated.data.purchaseDate) : null;
@@ -522,6 +594,10 @@ export async function deleteAsset(
   if (!existing) {
     return { success: false, error: "设备不存在" };
   }
+  // 在途申请已预占该设备：删除会让审批执行时找不到设备（孤儿单），直接拒绝
+  if (existing.reservedByRequestId != null) {
+    return { success: false, error: "该设备存在在途申请（已预占），无法删除" };
+  }
 
   try {
     await prisma.asset.delete({ where: { id } });
@@ -531,101 +607,5 @@ export async function deleteAsset(
       return { success: false, error: "该设备有关联数据，无法删除" };
     }
     return { success: false, error: "删除设备失败，请稍后重试" };
-  }
-}
-
-export async function batchCreateAssets(
-  input: z.infer<typeof batchCreateSchema>
-): Promise<ActionResult<AssetDetail[]>> {
-  const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
-  if (denied) return denied;
-
-  const validated = batchCreateSchema.safeParse(input);
-  if (!validated.success) {
-    return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
-  }
-
-  const { templateId, count, operator } = validated.data;
-
-  // 检查模板是否存在（含 BOM 配件清单）
-  const template = await prisma.deviceTemplate.findUnique({
-    where: { id: templateId },
-    include: {
-      category: true,
-      components: true,
-    },
-  });
-  if (!template) {
-    return { success: false, error: "设备模板不存在" };
-  }
-
-  try {
-    const assetIds: number[] = [];
-
-    await prisma.$transaction(async (tx) => {
-      for (let i = 0; i < count; i++) {
-        // 生成编号
-        const assetNo = await generateAssetNo(
-          tx,
-          template.category.code,
-          template.category.numberingRule
-        );
-
-        // 创建设备（IN_STOCK 状态，不绑定员工）
-        const asset = await tx.asset.create({
-          data: {
-            assetNo,
-            name: template.name,
-            templateId,
-            status: "IN_STOCK",
-          },
-        });
-
-        // 复制模板 BOM 配件到设备（仅记录配置，不扣减库存）
-        if (template.components.length > 0) {
-          await tx.assetComponent.createMany({
-            data: template.components.map((bom) => ({
-              assetId: asset.id,
-              modelId: bom.modelId,
-              quantity: bom.quantity,
-            })),
-          });
-        }
-
-        // 记录生命周期日志
-        await tx.lifecycleLog.create({
-          data: {
-            assetId: asset.id,
-            action: "CREATED",
-            toStatus: "IN_STOCK",
-            operator,
-            remark: `批量入库：按模板 ${template.name} 生成`,
-          },
-        });
-
-        assetIds.push(asset.id);
-      }
-    });
-
-    // 查询完整信息返回
-    const assets = await prisma.asset.findMany({
-      where: { id: { in: assetIds } },
-      orderBy: { id: "asc" },
-      include: {
-        template: { select: { name: true, categoryId: true, category: { select: { name: true } } } },
-        employee: { select: { name: true } },
-        components: {
-          include: { model: { select: { name: true, brand: true, category: { select: { name: true } } } } },
-        },
-      },
-    });
-
-    return { success: true, data: assets.map(formatAsset) };
-  } catch (e) {
-    if (e instanceof Error && e.message.includes("Unique constraint")) {
-      return { success: false, error: "设备编号冲突，请重试" };
-    }
-    return { success: false, error: "批量入库失败，请稍后重试" };
   }
 }

@@ -283,3 +283,94 @@ describe("部门主管弹窗管理员工（本部门数据范围）", () => {
     expect(ids).not.toContain(opsEmp.id);
   });
 });
+
+// ============================================================
+// 部门范围口径：asset.manage / SPEC 走统一口径，非特权路径保持 fail-closed
+// ============================================================
+describe("部门范围统一口径（asset.manage / SPEC / fail-closed）", () => {
+  afterEach(() => setTestUser(null));
+  beforeEach(async () => {
+    await prisma.lifecycleLog.deleteMany();
+    await prisma.asset.deleteMany();
+    await prisma.employee.deleteMany();
+    await prisma.department.deleteMany();
+    await prisma.admin.deleteMany();
+    await prisma.rolePermission.deleteMany();
+    await prisma.role.deleteMany();
+  });
+
+  /** 建一个绑定到指定部门的账号（可指定账号级部门范围） */
+  async function seedBoundAdmin(
+    username: string,
+    perms: string[],
+    deptId: number,
+    scope?: "ALL" | "SPEC" | "EXACT"
+  ) {
+    const role = await seedRole(`ROLE_${username}`, perms);
+    const emp = await prisma.employee.create({
+      data: { employeeNo: `NO_${username}`, name: username, departmentId: deptId },
+    });
+    const admin = await prisma.admin.create({
+      data: {
+        username,
+        password: "x",
+        roleId: role.id,
+        employeeId: emp.id,
+        ...(scope ? { departmentScope: scope } : {}),
+      },
+    });
+    setTestUser({ id: admin.id, username, permissions: perms });
+    return { admin, emp };
+  }
+
+  it("资产管理员（asset.manage，未设 SPEC）：可在本部门操作员工（旧口径会被误拒）", async () => {
+    const { tech } = await seedDepts();
+    await seedBoundAdmin("am", ["asset.manage"], tech.id);
+
+    const r = await createDepartmentEmployee({ departmentId: tech.id, name: "本部门新员工" });
+    expect(r.success).toBe(true);
+    expect(unwrap(r).departmentId).toBe(tech.id);
+  });
+
+  it("资产管理员（asset.manage）：仍不可跨部门操作员工", async () => {
+    const { tech, ops } = await seedDepts();
+    await seedBoundAdmin("am2", ["asset.manage"], tech.id);
+
+    const r = await createDepartmentEmployee({ departmentId: ops.id, name: "外人" });
+    expect(r.success).toBe(false);
+    expect(unwrapError(r)).toContain("无权");
+  });
+
+  it("SPEC 为「本部门 + 扩展部门」追加语义：本人所属部门与勾选扩展部门都可操作", async () => {
+    const { tech, ops } = await seedDepts();
+    const { admin } = await seedBoundAdmin("am3", ["asset.manage"], tech.id, "SPEC");
+    // 仅勾选运营部作为扩展
+    await prisma.adminDepartment.create({ data: { adminId: admin.id, departmentId: ops.id } });
+
+    // 扩展部门可操作
+    const inOps = await createDepartmentEmployee({ departmentId: ops.id, name: "运营新员工" });
+    expect(inOps.success).toBe(true);
+    // 本人所属部门同样可操作（追加语义，旧「仅取扩展部门」会误拒）
+    const inTech = await createDepartmentEmployee({ departmentId: tech.id, name: "技术新员工" });
+    expect(inTech.success).toBe(true);
+  });
+
+  it("非特权账号（无 asset.manage / system.account.manage / dept.data.view）：即使绑了员工仍被拒（fail-closed）", async () => {
+    const { tech } = await seedDepts();
+    await seedBoundAdmin("plain2", [], tech.id);
+
+    const r = await createDepartmentEmployee({ departmentId: tech.id, name: "某人" });
+    expect(r.success).toBe(false);
+    expect(unwrapError(r)).toContain("没有本部门数据权限");
+  });
+
+  it("资产管理员无任何部门归属：回退「不限」（可操作任意部门）", async () => {
+    const { ops } = await seedDepts();
+    const role = await seedRole("ROLE_am4", ["asset.manage"]);
+    const admin = await prisma.admin.create({ data: { username: "am4", password: "x", roleId: role.id } });
+    setTestUser({ id: admin.id, username: "am4", permissions: ["asset.manage"] });
+
+    const r = await createDepartmentEmployee({ departmentId: ops.id, name: "任意部门新员工" });
+    expect(r.success).toBe(true);
+  });
+});

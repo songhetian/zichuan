@@ -48,6 +48,10 @@ const node = (over: Partial<WorkflowNodeInput> = {}): WorkflowNodeInput => ({
   ...over,
 });
 
+// 手动执行类型（升级/更换/维修）发布要求末节点为「按角色且指定角色」，否则发布被拒。
+const manualNode = (over: Partial<WorkflowNodeInput> = {}): WorkflowNodeInput =>
+  node({ name: "资产管理员终审", assigneeType: "ROLE", assigneeRole: "ASSET_MANAGER", ...over });
+
 describe("审批流程配置（M3：workflow.config.manage）", () => {
   beforeEach(async () => {
     await prisma.admin.deleteMany();
@@ -89,30 +93,27 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     expect(list.data[0].nodeCount).toBe(1);
   });
 
-  it("升级/降级流程新建时默认在最后追加资产管理员节点；既有资产管理员节点则不重复追加", async () => {
+  it("升级/降级流程新建时末节点保持用户配置（不再强制追加资产管理员）；报废流程一致", async () => {
     await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
 
-    // 未显式配置资产管理员 → 自动在最后追加
+    // 未显式配置资产管理员 → 不自动追加，末节点=用户配置
     const created = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
-      name: "自动补末节点",
+      name: "不自动补末节点",
       nodes: [node({ name: "部门主管" })],
     });
     if (!created.success) throw new Error(created.error);
     const detail = await getWorkflowDefinition(created.data.id);
     if (!detail.success) throw new Error(detail.error);
-    expect(detail.data.nodes).toHaveLength(2);
-    const last = detail.data.nodes[detail.data.nodes.length - 1];
-    expect(last.assigneeType).toBe("ROLE");
-    expect(last.assigneeRole).toBe("ASSET_MANAGER");
-    expect(last.sortOrder).toBe(detail.data.nodes[0].sortOrder + 1);
+    expect(detail.data.nodes).toHaveLength(1);
+    expect(detail.data.nodes[0].assigneeRole).not.toBe("ASSET_MANAGER");
 
-    // 已含资产管理员节点（无论位置）→ 不重复追加
+    // 显式含资产管理员节点 → 原样保留在配置位置，不额外追加
     const withAm = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "已有资产管理员",
       nodes: [
-        node({ name: "员工" }),
+        { name: "员工", assigneeType: "ROLE", assigneeRole: "EMPLOYEE" },
         { name: "资产管理员审批", assigneeType: "ROLE", assigneeRole: "ASSET_MANAGER" },
       ],
     });
@@ -120,6 +121,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const withAmDetail = await getWorkflowDefinition(withAm.data.id);
     if (!withAmDetail.success) throw new Error(withAmDetail.error);
     expect(withAmDetail.data.nodes).toHaveLength(2);
+    expect(withAmDetail.data.nodes[1].assigneeRole).toBe("ASSET_MANAGER");
 
     // 报废流程不受影响（不追加）
     const scrap = await createWorkflowDefinition({
@@ -157,7 +159,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     if (!created.success) throw new Error(created.error);
     const id = created.data.id;
 
-    // 追加节点（已含默认末尾资产管理员节点）
+    // 追加节点
     const added = await addWorkflowNode(id, node({ name: "审批三" }));
     expect(added.success).toBe(true);
 
@@ -168,38 +170,26 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     );
     expect(updated.success).toBe(true);
 
-    // 调序：把资产管理员末节点移到最前
+    // 调序：把末尾节点移到最前，顺序按给定值生效（不再强制回末位）
     const detail = await getWorkflowDefinition(id);
     if (!detail.success) throw new Error(detail.error);
-    const amNode = detail.data.nodes.find((n) => n.assigneeRole === "ASSET_MANAGER");
-    expect(amNode).toBeDefined();
-    if (!amNode) return;
-    const rest = detail.data.nodes.filter((n) => n.id !== amNode.id);
-    const reordered = await reorderWorkflowNodes(
-      id,
-      [amNode.id, ...rest.map((n) => n.id)]
-    );
+    const [first, second, third] = detail.data.nodes.map((n) => n.id);
+    const reordered = await reorderWorkflowNodes(id, [third, first, second]);
     expect(reordered.success).toBe(true);
 
     const after = await getWorkflowDefinition(id);
     if (!after.success) throw new Error(after.error);
-    // 不变式：即使尝试把资产管理员调至最前，其仍被强制回末位
-    const afterNames = after.data.nodes.map((n) => n.name);
-    expect(afterNames[0]).toBe("审批一");
-    expect(afterNames[afterNames.length - 1]).toBe("资产管理员审批");
-    expect(after.data.nodes[after.data.nodes.length - 1].nodeKey).toBe("n3");
-    expect(afterNames).toContain("审批三改名");
+    expect(after.data.nodes.map((n) => n.name)).toEqual(["审批三改名", "审批一", "审批二"]);
 
-    // 删除非末位节点（不变式仍保证末位=资产管理员）
-    const removed = await removeWorkflowNode(after.data.nodes[0].id);
+    // 删除非末位节点
+    const removed = await removeWorkflowNode(after.data.nodes[1].id);
     expect(removed.success).toBe(true);
     const final = await getWorkflowDefinition(id);
     if (!final.success) throw new Error(final.error);
-    expect(final.data.nodes).toHaveLength(3);
-    expect(final.data.nodes[final.data.nodes.length - 1].assigneeRole).toBe("ASSET_MANAGER");
+    expect(final.data.nodes).toHaveLength(2);
   });
 
-  it("复制节点：插入到原节点之后，字段一致，nodeKey 自增；资产管理员自动置为末位", async () => {
+  it("复制节点：插入到原节点之后，字段一致，nodeKey 自增", async () => {
     await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
     const created = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
@@ -212,11 +202,10 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     if (!created.success) throw new Error(created.error);
     const id = created.data.id;
 
-    // 不变式：显式前置的资产管理员被置为末位
+    // 节点顺序保留用户配置，不因资产管理员而重排
     const before = await getWorkflowDefinition(id);
     if (!before.success) throw new Error(before.error);
-    expect(before.data.nodes.map((n) => n.name)).toEqual(["审批二", "审批一"]);
-    expect(before.data.nodes[before.data.nodes.length - 1].assigneeRole).toBe("ASSET_MANAGER");
+    expect(before.data.nodes.map((n) => n.name)).toEqual(["审批一", "审批二"]);
     const sourceId = before.data.nodes[0].id;
 
     const dup = await duplicateWorkflowNode(sourceId);
@@ -224,64 +213,49 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
 
     const after = await getWorkflowDefinition(id);
     if (!after.success) throw new Error(after.error);
-    // 复制后紧邻原节点插入，字段与顺序正确；资产管理员仍在末位
-    expect(after.data.nodes.map((n) => n.name)).toEqual(["审批二", "审批二", "审批一"]);
+    // 复制后紧邻原节点插入，字段与顺序正确
+    expect(after.data.nodes.map((n) => n.name)).toEqual(["审批一", "审批一", "审批二"]);
     const dupNode = after.data.nodes[1];
     expect(dupNode.nodeKey).toBe("n3");
-    expect(dupNode.assigneeType).toBe("DEPT_MANAGER");
-    expect(after.data.nodes.map((n) => n.nodeKey)).toEqual(["n2", "n3", "n1"]);
+    expect(dupNode.assigneeType).toBe("ROLE");
+    expect(after.data.nodes.map((n) => n.nodeKey)).toEqual(["n1", "n3", "n2"]);
   });
 
-  it("升级/降级不变式：增删改重排后末节点始终是资产管理员；报废流程不受影响", async () => {
+  it("末节点不被强制为资产管理员：增删改重排后保持用户配置；报废流程一致", async () => {
     await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
     const created = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
-      name: "不变式流程",
+      name: "无不变式",
       nodes: [node({ name: "审批一" }), node({ name: "审批二" })],
     });
     if (!created.success) throw new Error(created.error);
     const id = created.data.id;
 
-    // 删除末位资产管理员 → 自动补齐一个
+    // 末节点保持用户配置（非资产管理员）
     let detail = await getWorkflowDefinition(id);
     if (!detail.success) throw new Error(detail.error);
-    const amNode = detail.data.nodes.find((n) => n.assigneeRole === "ASSET_MANAGER");
-    expect(amNode).toBeDefined();
-    const amCountBefore = detail.data.nodes.filter((n) => n.assigneeRole === "ASSET_MANAGER").length;
-    expect(amCountBefore).toBe(1);
-    const rm = await removeWorkflowNode(amNode!.id);
-    expect(rm.success).toBe(true);
-    detail = await getWorkflowDefinition(id);
-    if (!detail.success) throw new Error(detail.error);
-    const ams = detail.data.nodes.filter((n) => n.assigneeRole === "ASSET_MANAGER");
-    expect(ams).toHaveLength(1);
-    expect(detail.data.nodes[detail.data.nodes.length - 1].assigneeRole).toBe("ASSET_MANAGER");
+    expect(detail.data.nodes[detail.data.nodes.length - 1].assigneeRole).not.toBe("ASSET_MANAGER");
 
-    // 改走末位资产管理员 → 自动置回末位（不新增）
-    let amIdx = detail.data.nodes.findIndex((n) => n.assigneeRole === "ASSET_MANAGER");
-    const upd = await updateWorkflowNode(detail.data.nodes[amIdx].id, {
-      assigneeRole: "DEPT_MANAGER",
-    });
-    expect(upd.success).toBe(true);
-    detail = await getWorkflowDefinition(id);
-    if (!detail.success) throw new Error(detail.error);
-    const ams2 = detail.data.nodes.filter((n) => n.assigneeRole === "ASSET_MANAGER");
-    expect(ams2).toHaveLength(1);
-    expect(detail.data.nodes[detail.data.nodes.length - 1].assigneeRole).toBe("ASSET_MANAGER");
-
-    // 追加一个新节点 → 资产管理员仍在末位
+    // 追加新节点 → 末节点即新节点（不补资产管理员）
     const beforeAddCount = detail.data.nodes.length;
     const add = await addWorkflowNode(id, node({ name: "新末节点" }));
     expect(add.success).toBe(true);
     detail = await getWorkflowDefinition(id);
     if (!detail.success) throw new Error(detail.error);
     expect(detail.data.nodes).toHaveLength(beforeAddCount + 1);
-    expect(detail.data.nodes[detail.data.nodes.length - 1].assigneeRole).toBe("ASSET_MANAGER");
+    expect(detail.data.nodes[detail.data.nodes.length - 1].name).toBe("新末节点");
 
-    // 报废流程：删除非末位节点后不自动补资产管理员
+    // 删除末节点 → 不再自动补资产管理员
+    const rm = await removeWorkflowNode(detail.data.nodes[detail.data.nodes.length - 1].id);
+    expect(rm.success).toBe(true);
+    detail = await getWorkflowDefinition(id);
+    if (!detail.success) throw new Error(detail.error);
+    expect(detail.data.nodes.some((n) => n.assigneeRole === "ASSET_MANAGER")).toBe(false);
+
+    // 报废流程：删除节点后同样不补资产管理员
     const scrap = await createWorkflowDefinition({
       businessType: "ASSET_SCRAP",
-      name: "报废不变式对照",
+      name: "报废对照",
       nodes: [node({ name: "报废一" }), node({ name: "报废二" })],
     });
     if (!scrap.success) throw new Error(scrap.error);
@@ -300,7 +274,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const created = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "复制只读流程",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!created.success) throw new Error(created.error);
     const id = created.data.id;
@@ -318,6 +292,48 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     // 不存在的节点被拒
     const missing = await duplicateWorkflowNode(999999);
     expect(missing.success).toBe(false);
+  });
+
+  it("手动执行类型末节点非「按角色」：发布被拒（硬校验，防孤儿单）", async () => {
+    await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
+
+    // 末节点为部门主管（非按角色）→ finalNodeRole 为空，审批通过后无人可执行 → 拒绝发布
+    const bad = await createWorkflowDefinition({
+      businessType: "ASSET_UPGRADE",
+      name: "末节点非角色",
+      nodes: [node({ name: "部门主管审批", assigneeType: "DEPT_MANAGER" })],
+    });
+    if (!bad.success) throw new Error(bad.error);
+    const pubBad = await publishWorkflowDefinition(bad.data.id);
+    expect(pubBad.success).toBe(false);
+    if (pubBad.success) return;
+    expect(pubBad.error).toContain("末节点");
+    // 仍为草稿，未生效
+    const stillDraft = await getWorkflowDefinition(bad.data.id);
+    if (!stillDraft.success) throw new Error(stillDraft.error);
+    expect(stillDraft.data.status).toBe("DRAFT");
+
+    // 末节点为「按角色 + 具体角色」→ 可发布
+    const ok = await createWorkflowDefinition({
+      businessType: "ASSET_UPGRADE",
+      name: "末节点角色",
+      nodes: [manualNode()],
+    });
+    if (!ok.success) throw new Error(ok.error);
+    const pubOk = await publishWorkflowDefinition(ok.data.id);
+    expect(pubOk.success).toBe(true);
+  });
+
+  it("非手动执行类型（报废）末节点非角色也能发布", async () => {
+    await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
+    const scrap = await createWorkflowDefinition({
+      businessType: "ASSET_SCRAP",
+      name: "报废流程",
+      nodes: [node({ name: "部门主管审批", assigneeType: "DEPT_MANAGER" })],
+    });
+    if (!scrap.success) throw new Error(scrap.error);
+    const pub = await publishWorkflowDefinition(scrap.data.id);
+    expect(pub.success).toBe(true);
   });
 
   it("草稿不允许删空（至少保留 1 个审批节点）", async () => {
@@ -342,8 +358,8 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
   it("发布即切换生效版本：旧发布版自动归档，且同类型仅一个 PUBLISHED", async () => {
     await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
 
-    const v1 = await createWorkflowDefinition({ businessType: "ASSET_UPGRADE", name: "v1", nodes: [node()] });
-    const v2 = await createWorkflowDefinition({ businessType: "ASSET_UPGRADE", name: "v2", nodes: [node()] });
+    const v1 = await createWorkflowDefinition({ businessType: "ASSET_UPGRADE", name: "v1", nodes: [manualNode()] });
+    const v2 = await createWorkflowDefinition({ businessType: "ASSET_UPGRADE", name: "v2", nodes: [manualNode()] });
     if (!v1.success || !v2.success) throw new Error("创建失败");
 
     const p1 = await publishWorkflowDefinition(v1.data.id);
@@ -375,7 +391,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const created = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "发布后可编辑",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!created.success) throw new Error(created.error);
     const id = created.data.id;
@@ -395,8 +411,8 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
 
     const detail2 = await getWorkflowDefinition(id);
     if (!detail2.success) throw new Error(detail2.error);
-    // 原节点 + 自动追加的资产管理员末节点 + 新增节点
-    expect(detail2.data.nodes).toHaveLength(3);
+    // 原节点 + 新增节点（不再自动追加资产管理员）
+    expect(detail2.data.nodes).toHaveLength(2);
     expect(detail2.data.nodes.find((n) => n.id === nodeId)?.name).toBe("改名");
 
     const remove = await removeWorkflowNode(nodeId);
@@ -408,7 +424,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const v1 = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "归档可编辑",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!v1.success) throw new Error(v1.error);
     await publishWorkflowDefinition(v1.data.id);
@@ -417,7 +433,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const v2 = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "归档可编辑v2",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!v2.success) throw new Error(v2.error);
     await publishWorkflowDefinition(v2.data.id);
@@ -461,7 +477,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
   it("一键派生新版草稿：复制任意版本为更高版本号 DRAFT，节点深拷贝一致", async () => {
     await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
     const created = await createWorkflowDefinition({
-      businessType: "ASSET_UPGRADE",
+      businessType: "ASSET_SCRAP",
       name: "派生来源",
       nodes: [node({ name: "部门主管审批", ccType: "INITIATOR" })],
     });
@@ -478,11 +494,10 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
 
     const detail = await getWorkflowDefinition(dup.data.id);
     if (!detail.success) throw new Error(detail.error);
-    // 源节点 + 自动追加的资产管理员末节点
-    expect(detail.data.nodes).toHaveLength(2);
+    // 复制的节点与源一致，不再追加资产管理员末节点
+    expect(detail.data.nodes).toHaveLength(1);
     expect(detail.data.nodes[0].assigneeType).toBe("DEPT_MANAGER");
     expect(detail.data.nodes[0].ccType).toBe("INITIATOR");
-    expect(detail.data.nodes[1].assigneeRole).toBe("ASSET_MANAGER");
   });
 
   it("删除版本：在用（当前生效）不可删；草稿可直接删除", async () => {
@@ -490,7 +505,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const base = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "删除基线",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!base.success) throw new Error(base.error);
     await publishWorkflowDefinition(base.data.id);
@@ -522,7 +537,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const v1 = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "已引用流程 v1",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!v1.success) throw new Error(v1.error);
     await publishWorkflowDefinition(v1.data.id);
@@ -531,7 +546,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const v2 = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "已引用流程 v2",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!v2.success) throw new Error(v2.error);
     await publishWorkflowDefinition(v2.data.id);
@@ -558,7 +573,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const v1 = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "V1",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!v1.success) throw new Error(v1.error);
     await publishWorkflowDefinition(v1.data.id);
@@ -566,7 +581,7 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     const v2 = await createWorkflowDefinition({
       businessType: "ASSET_UPGRADE",
       name: "V2",
-      nodes: [node()],
+      nodes: [manualNode()],
     });
     if (!v2.success) throw new Error(v2.error);
     await publishWorkflowDefinition(v2.data.id);
@@ -600,5 +615,41 @@ describe("审批流程配置（M3：workflow.config.manage）", () => {
     await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
     const act = await activateWorkflowVersion(999999);
     expect(act.success).toBe(false);
+  });
+
+  it("SPECIFIC 抄送的 ccUserIds 在读写/改名/复制/派生后仍为数组（防双重编码丢抄送）", async () => {
+    await loginWithRole("SUPER_ADMIN", ["workflow.config.manage"]);
+    const created = await createWorkflowDefinition({
+      businessType: "ASSET_UPGRADE",
+      name: "抄送流程",
+      nodes: [node({ name: "主管", ccType: "SPECIFIC", ccUserIds: [11, 22] })],
+    });
+    if (!created.success) throw new Error(created.error);
+
+    // 读回应为数字数组（而非 JSON 字符串）
+    const detail = await getWorkflowDefinition(created.data.id);
+    if (!detail.success) throw new Error(detail.error);
+    expect(detail.data.nodes[0].ccUserIds).toEqual([11, 22]);
+
+    // 仅改名（不动抄送）后，ccUserIds 不应被清空或双重编码
+    const upd = await updateWorkflowNode(detail.data.nodes[0].id, { name: "主管改" });
+    expect(upd.success).toBe(true);
+    const afterUpdate = await getWorkflowDefinition(created.data.id);
+    if (!afterUpdate.success) throw new Error(afterUpdate.error);
+    expect(afterUpdate.data.nodes[0].ccUserIds).toEqual([11, 22]);
+
+    // 复制节点后抄送保持
+    const dup = await duplicateWorkflowNode(afterUpdate.data.nodes[0].id);
+    expect(dup.success).toBe(true);
+    const afterDup = await getWorkflowDefinition(created.data.id);
+    if (!afterDup.success) throw new Error(afterDup.error);
+    expect(afterDup.data.nodes[1].ccUserIds).toEqual([11, 22]);
+
+    // 整版派生（duplicateWorkflowDefinition）后抄送保持
+    const dupDef = await duplicateWorkflowDefinition(created.data.id);
+    if (!dupDef.success) throw new Error(dupDef.error);
+    const dupDetail = await getWorkflowDefinition(dupDef.data.id);
+    if (!dupDetail.success) throw new Error(dupDetail.error);
+    expect(dupDetail.data.nodes[0].ccUserIds).toEqual([11, 22]);
   });
 });

@@ -7,6 +7,7 @@ import { guardPermission } from "@/lib/permissions";
 import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { BOM_SUFFIX_SEPARATOR, bomFingerprint } from "@/lib/template-normalize";
+import { COMPONENT_LAYER_CATEGORIES } from "@/lib/constants";
 import type { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 
@@ -25,8 +26,11 @@ interface HardwareAssetInput {
   departmentName: string;   // 部门名称
   deviceName: string;       // 设备名称
   categoryName: string;     // 设备分类名称
-  categoryCode: string;     // 设备分类编号前缀
+  categoryCode?: string;    // 设备分类编号前缀；缺省时沿用已存在分类的 code，新建分类回退中性前缀
   components: HardwareComponent[];
+  brand?: string;           // 设备品牌（落在 Asset 自身字段）
+  model?: string;           // 设备型号（落在 Asset 自身字段）
+  serialNo?: string;        // 设备序列号（落在 Asset 自身字段）
 }
 
 interface ImportResult {
@@ -52,13 +56,16 @@ type Tx = Prisma.TransactionClient;
 async function getOrCreateAssetCategory(
   tx: Tx,
   name: string,
-  code: string
+  code?: string
 ): Promise<{ id: number; code: string; numberingRule: string | null }> {
   const existing = await tx.assetCategory.findUnique({ where: { name } });
   if (existing) return { id: existing.id, code: existing.code, numberingRule: existing.numberingRule };
 
-  const codeExists = await tx.assetCategory.findUnique({ where: { code } });
-  const finalCode = codeExists ? `${code}_${Date.now()}` : code;
+  // 来源未提供编号前缀（Excel 缺「设备分类编号」列）时用中性前缀，
+  // 不能写死「PC」——外设（显示器、打印机等）同样走设备层，挂到 PC 前缀上是错的
+  const requestedCode = code?.trim() || "EQ";
+  const codeExists = await tx.assetCategory.findUnique({ where: { code: requestedCode } });
+  const finalCode = codeExists ? `${requestedCode}_${Date.now()}` : requestedCode;
 
   const created = await tx.assetCategory.create({
     data: { name, code: finalCode },
@@ -97,6 +104,8 @@ async function getOrCreateComponentModel(
 
   if (existing) return existing.id;
 
+  // 迁移语义：自动导入新建的配件型号给一个名义库存 1（并记 PURCHASE_IN），
+  // 而非真实采购入库；复用已有型号则完全不动库存。切勿改为「按 BOM 扣减」——见下方 7.5 说明。
   const created = await tx.componentModel.create({
     data: {
       name,
@@ -316,7 +325,7 @@ export async function importAssetsAuto(
   input: { assets: HardwareAssetInput[] }
 ): Promise<ActionResult<ImportResult>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  const denied = await guardPermission(user, "asset.import.execute", "自动导入资产需要执行导入权限");
   if (denied) return denied;
 
   if (!input.assets || input.assets.length === 0) {
@@ -391,10 +400,16 @@ export async function importAssetsAuto(
             templateId: templateResult.id,
             status: "IN_USE",
             employeeId,
+            brand: row.brand || null,
+            model: row.model || null,
+            serialNo: row.serialNo || null,
           },
         });
 
         // 7.5 复制模板 BOM 配件到设备（记录配置，不扣减库存）
+        // 【有意为之，勿改为扣减】自动导入定位为「存量数据迁移」：这些配件原本就不在库存系统里，
+        // 若按 BOM 出库会遇到负库存并整批导入失败。故此处只落地配置，不写 ASSET_BUILD 流水。
+        // 与之相对，正常建档 createAsset / 批量入库走严格 BOM 出库（负库存整单拒绝），两条入口口径不同。
         if (componentMappings.length > 0) {
           await tx.assetComponent.createMany({
             data: componentMappings.map((c) => ({
@@ -474,41 +489,33 @@ interface ExcelAssetRow {
   "设备名称": string;
   "设备分类": string;
   "设备分类编号": string;
-  "CPU型号": string;
-  "CPU品牌": string;
-  "内存型号": string;
-  "内存品牌": string;
-  "硬盘型号": string;
-  "硬盘品牌": string;
-  "主板型号": string;
-  "主板品牌": string;
-  "显卡型号": string;
-  "显卡品牌": string;
-  // 多列格式支持
+  "品牌": string;
+  "型号": string;
+  "序列号": string;
+  // 配件列（{配件分类}型号 / {配件分类}N型号）与其余列均由白名单扫描读取
   [key: string]: string;
 }
 
-// 解析多列格式的配件（如 内存1型号/内存1品牌, 内存2型号/内存2品牌）
-function parseMultiColumnComponents(
-  row: Record<string, string>,
-  category: string
-): HardwareComponent[] {
+// 扫描配件列：只认配件层白名单 —— 列名形如「{配件分类}型号」「{配件分类}N型号」，
+// 且 {配件分类} 命中 COMPONENT_LAYER_CATEGORIES 才算配件；
+// 品牌取对应的「{配件分类}品牌」「{配件分类}N品牌」列（与列顺序一致，支持多内存/多硬盘）。
+// 白名单之外的列一律跳过：设备层的「显示器型号」，以及「台式机型号」「规格型号」这类非配件列，
+// 都不该在配件表里留下垃圾分类。
+function parseComponentColumns(row: Record<string, string>): HardwareComponent[] {
   const components: HardwareComponent[] = [];
 
-  // 先检查单列格式
-  const singleModel = String(row[`${category}型号`] ?? "").trim();
-  const singleBrand = String(row[`${category}品牌`] ?? "").trim();
-  if (singleModel) {
-    components.push({ category, name: singleModel, brand: singleBrand });
-  }
+  for (const key of Object.keys(row)) {
+    const match = key.match(/^(.+?)(\d*)型号$/);
+    if (!match) continue;
 
-  // 再检查多列格式（1, 2, 3...）
-  for (let i = 1; i <= 10; i++) {
-    const model = String(row[`${category}${i}型号`] ?? "").trim();
-    const brand = String(row[`${category}${i}品牌`] ?? "").trim();
-    if (model) {
-      components.push({ category, name: model, brand });
-    }
+    const [, category, index] = match;
+    if (!COMPONENT_LAYER_CATEGORIES.includes(category)) continue;
+
+    const name = String(row[key] ?? "").trim();
+    if (!name) continue;
+
+    const brand = String(row[`${category}${index}品牌`] ?? "").trim();
+    components.push({ category, name, brand });
   }
 
   return components;
@@ -517,7 +524,9 @@ function parseMultiColumnComponents(
 export async function importAssetsFromExcelAuto(
   input: { buffer: number[] }
 ): Promise<ActionResult<ImportResult>> {
-  await requireAuth();
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.import.execute", "自动导入资产需要执行导入权限");
+  if (denied) return denied;
 
   try {
     const fileBuffer = Buffer.from(input.buffer);
@@ -530,66 +539,64 @@ export async function importAssetsFromExcelAuto(
     }
 
     const hardwareAssets: HardwareAssetInput[] = [];
+    // 被跳过的行（缺使用人/部门、缺设备分类）统一收集，导入完成后回传给调用方展示
+    const skipped: string[] = [];
 
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 1;
+
       const employeeName = String(row["使用人"] ?? "").trim();
       const departmentName = String(row["部门"] ?? "").trim();
       const deviceName = String(row["设备名称"] ?? "").trim();
-      const categoryName = String(row["设备分类"] ?? "电脑主机").trim();
-      const categoryCode = String(row["设备分类编号"] ?? "PC").trim();
+      // 设备分类必填：不再默认「电脑主机」（外设也能作为设备导入）
+      const categoryName = String(row["设备分类"] ?? "").trim();
+      // 编号前缀留空交由分类层决定：已存在的分类沿用自身 code，新建分类回退中性前缀
+      const categoryCode = String(row["设备分类编号"] ?? "").trim();
 
       if (!employeeName || !departmentName) {
+        skipped.push(`第${rowNum}行：缺少使用人或部门，已跳过`);
+        continue;
+      }
+      if (!categoryName) {
+        skipped.push(`第${rowNum}行：缺少设备分类，已跳过`);
         continue;
       }
 
-      const components: HardwareComponent[] = [];
-
       const rowRecord = row as Record<string, string>;
-
-      const cpuModel = String(rowRecord["CPU型号"] ?? "").trim();
-      const cpuBrand = String(rowRecord["CPU品牌"] ?? "").trim();
-      if (cpuModel) {
-        components.push({ category: "CPU", name: cpuModel, brand: cpuBrand });
-      }
-
-      components.push(...parseMultiColumnComponents(rowRecord, "内存"));
-      components.push(...parseMultiColumnComponents(rowRecord, "硬盘"));
-      components.push(...parseMultiColumnComponents(rowRecord, "显示器"));
-
-      const mbModel = String(rowRecord["主板型号"] ?? "").trim();
-      const mbBrand = String(rowRecord["主板品牌"] ?? "").trim();
-      if (mbModel) {
-        components.push({ category: "主板", name: mbModel, brand: mbBrand });
-      }
-
-      const gpuModel = String(rowRecord["显卡型号"] ?? "").trim();
-      const gpuBrand = String(rowRecord["显卡品牌"] ?? "").trim();
-      if (gpuModel) {
-        components.push({ category: "显卡", name: gpuModel, brand: gpuBrand });
-      }
+      const components = parseComponentColumns(rowRecord);
 
       hardwareAssets.push({
         employeeName,
         departmentName,
-        deviceName: deviceName || `${employeeName}的电脑主机`,
+        deviceName: deviceName || `${employeeName}的${categoryName}`,
         categoryName,
         categoryCode,
         components,
+        brand: String(rowRecord["品牌"] ?? "").trim(),
+        model: String(rowRecord["型号"] ?? "").trim(),
+        serialNo: String(rowRecord["序列号"] ?? "").trim(),
       });
     }
 
     if (hardwareAssets.length === 0) {
-      const emptyRows = rows.filter(
-        (r) => !String(r["使用人"] ?? "").trim() || !String(r["部门"] ?? "").trim()
-      ).length;
-      if (emptyRows === rows.length) {
-        return { success: false, error: "所有行的使用人或部门字段为空，请检查Excel文件" };
-      } else {
-        return { success: false, error: `共 ${rows.length} 行，其中 ${emptyRows} 行使用人或部门为空，无法导入` };
-      }
+      return {
+        success: false,
+        error:
+          skipped.length > 0
+            ? `共 ${rows.length} 行，全部无法导入：${skipped.join("；")}`
+            : `共 ${rows.length} 行，没有可导入的数据`,
+      };
     }
 
-    return importAssetsAuto({ assets: hardwareAssets });
+    const result = await importAssetsAuto({ assets: hardwareAssets });
+    if (result.success && skipped.length > 0) {
+      return {
+        success: true,
+        data: { ...result.data, errors: [...skipped, ...result.data.errors] },
+      };
+    }
+    return result;
   } catch (e) {
     const message = e instanceof Error ? e.message : "Excel文件解析失败";
     return { success: false, error: cleanErrorMessage(message) };

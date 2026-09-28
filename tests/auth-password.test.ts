@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { setTestUser } from "@/lib/auth";
 import bcrypt from "bcryptjs";
-import { login, changePassword } from "@/actions/auth.actions";
+import { login, changePassword, forceChangePassword } from "@/actions/auth.actions";
+import { unwrapError } from "./helpers";
 
 /**
  * 登录切片（TDD 三连桩点）
@@ -103,5 +104,16 @@ describe("登录切片 三连桩点", () => {
     await setTestUser({ id: acc.id, username: acc.username });
     const r = await changePassword({ oldPassword: "wrong-old", newPassword: "NewPass2026!" });
     expect(r.success).toBe(false);
+  });
+
+  it("S3d forceChangePassword 仅允许 mustChangePassword=true 的账号调用", async () => {
+    // 未标记强制改密的账号直接调 forceChangePassword → 拒绝（服务端必须校验标记）
+    await seedAccount({ mustChangePassword: false });
+    const acc = await prisma.admin.findUniqueOrThrow({ where: { username: "E-10001" } });
+    await setTestUser({ id: acc.id, username: acc.username });
+
+    const r = await forceChangePassword({ newPassword: "NewPass2026!" });
+    expect(r.success).toBe(false);
+    expect(unwrapError(r)).toContain("强制");
   });
 });

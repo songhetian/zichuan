@@ -36,6 +36,7 @@ const BUSINESS_TYPE_LABEL: Record<string, string> = {
   ASSET_REPLACE: "更换",
   ASSET_REPAIR: "维修",
   ASSET_DEPART: "离职",
+  ASSET_PURCHASE: "加购",
 };
 
 const BUSINESS_TABS = [
@@ -56,21 +57,26 @@ export function MyRequestsClient() {
   const [type, setType] = useState("");
 
   const load = useCallback(async (bizType: string) => {
-    const result = await getMySubmittedRequests(
-      bizType ? (bizType as Parameters<typeof getMySubmittedRequests>[0]) : undefined
-    );
-    setLoading(false);
-    if (result.success) {
-      setItems(
-        result.data.map((r) => ({
-          ...r,
-          submittedAt: r.submittedAt instanceof Date ? r.submittedAt.toISOString() : r.submittedAt,
-          finishedAt:
-            r.finishedAt instanceof Date ? r.finishedAt.toISOString() : r.finishedAt,
-        }))
+    try {
+      const result = await getMySubmittedRequests(
+        bizType ? (bizType as Parameters<typeof getMySubmittedRequests>[0]) : undefined
       );
-    } else {
-      toast({ title: "加载失败", description: result.error, variant: "destructive" });
+      if (result.success) {
+        setItems(
+          result.data.map((r) => ({
+            ...r,
+            submittedAt: r.submittedAt instanceof Date ? r.submittedAt.toISOString() : r.submittedAt,
+            finishedAt:
+              r.finishedAt instanceof Date ? r.finishedAt.toISOString() : r.finishedAt,
+          }))
+        );
+      } else {
+        toast({ title: "加载失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   }, [toast]);
 

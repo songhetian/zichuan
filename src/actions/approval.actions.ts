@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
-import { guardPermission, hasPermission } from "@/lib/permissions";
+import { guardPermission, hasPermission, resolveDepartmentScope } from "@/lib/permissions";
 import { createNotifications, dedupeNotifications, NotificationItem } from "@/lib/notification";
 import { parseCcRules, CcRule } from "@/lib/cc-rules";
 import { pushNotificationLive } from "@/lib/socket-pusher";
@@ -19,6 +19,8 @@ import {
   repairPayloadSchema,
   departPayloadSchema,
   executeDepartOnApproval,
+  executePurchaseOnApproval,
+  purchasePayloadSchema,
 } from "@/lib/approval-execute";
 
 // ============================================================
@@ -45,8 +47,8 @@ const actSchema = z.object({
 
 const REQUEST_NO_PREFIX = "AP";
 
-/** 终审通过后由系统自动执行业务动作的类型（退回/报废）；其余为资产管理员手动执行 */
-const AUTO_EXECUTE_BUSINESS_TYPES = new Set(["ASSET_SCRAP", "ASSET_RETURN"]);
+/** 终审通过后由系统自动执行业务动作的类型（退回/报废/加购入库）；其余为资产管理员手动执行 */
+const AUTO_EXECUTE_BUSINESS_TYPES = new Set(["ASSET_SCRAP", "ASSET_RETURN", "ASSET_PURCHASE"]);
 
 /** 终审通过后进入「交接单对账」流程的业务类型：生成待对账单，对账无误后再回收设备 */
 const HANDOVER_BUSINESS_TYPES = new Set(["ASSET_DEPART"]);
@@ -171,12 +173,10 @@ async function canManageForEmployee(
 ): Promise<boolean> {
   if (await hasPermission(user, "system.account.manage")) return true;
   if (!(await hasPermission(user, "dept.data.view"))) return false;
-  const admin = await prisma.admin.findUnique({
-    where: { id: user.id },
-    include: { employee: { select: { managedDepartments: { select: { id: true } } } } },
-  });
-  const managed = admin?.employee?.managedDepartments?.map((d) => d.id) ?? [];
-  return employee.departmentId != null && managed.includes(employee.departmentId);
+  if (employee.departmentId == null) return false;
+  // 与 getApprovalDelegationTargets 同口径（账号级部门范围：本部门 + 扩展部门追加）
+  const scope = await resolveDepartmentScope(user);
+  return scope === "ALL" || scope.includes(employee.departmentId);
 }
 
 /**
@@ -321,7 +321,7 @@ function pushItems(items: NotificationItem[], requestId: number): void {
 
 export async function submitApprovalRequest(input: {
   title: string;
-  businessType?: "ASSET_UPGRADE" | "ASSET_SCRAP" | "ASSET_RETURN" | "ASSET_REPLACE" | "ASSET_REPAIR" | "ASSET_DEPART";
+  businessType?: "ASSET_UPGRADE" | "ASSET_SCRAP" | "ASSET_RETURN" | "ASSET_REPLACE" | "ASSET_REPAIR" | "ASSET_DEPART" | "ASSET_PURCHASE";
   payload: Record<string, unknown>;
   forEmployeeId?: number; // 主管代申：被代申员工的 id（缺省=本人发起）
 }): Promise<
@@ -349,12 +349,20 @@ export async function submitApprovalRequest(input: {
           ? repairPayloadSchema.safeParse(validated.data.payload)
           : businessType === "ASSET_DEPART"
             ? departPayloadSchema.safeParse(validated.data.payload)
-            : upgradePayloadSchema.safeParse(validated.data.payload);
+            : businessType === "ASSET_PURCHASE"
+              ? purchasePayloadSchema.safeParse(validated.data.payload)
+              : upgradePayloadSchema.safeParse(validated.data.payload);
   if (!payloadParsed.success) {
     return { success: false, error: payloadParsed.error.errors[0]?.message ?? "申请内容格式错误" };
   }
   // payload 存入 Json 列前做纯 JSON 化（丢弃 undefined 等非 JSON 值）
   const payloadJson = JSON.parse(JSON.stringify(validated.data.payload)) as Prisma.InputJsonValue;
+
+  // 「我办理的记录」按配件类型筛选：升级/加购 payload 带 componentCategoryId，冗余成列（MySQL 无法按 Json path 建索引）
+  const componentCategoryId =
+    businessType === "ASSET_UPGRADE" || businessType === "ASSET_PURCHASE"
+      ? (payloadParsed.data as { componentCategoryId?: number }).componentCategoryId ?? null
+      : null;
 
   // 1. 取该业务类型的生效版本（同类型同时只有一个 PUBLISHED，取最新发布）
   const def = await prisma.workflowDefinition.findFirst({
@@ -386,12 +394,51 @@ export async function submitApprovalRequest(input: {
 
   // 3. 业务校验（M5）：资产存在、未被预占、归属校验；升级另校验旧配件存在
   const isDepart = businessType === "ASSET_DEPART";
+  const isPurchase = businessType === "ASSET_PURCHASE";
   let asset: Awaited<ReturnType<typeof prisma.asset.findUnique>> | null = null;
   if (isDepart) {
     // 离职：校验离职员工存在（回收其名下全部设备，不做单台预占）
     const targetEmployeeId = (payloadParsed.data as { targetEmployeeId: number }).targetEmployeeId;
     const targetEmp = await prisma.employee.findUnique({ where: { id: targetEmployeeId } });
     if (!targetEmp) return { success: false, error: "离职员工不存在" };
+    // 权限（权限矩阵 §6）：本人可自提离职；否则须对该员工有代申权限（本部门主管 / 账号管理）
+    if (forEmployeeId) {
+      if (forEmployeeId !== targetEmployeeId) {
+        return { success: false, error: "代申对象与离职员工不一致" };
+      }
+      if (!(await canManageForEmployee(user, targetEmp))) {
+        return { success: false, error: "无权为该员工代发申请（仅限本部门）" };
+      }
+    } else {
+      const me = await prisma.admin.findUnique({
+        where: { id: user.id },
+        select: { employeeId: true },
+      });
+      if (me?.employeeId !== targetEmployeeId && !(await canManageForEmployee(user, targetEmp))) {
+        return { success: false, error: "无权为该员工发起离职交接申请" };
+      }
+    }
+  } else if (isPurchase) {
+    // 加购：校验配件分类存在；若申请全新配件型号，同名去重（提示可复用现有型号）
+    const { componentCategoryId, newModelName, brand } = payloadParsed.data as {
+      componentCategoryId: number;
+      newModelName?: string;
+      brand?: string;
+    };
+    const cat = await prisma.componentCategory.findUnique({ where: { id: componentCategoryId } });
+    if (!cat) return { success: false, error: "配件分类不存在" };
+    if (newModelName) {
+      // 同名去重（分类+型号+品牌，与「新建配件型号」唯一约束一致）：同品牌已存在则提示复用
+      const dup = await prisma.componentModel.findFirst({
+        where: { categoryId: componentCategoryId, name: newModelName, brand: brand ?? "" },
+      });
+      if (dup) {
+        return {
+          success: false,
+          error: `型号「${newModelName}」已存在（现有库存可复用），请直接选择现有型号`,
+        };
+      }
+    }
   } else {
     const assetId = (payloadParsed.data as { assetId: number }).assetId;
     asset = await prisma.asset.findUnique({ where: { id: assetId } });
@@ -438,8 +485,8 @@ export async function submitApprovalRequest(input: {
       }
     }
   }
-  // 进预占/流转前，非离职分支必须在上面校验过 asset；此处收窄供后续 reserve 使用
-  if (!asset && !isDepart) return { success: false, error: "设备不存在" };
+  // 进预占/流转前，非离职/非加购分支必须在上面校验过 asset；此处收窄供后续 reserve 使用
+  if (!asset && !isDepart && !isPurchase) return { success: false, error: "设备不存在" };
 
   // 4. 生成单号 + 建单 + 首节点待办 + SUBMIT 日志 + 预占资产
   const requestNo = await nextRequestNo();
@@ -468,6 +515,7 @@ export async function submitApprovalRequest(input: {
           currentNodeId: firstNode.id,
           initiatorId: user.id,
           submittedAt: new Date(),
+          componentCategoryId,
           tasks: {
             create: firstAssignees.map((assigneeId) => ({
               nodeId: firstNode.id,
@@ -496,8 +544,8 @@ export async function submitApprovalRequest(input: {
       ]);
       await createNotifications(tx, submitNotifs);
 
-      // M5：预占资产（原子条件：仅当未被其他申请预占才成功，否则整单回滚）。离职不针对单台设备，跳过
-      if (isDepart) {
+      // M5：预占资产（原子条件：仅当未被其他申请预占才成功，否则整单回滚）。离职/加购不针对单台设备，跳过
+      if (isDepart || isPurchase) {
         return request;
       }
       const reserve = await tx.asset.updateMany({
@@ -576,7 +624,7 @@ export async function getMyTodoTasks(): Promise<
 
 /** 我的申请（spec §3/§6）：当前用户发起的历史申请单列表，含流转状态 */
 export async function getMySubmittedRequests(
-  businessType?: "ASSET_UPGRADE" | "ASSET_SCRAP" | "ASSET_RETURN" | "ASSET_REPLACE" | "ASSET_REPAIR" | "ASSET_DEPART"
+  businessType?: "ASSET_UPGRADE" | "ASSET_SCRAP" | "ASSET_RETURN" | "ASSET_REPLACE" | "ASSET_REPAIR" | "ASSET_DEPART" | "ASSET_PURCHASE"
 ): Promise<
   ActionResult<
     {
@@ -614,6 +662,416 @@ export async function getMySubmittedRequests(
   };
 }
 
+/** 「我办理的记录」中我可能的动作（审批通过/驳回/执行） */
+export type HandledAction = "APPROVE" | "REJECT" | "EXECUTE";
+
+const HANDLED_ACTIONS: HandledAction[] = ["APPROVE", "REJECT", "EXECUTE"];
+
+/** 一条办理记录：每张单一行，actions 为我在该单的全部动作（按时间先后） */
+export interface HandledRecord {
+  requestId: number;
+  requestNo: string;
+  title: string;
+  businessType: string;
+  status: string;
+  initiatorId: number;
+  initiatorName: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  componentCategoryId: number | null;
+  componentCategoryName: string | null;
+  actions: HandledAction[];
+  lastActedAt: Date;
+  finishedAt: Date | null;
+}
+
+/** 「我办理的记录」查询条件 */
+export interface HandledRecordQuery {
+  mode?: "MINE" | "ALL";
+  keyword?: string;
+  dateFrom?: string; // YYYY-MM-DD（按我的/最后办理动作时间）
+  dateTo?: string;
+  initiatorId?: number; // 人员 = 发起人
+  departmentId?: number; // 部门 = 发起人所属部门
+  componentCategoryId?: number;
+  businessType?:
+    | "ASSET_UPGRADE"
+    | "ASSET_SCRAP"
+    | "ASSET_RETURN"
+    | "ASSET_REPLACE"
+    | "ASSET_REPAIR"
+    | "ASSET_DEPART"
+    | "ASSET_PURCHASE";
+}
+
+/** YYYY-MM-DD → 当天 00:00:00.000（本地时区）；非法返回 null */
+function dayStart(s?: string): Date | null {
+  if (!s) return null;
+  const d = new Date(`${s}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** YYYY-MM-DD → 当天 23:59:59.999（本地时区）；非法返回 null */
+function dayEnd(s?: string): Date | null {
+  if (!s) return null;
+  const d = new Date(`${s}T23:59:59.999`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * 我办理的记录：以 ApprovalLog 为唯一事实源（actorId=我 且 action ∈ 审批通过/驳回/执行）。
+ * 每张单一行，行内聚合我的全部动作，按我最后一次动作时间倒序。
+ * mode=ALL（「全部办理记录」）需额外持有 approval.detail.view，且受账号数据范围约束（按发起人所属部门）。
+ */
+export async function getMyHandledRecords(
+  query?: HandledRecordQuery
+): Promise<ActionResult<HandledRecord[]>> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "approval.done.view", "没有查看办理记录的权限");
+  if (denied) return denied;
+
+  const mode = query?.mode === "ALL" ? "ALL" : "MINE";
+  let scope: "ALL" | number[] | null = null;
+  if (mode === "ALL") {
+    const canViewAll = await guardPermission(
+      user,
+      "approval.detail.view",
+      "没有查看全部办理记录的权限"
+    );
+    if (canViewAll) return canViewAll;
+    scope = await resolveDepartmentScope(user);
+  }
+
+  // 单维度筛选（人员/部门/配件类型/业务类型/关键字）下推到 SQL；日期区间按聚合后的动作时间过滤
+  const requestWhere: Prisma.ApprovalRequestWhereInput = {};
+  if (query?.businessType) requestWhere.businessType = query.businessType;
+  if (query?.componentCategoryId != null) requestWhere.componentCategoryId = query.componentCategoryId;
+  if (query?.initiatorId != null) requestWhere.initiatorId = query.initiatorId;
+  if (query?.departmentId != null) {
+    requestWhere.initiator = { employee: { departmentId: query.departmentId } };
+  }
+  const keyword = query?.keyword?.trim();
+  if (keyword) {
+    requestWhere.OR = [{ requestNo: { contains: keyword } }, { title: { contains: keyword } }];
+  }
+
+  const logs = await prisma.approvalLog.findMany({
+    where: {
+      action: { in: HANDLED_ACTIONS },
+      ...(mode === "MINE" ? { actorId: user.id } : {}),
+      ...(Object.keys(requestWhere).length > 0 ? { request: requestWhere } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      action: true,
+      createdAt: true,
+      request: {
+        select: {
+          id: true,
+          requestNo: true,
+          title: true,
+          businessType: true,
+          status: true,
+          finishedAt: true,
+          componentCategoryId: true,
+          initiator: {
+            select: {
+              id: true,
+              username: true,
+              employee: {
+                select: {
+                  name: true,
+                  departmentId: true,
+                  department: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const byRequest = new Map<number, HandledRecord>();
+  for (const l of logs) {
+    const r = l.request;
+    const action = l.action as HandledAction;
+    const existing = byRequest.get(r.id);
+    if (existing) {
+      if (!existing.actions.includes(action)) existing.actions.push(action);
+      if (l.createdAt.getTime() > existing.lastActedAt.getTime()) existing.lastActedAt = l.createdAt;
+      continue;
+    }
+    byRequest.set(r.id, {
+      requestId: r.id,
+      requestNo: r.requestNo,
+      title: r.title,
+      businessType: r.businessType,
+      status: r.status,
+      initiatorId: r.initiator.id,
+      initiatorName: r.initiator.employee?.name ?? r.initiator.username,
+      departmentId: r.initiator.employee?.departmentId ?? null,
+      departmentName: r.initiator.employee?.department?.name ?? null,
+      componentCategoryId: r.componentCategoryId,
+      componentCategoryName: null,
+      actions: [action],
+      lastActedAt: l.createdAt,
+      finishedAt: r.finishedAt,
+    });
+  }
+
+  const from = dayStart(query?.dateFrom);
+  const to = dayEnd(query?.dateTo);
+  const records = Array.from(byRequest.values())
+    .filter((r) => scope === null || scope === "ALL" || (r.departmentId != null && scope.includes(r.departmentId)))
+    .filter((r) => (from == null || r.lastActedAt.getTime() >= from.getTime()) && (to == null || r.lastActedAt.getTime() <= to.getTime()))
+    .sort((a, b) => b.lastActedAt.getTime() - a.lastActedAt.getTime());
+
+  const catIds = [
+    ...new Set(records.map((r) => r.componentCategoryId).filter((x): x is number => x != null)),
+  ];
+  if (catIds.length > 0) {
+    const cats = await prisma.componentCategory.findMany({
+      where: { id: { in: catIds } },
+      select: { id: true, name: true },
+    });
+    const catMap = new Map(cats.map((c) => [c.id, c.name]));
+    for (const r of records) {
+      if (r.componentCategoryId != null) r.componentCategoryName = catMap.get(r.componentCategoryId) ?? null;
+    }
+  }
+
+  return { success: true, data: records };
+}
+
+/** 「我办理的记录」筛选区下拉数据（部门 / 发起人 / 配件类型 + 是否可切「全部办理记录」） */
+export interface HandledRecordFilterOptions {
+  canViewAll: boolean;
+  departments: { id: number; name: string }[];
+  initiators: { id: number; name: string }[];
+  componentCategories: { id: number; name: string }[];
+}
+
+export async function getHandledRecordFilterOptions(): Promise<
+  ActionResult<HandledRecordFilterOptions>
+> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "approval.done.view", "没有查看办理记录的权限");
+  if (denied) return denied;
+
+  const [canViewAll, departments, initiatorRows, componentCategories] = await Promise.all([
+    hasPermission(user, "approval.detail.view"),
+    prisma.department.findMany({ select: { id: true, name: true }, orderBy: { id: "asc" } }),
+    // 仅列出确实发起过申请单的账号，避免把全部账号灌进下拉
+    prisma.admin.findMany({
+      where: { initiatedRequests: { some: {} } },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        employee: { select: { name: true } },
+      },
+      orderBy: { id: "asc" },
+    }),
+    prisma.componentCategory.findMany({
+      select: { id: true, name: true },
+      orderBy: { id: "asc" },
+    }),
+  ]);
+
+  return {
+    success: true,
+    data: {
+      canViewAll,
+      departments,
+      initiators: initiatorRows.map((a) => ({
+        id: a.id,
+        name: a.employee?.name ?? a.displayName ?? a.username,
+      })),
+      componentCategories,
+    },
+  };
+}
+
+/** 「我的抄送」一条记录：每张单一行（同一单多节点抄送去重，抄送时间取最早） */
+export interface CcRecord {
+  requestId: number;
+  requestNo: string;
+  title: string;
+  businessType: string;
+  status: string;
+  initiatorId: number;
+  initiatorName: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  componentCategoryId: number | null;
+  componentCategoryName: string | null;
+  ccAt: Date;
+}
+
+/** 「我的抄送」查询条件 */
+export interface CcRecordQuery {
+  keyword?: string;
+  dateFrom?: string; // YYYY-MM-DD（按抄送时间）
+  dateTo?: string;
+  initiatorId?: number; // 人员 = 发起人
+  departmentId?: number; // 部门 = 发起人所属部门
+  componentCategoryId?: number;
+  businessType?: HandledRecordQuery["businessType"];
+}
+
+/**
+ * 我的抄送：以抄送通知（Notification.type=APPROVAL_CC，adminId=我）为事实源。
+ * 同一张单可能因多个节点分别抄送我而落多条，按 requestId 去重，抄送时间取最早一条。
+ */
+export async function getMyCcRecords(
+  query?: CcRecordQuery
+): Promise<ActionResult<CcRecord[]>> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "approval.cc.view", "没有查看抄送记录的权限");
+  if (denied) return denied;
+
+  // 单维度筛选（人员/部门/配件类型/业务类型/关键字）下推到 SQL；日期区间按聚合后的抄送时间过滤
+  const requestWhere: Prisma.ApprovalRequestWhereInput = {};
+  if (query?.businessType) requestWhere.businessType = query.businessType;
+  if (query?.componentCategoryId != null) requestWhere.componentCategoryId = query.componentCategoryId;
+  if (query?.initiatorId != null) requestWhere.initiatorId = query.initiatorId;
+  if (query?.departmentId != null) {
+    requestWhere.initiator = { employee: { departmentId: query.departmentId } };
+  }
+  const keyword = query?.keyword?.trim();
+  if (keyword) {
+    requestWhere.OR = [{ requestNo: { contains: keyword } }, { title: { contains: keyword } }];
+  }
+
+  const rows = await prisma.notification.findMany({
+    where: {
+      adminId: user.id,
+      type: "APPROVAL_CC",
+      requestId: { not: null },
+      ...(Object.keys(requestWhere).length > 0 ? { request: requestWhere } : {}),
+    },
+    // 升序 → 同一单首次出现即最早抄送时间
+    orderBy: { createdAt: "asc" },
+    select: {
+      createdAt: true,
+      request: {
+        select: {
+          id: true,
+          requestNo: true,
+          title: true,
+          businessType: true,
+          status: true,
+          componentCategoryId: true,
+          initiator: {
+            select: {
+              id: true,
+              username: true,
+              employee: {
+                select: {
+                  name: true,
+                  departmentId: true,
+                  department: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const byRequest = new Map<number, CcRecord>();
+  for (const n of rows) {
+    const r = n.request;
+    if (!r || byRequest.has(r.id)) continue;
+    byRequest.set(r.id, {
+      requestId: r.id,
+      requestNo: r.requestNo,
+      title: r.title,
+      businessType: r.businessType,
+      status: r.status,
+      initiatorId: r.initiator.id,
+      initiatorName: r.initiator.employee?.name ?? r.initiator.username,
+      departmentId: r.initiator.employee?.departmentId ?? null,
+      departmentName: r.initiator.employee?.department?.name ?? null,
+      componentCategoryId: r.componentCategoryId,
+      componentCategoryName: null,
+      ccAt: n.createdAt,
+    });
+  }
+
+  const from = dayStart(query?.dateFrom);
+  const to = dayEnd(query?.dateTo);
+  const records = Array.from(byRequest.values())
+    .filter(
+      (r) =>
+        (from == null || r.ccAt.getTime() >= from.getTime()) &&
+        (to == null || r.ccAt.getTime() <= to.getTime())
+    )
+    .sort((a, b) => b.ccAt.getTime() - a.ccAt.getTime());
+
+  const catIds = [
+    ...new Set(records.map((r) => r.componentCategoryId).filter((x): x is number => x != null)),
+  ];
+  if (catIds.length > 0) {
+    const cats = await prisma.componentCategory.findMany({
+      where: { id: { in: catIds } },
+      select: { id: true, name: true },
+    });
+    const catMap = new Map(cats.map((c) => [c.id, c.name]));
+    for (const r of records) {
+      if (r.componentCategoryId != null) r.componentCategoryName = catMap.get(r.componentCategoryId) ?? null;
+    }
+  }
+
+  return { success: true, data: records };
+}
+
+/** 「我的抄送」筛选区下拉数据（部门 / 发起人 / 配件类型） */
+export interface CcRecordFilterOptions {
+  departments: { id: number; name: string }[];
+  initiators: { id: number; name: string }[];
+  componentCategories: { id: number; name: string }[];
+}
+
+export async function getCcRecordFilterOptions(): Promise<ActionResult<CcRecordFilterOptions>> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "approval.cc.view", "没有查看抄送记录的权限");
+  if (denied) return denied;
+
+  const [departments, initiatorRows, componentCategories] = await Promise.all([
+    prisma.department.findMany({ select: { id: true, name: true }, orderBy: { id: "asc" } }),
+    // 仅列出确实发起过申请单的账号，避免把全部账号灌进下拉
+    prisma.admin.findMany({
+      where: { initiatedRequests: { some: {} } },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        employee: { select: { name: true } },
+      },
+      orderBy: { id: "asc" },
+    }),
+    prisma.componentCategory.findMany({
+      select: { id: true, name: true },
+      orderBy: { id: "asc" },
+    }),
+  ]);
+
+  return {
+    success: true,
+    data: {
+      departments,
+      initiators: initiatorRows.map((a) => ({
+        id: a.id,
+        name: a.employee?.name ?? a.displayName ?? a.username,
+      })),
+      componentCategories,
+    },
+  };
+}
+
 export async function getApprovalRequestById(
   requestId: number
 ): Promise<
@@ -622,6 +1080,7 @@ export async function getApprovalRequestById(
     requestNo: string;
     title: string;
     status: string;
+    businessType: string;
     version: number;
     initiatorName: string;
     currentNodeName: string | null;
@@ -639,7 +1098,7 @@ export async function getApprovalRequestById(
 > {
   const user = await requireAuth();
   // 数据范围过滤（IDOR 防护）：拥有审批详情权限者可见全部，
-  // 否则仅可见与自己相关的申请单（发起人 / 目标员工 / 审批参与人）。
+  // 否则仅可见与自己相关的申请单（发起人 / 目标员工 / 审批参与人 / 抄送人）。
   const canViewAll = await hasPermission(user, "approval.detail.view");
 
   const req = await prisma.approvalRequest.findFirst({
@@ -652,6 +1111,8 @@ export async function getApprovalRequestById(
               { initiatorId: user.id },
               { targetEmployeeId: user.id },
               { tasks: { some: { assigneeId: user.id } } },
+              // 抄送人可见（限定抄送类型，避免把待办/结果通知也放开）
+              { notifications: { some: { adminId: user.id, type: "APPROVAL_CC" } } },
             ],
           }),
     },
@@ -665,6 +1126,33 @@ export async function getApprovalRequestById(
   // 数据范围外统一返回"不存在"，避免泄露申请单是否存在（安全最佳实践）
   if (!req) return { success: false, error: "申请单不存在" };
 
+  // 兼容历史/旧入口提交的加购单 payload：若缺分类名/型号名，按 id 反查补全，避免详情页显示 #id
+  let payload: unknown = req.payload;
+  if (req.businessType === "ASSET_PURCHASE") {
+    const raw = (req.payload ?? {}) as {
+      componentCategoryId?: number;
+      categoryName?: string;
+      modelName?: string;
+      modelId?: number;
+      newModelName?: string;
+    };
+    if (!raw.categoryName && raw.componentCategoryId) {
+      const cat = await prisma.componentCategory.findUnique({
+        where: { id: raw.componentCategoryId },
+        select: { name: true },
+      });
+      if (cat) raw.categoryName = cat.name;
+    }
+    if (!raw.modelName && !raw.newModelName && raw.modelId) {
+      const model = await prisma.componentModel.findUnique({
+        where: { id: raw.modelId },
+        select: { name: true },
+      });
+      if (model) raw.modelName = model.name;
+    }
+    payload = raw;
+  }
+
   return {
     success: true,
     data: {
@@ -672,10 +1160,11 @@ export async function getApprovalRequestById(
       requestNo: req.requestNo,
       title: req.title,
       status: req.status,
+      businessType: req.businessType,
       version: req.definition.version,
       initiatorName: req.initiator.employee?.name ?? req.initiator.displayName ?? req.initiator.username,
       currentNodeName: req.currentNode?.name ?? null,
-      payload: req.payload,
+      payload,
       submittedAt: req.submittedAt,
       finishedAt: req.finishedAt,
       logs: req.logs.map((l) => ({
@@ -913,17 +1402,20 @@ export async function approveTask(input: {
         });
 
         if (AUTO_EXECUTE_BUSINESS_TYPES.has(request.businessType)) {
-          // 自动执行（报废/退回）；失败不阻断审批，记 EXECUTE_FAILED（资产保持预占待人工介入）
+          // 自动执行（报废/退回/加购入库）；失败不阻断审批，记 EXECUTE_FAILED（资产保持预占待人工介入）
           try {
             if (request.businessType === "ASSET_SCRAP") {
               await executeScrapOnApproval(tx, request.id, request.payload);
+            } else if (request.businessType === "ASSET_PURCHASE") {
+              await executePurchaseOnApproval(tx, request.id, request.payload);
             } else {
               await executeReturnOnApproval(tx, request.id, request.payload);
             }
             await tx.approvalLog.create({
               data: {
                 requestId: request.id,
-                actorId: null,
+                // 终审触发系统自动执行；归因给触发人（末节点审批人），供「我办理的记录」统计
+                actorId: user.id,
                 action: "EXECUTE",
                 fromNodeKey: task.nodeKey,
                 toNodeKey: null,
@@ -952,7 +1444,8 @@ export async function approveTask(input: {
             await tx.approvalLog.create({
               data: {
                 requestId: request.id,
-                actorId: null,
+                // 终审触发系统自动执行；归因给触发人（末节点审批人），供「我办理的记录」统计
+                actorId: user.id,
                 action: "EXECUTE",
                 fromNodeKey: task.nodeKey,
                 toNodeKey: null,

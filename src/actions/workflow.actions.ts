@@ -16,9 +16,18 @@ import { parseCcRules } from "@/lib/cc-rules";
 //   - 节点为顺序链（sortOrder 升序），START/END 由引擎隐式
 // ============================================================
 
-const businessTypeSchema = z.enum(["ASSET_UPGRADE", "ASSET_SCRAP"], {
-  message: "业务类型不合法",
-});
+const businessTypeSchema = z.enum(
+  [
+    "ASSET_UPGRADE",
+    "ASSET_SCRAP",
+    "ASSET_RETURN",
+    "ASSET_REPLACE",
+    "ASSET_REPAIR",
+    "ASSET_DEPART",
+    "ASSET_PURCHASE",
+  ],
+  { message: "业务类型不合法" }
+);
 
 const nodeInputSchema = z.object({
   name: z.string().min(1, "节点名称不能为空"),
@@ -70,93 +79,50 @@ function validateNode(n: WorkflowNodeInput): string | null {
   return null;
 }
 
-/** 是否已是「资产管理员(按角色)」节点 */
-function isAssetManagerNode(n: { assigneeType?: string; assigneeRole?: string | null }): boolean {
-  return n.assigneeType === "ROLE" && n.assigneeRole === "ASSET_MANAGER";
-}
-
-/** 默认资产管理员末节点（升级/降级配件为完全手动执行，末节点必须是资产管理员才可进「待执行变更」） */
-function defaultAssetManagerNode(nodeKey: string, sortOrder: number) {
-  return {
-    nodeKey,
-    name: "资产管理员审批",
-    type: "APPROVAL" as const,
-    sortOrder,
-    assigneeType: "ROLE" as const,
-    assigneeUserId: null,
-    assigneeRole: "ASSET_MANAGER",
-    initiatorCanChoose: false,
-    multiMode: "ANY" as const,
-    ccType: "NONE" as const,
-    ccUserIds: undefined,
-    ccRules: undefined,
-    rejectPolicy: "TO_START" as const,
-    rejectToNodeId: null,
-  };
+/**
+ * 统一解析节点 ccUserIds（Json 列读回可能是「JSON 字符串」——历史写入用 JSON.stringify 存成了字符串）：
+ *   - 数组 → 过滤出数字返回（空数组 → null）
+ *   - 字符串 → JSON.parse 后按数组处理
+ *   - 其他/无效 → null
+ * 复制/更新节点时若对已是字符串的值再次 stringify，会造成双重编码（解析后仍是字符串而非数组），
+ * 导致 SPECIFIC 抄送全丢；故读写两侧统一走本函数。
+ */
+function normalizeCcUserIds(raw: unknown): number[] | null {
+  if (raw === null || raw === undefined) return null;
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(value)) return null;
+  const nums = value.filter((x): x is number => typeof x === "number");
+  return nums.length > 0 ? nums : null;
 }
 
 /**
- * 保证 ASSET_UPGRADE 审批流「末节点=资产管理员」不变式。
- * 升级/降级配件为完全手动执行：末节点必须是 角色=ASSET_MANAGER(assigneeType=ROLE + assigneeRole=ASSET_MANAGER)，
- * 新单才能进入「待执行变更」（按 finalNodeRole=ASSET_MANAGER 筛选）。
- * 在改动节点/创建流程的同一事务内调用（幂等）：
- *   - 末节点已是资产管理员 → 无操作；
- *   - 已存在资产管理员节点但非末位 → 置为末位（保持「恰好一个作为末节点」，不重复）；
- *   - 不存在资产管理员节点 → 在末尾追加一个默认资产管理员节点。
- * ASSET_SCRAP 等其它业务类型完全不受影响。
+ * 需手动执行的业务类型（审批通过后不自动落地、需在“待执行变更”里手动执行）：
+ * 与 approval.actions.ts 的 AUTO_EXECUTE_BUSINESS_TYPES（报废/退回/加购）+ HANDOVER_BUSINESS_TYPES（离职）
+ * 取互补，即升级/更换/维修。
  */
-async function ensureAssetManagerFinalNode(
-  db: Prisma.TransactionClient,
-  definitionId: number,
-  businessType: string
-): Promise<void> {
-  if (businessType !== "ASSET_UPGRADE") return;
+const MANUAL_EXEC_BUSINESS_TYPES = new Set(["ASSET_UPGRADE", "ASSET_REPLACE", "ASSET_REPAIR"]);
 
-  const nodes = await db.workflowNode.findMany({
-    where: { definitionId },
-    select: {
-      id: true,
-      nodeKey: true,
-      sortOrder: true,
-      assigneeType: true,
-      assigneeRole: true,
-    },
-    orderBy: { sortOrder: "asc" },
-  });
-  if (nodes.length === 0) return;
-
+/**
+ * 手动执行类型的末节点校验：末节点须为「按角色且有具体角色」。
+ * 否则 `finalNodeRole` 可能为空/匹配不上角色，导致审批通过后无人能在待执行变更里执行（孤儿单）。
+ * 创建草稿时仅记日志提示；发布/设为生效时作为硬校验拦截。
+ */
+function manualExecFinalNodeWarning(
+  businessType: string,
+  nodes: { assigneeType?: string; assigneeRole?: string | null }[]
+): string | null {
+  if (!MANUAL_EXEC_BUSINESS_TYPES.has(businessType)) return null;
   const last = nodes[nodes.length - 1];
-  if (isAssetManagerNode(last)) return;
-
-  const maxOrder = nodes[nodes.length - 1].sortOrder;
-  // 已存在资产管理员节点但非末位 → 置为末位（取最靠后的一个以免端序波动）
-  let existingAm: (typeof nodes)[number] | null = null;
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    if (isAssetManagerNode(nodes[i])) {
-      existingAm = nodes[i];
-      break;
-    }
-  }
-  if (existingAm) {
-    await db.workflowNode.update({
-      where: { id: existingAm.id },
-      data: { sortOrder: maxOrder + 1 },
-    });
-    return;
-  }
-
-  // 否则追加一个默认资产管理员末节点
-  let maxSeq = 0;
-  for (const n of nodes) {
-    const m = n.nodeKey.match(/^n(\d+)$/);
-    if (m) maxSeq = Math.max(maxSeq, Number(m[1]));
-  }
-  await db.workflowNode.create({
-    data: {
-      ...defaultAssetManagerNode(`n${maxSeq + 1}`, maxOrder + 1),
-      definitionId,
-    },
-  });
+  if (!last) return null;
+  if (last.assigneeType === "ROLE" && last.assigneeRole) return null;
+  return "升级/更换/维修为手动执行流程，末节点必须配置为「按角色」并指定具体角色，否则审批通过后无人可执行。请修改末节点后重新发布。";
 }
 
 /** 求节点 key 的最大序号（n1 → 1），用于追加时生成下一个稳定标识 */
@@ -294,7 +260,7 @@ export async function getWorkflowDefinition(
         initiatorCanChoose: n.initiatorCanChoose,
         multiMode: n.multiMode,
         ccType: n.ccType,
-        ccUserIds: n.ccUserIds as number[] | null,
+        ccUserIds: normalizeCcUserIds(n.ccUserIds),
         ccRules: parseCcRules(n.ccRules),
       })),
     },
@@ -314,7 +280,15 @@ export async function getWorkflowConfigSummary(): Promise<
   const denied = await guardPermission(user, "workflow.config.manage", "没有流程配置权限");
   if (denied) return denied;
 
-  const types: z.infer<typeof businessTypeSchema>[] = ["ASSET_UPGRADE", "ASSET_SCRAP"];
+  const types: z.infer<typeof businessTypeSchema>[] = [
+    "ASSET_UPGRADE",
+    "ASSET_SCRAP",
+    "ASSET_RETURN",
+    "ASSET_REPLACE",
+    "ASSET_REPAIR",
+    "ASSET_DEPART",
+    "ASSET_PURCHASE",
+  ];
   const out = {} as Record<
     z.infer<typeof businessTypeSchema>,
     { total: number; published: number }
@@ -354,13 +328,18 @@ export async function createWorkflowDefinition(
 
   const { businessType, name, nodes } = validated.data;
 
+  // 手动执行类型：末节点软提示（不阻断）
+  const warn = manualExecFinalNodeWarning(businessType, nodes);
+  if (warn) {
+    await writeLog(user, "CREATE", `流程草稿节点检查：${warn}`);
+  }
+
   const maxVersion = await prisma.workflowDefinition.aggregate({
     where: { businessType },
     _max: { version: true },
   });
   const version = (maxVersion._max.version ?? 0) + 1;
 
-  // 升级/降级配件为手动执行：末节点必须是资产管理员（缺失/非末位由 ensureAssetManagerFinalNode 自动修正）
   const nodeCreateItems: Prisma.WorkflowNodeCreateWithoutDefinitionInput[] = nodes.map(
     (n, i) => ({
       nodeKey: `n${i + 1}`,
@@ -389,7 +368,6 @@ export async function createWorkflowDefinition(
         nodes: { create: nodeCreateItems },
       },
     });
-    await ensureAssetManagerFinalNode(tx, created.id, businessType);
     return created;
   });
 
@@ -449,8 +427,6 @@ export async function addWorkflowNode(
         ccRules: n.ccRules ? JSON.parse(JSON.stringify(n.ccRules)) : undefined,
       },
     });
-    // 追加后保持 ASSET_UPGRADE 末节点=资产管理员不变式
-    await ensureAssetManagerFinalNode(tx, definitionId, def.businessType);
     return created;
   });
 
@@ -486,7 +462,7 @@ export async function updateWorkflowNode(
     multiMode: validated.data.multiMode ?? existing.multiMode,
     ccType: validated.data.ccType ?? existing.ccType,
     ccUserIds:
-      validated.data.ccUserIds ?? (existing.ccUserIds as number[] | null) ?? undefined,
+      validated.data.ccUserIds ?? normalizeCcUserIds(existing.ccUserIds) ?? undefined,
     ccRules: validated.data.ccRules ?? parseCcRules(existing.ccRules) ?? undefined,
   };
   const err = validateNode(merged);
@@ -509,8 +485,6 @@ export async function updateWorkflowNode(
           : Prisma.JsonNull,
       },
     });
-    // 更新后保持 ASSET_UPGRADE 末节点=资产管理员不变式（可能把末位资产管理员改走）
-    await ensureAssetManagerFinalNode(tx, existing.definitionId, def.businessType);
   });
 
   return { success: true, data: { id: nodeId } };
@@ -539,8 +513,6 @@ export async function removeWorkflowNode(
 
   await prisma.$transaction(async (tx) => {
     await tx.workflowNode.delete({ where: { id: nodeId } });
-    // 删除后保持 ASSET_UPGRADE 末节点=资产管理员不变式（可能删掉了末位资产管理员）
-    await ensureAssetManagerFinalNode(tx, existing.definitionId, def.businessType);
   });
   return { success: true, data: { id: nodeId } };
 }
@@ -560,6 +532,8 @@ export async function duplicateWorkflowNode(
 
   const seq = (await maxNodeSeq(source.definitionId)) + 1;
   const insertOrder = source.sortOrder + 1;
+  // 先归一化再编码：source.ccUserIds 从 Json 列读回可能是字符串，直接 stringify 会双重编码丢抄送
+  const sourceCcUserIds = normalizeCcUserIds(source.ccUserIds);
 
   const created = await prisma.$transaction(async (tx) => {
     // 复制后的节点紧邻原节点之后，插入点上原有的后续节点整体后移
@@ -583,8 +557,8 @@ export async function duplicateWorkflowNode(
         initiatorCanChoose: source.initiatorCanChoose,
         multiMode: source.multiMode,
         ccType: source.ccType,
-        ccUserIds: source.ccUserIds
-          ? JSON.stringify(source.ccUserIds)
+        ccUserIds: sourceCcUserIds
+          ? JSON.stringify(sourceCcUserIds)
           : Prisma.JsonNull,
         ccRules: source.ccRules
           ? JSON.parse(JSON.stringify(
@@ -633,8 +607,6 @@ export async function reorderWorkflowNodes(
     for (const [index, id] of nodeIds.entries()) {
       await tx.workflowNode.update({ where: { id }, data: { sortOrder: index } });
     }
-    // 调序后保持 ASSET_UPGRADE 末节点=资产管理员不变式（资产管理员移出末位则回置末位）
-    await ensureAssetManagerFinalNode(tx, definitionId, def.businessType);
   });
 
   return { success: true, data: { ok: true } };
@@ -643,6 +615,23 @@ export async function reorderWorkflowNodes(
 // ============================================================
 // 发布（发布即切换生效版本）
 // ============================================================
+
+/**
+ * 读取末节点「手动执行类型硬校验」结果：
+ * 发布 / 设为生效这两个真正让流程落地的闸口都调用，命中即拒绝，杜绝孤儿单。
+ */
+async function loadManualExecWarning(
+  businessType: string,
+  definitionId: number
+): Promise<string | null> {
+  if (!MANUAL_EXEC_BUSINESS_TYPES.has(businessType)) return null;
+  const nodes = await prisma.workflowNode.findMany({
+    where: { definitionId },
+    orderBy: { sortOrder: "asc" },
+    select: { assigneeType: true, assigneeRole: true },
+  });
+  return manualExecFinalNodeWarning(businessType, nodes);
+}
 
 export async function publishWorkflowDefinition(
   definitionId: number
@@ -656,6 +645,11 @@ export async function publishWorkflowDefinition(
   if (def.status !== "DRAFT") {
     return { success: false, error: "仅草稿可发布" };
   }
+
+  // 手动执行类型（升级/更换/维修）：末节点非「按角色」会使 finalNodeRole 为空 →
+  // 审批通过后无人能在待执行变更里执行（孤儿单）。发布即硬校验，命中直接拒绝。
+  const warning = await loadManualExecWarning(def.businessType, definitionId);
+  if (warning) return { success: false, error: warning };
 
   await prisma.$transaction([
     // 同类型旧发布版自动归档
@@ -702,24 +696,28 @@ export async function duplicateWorkflowDefinition(
   });
   const version = (maxVersion._max.version ?? 0) + 1;
 
-  // 升级/降级配件为手动执行：末节点必须是资产管理员（缺失/非末位由 ensureAssetManagerFinalNode 自动修正）
+  // 升级/降级配件为手动执行
   const nodeCreateItems: Prisma.WorkflowNodeCreateWithoutDefinitionInput[] = source.nodes.map(
-    (n, i) => ({
-      nodeKey: `n${i + 1}`,
-      name: n.name,
-      type: n.type,
-      sortOrder: i,
-      assigneeType: n.assigneeType,
-      assigneeUserId: n.assigneeUserId ?? null,
-      assigneeRole: n.assigneeRole ?? null,
-      initiatorCanChoose: n.initiatorCanChoose,
-      multiMode: n.multiMode,
-      ccType: n.ccType,
-      ccUserIds: n.ccUserIds ? JSON.stringify(n.ccUserIds) : undefined,
-      ccRules: n.ccRules ? JSON.parse(JSON.stringify(n.ccRules)) : undefined,
-      rejectPolicy: n.rejectPolicy,
-      rejectToNodeId: n.rejectToNodeId,
-    })
+    (n, i) => {
+      // 读回可能是字符串，先归一化再编码，避免双重编码导致 SPECIFIC 抄送丢失
+      const ccUserIds = normalizeCcUserIds(n.ccUserIds);
+      return {
+        nodeKey: `n${i + 1}`,
+        name: n.name,
+        type: n.type,
+        sortOrder: i,
+        assigneeType: n.assigneeType,
+        assigneeUserId: n.assigneeUserId ?? null,
+        assigneeRole: n.assigneeRole ?? null,
+        initiatorCanChoose: n.initiatorCanChoose,
+        multiMode: n.multiMode,
+        ccType: n.ccType,
+        ccUserIds: ccUserIds ? JSON.stringify(ccUserIds) : undefined,
+        ccRules: n.ccRules ? JSON.parse(JSON.stringify(n.ccRules)) : undefined,
+        rejectPolicy: n.rejectPolicy,
+        rejectToNodeId: n.rejectToNodeId,
+      };
+    }
   );
 
   const copy = await prisma.$transaction(async (tx) => {
@@ -733,7 +731,6 @@ export async function duplicateWorkflowDefinition(
         nodes: { create: nodeCreateItems },
       },
     });
-    await ensureAssetManagerFinalNode(tx, created.id, source.businessType);
     return created;
   });
 
@@ -811,6 +808,10 @@ export async function activateWorkflowVersion(
   if (target.status === "DRAFT") {
     return { success: false, error: "草稿需先发布，请使用『发布』" };
   }
+
+  // 与发布同口径：手动执行类型末节点非「按角色」时禁止设回生效，避免产生孤儿单
+  const warning = await loadManualExecWarning(target.businessType, definitionId);
+  if (warning) return { success: false, error: warning };
 
   await prisma.$transaction([
     prisma.workflowDefinition.updateMany({

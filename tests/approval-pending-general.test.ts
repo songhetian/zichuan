@@ -139,16 +139,14 @@ describe("待执行变更 泛化（Seam C/D）", () => {
 
   afterEach(() => setTestUser(null));
 
-  it("c) 无执行权限被拒", async () => {
+  it("c) 无执行角色时返回空列表（待执行仅按末节点角色过滤，无角色无单可执行）", async () => {
     const { seedWorkflow } = await seedEnv();
     await seedWorkflow("ASSET_UPGRADE");
 
     const noPerm = await seedAccount("noperm", "NO_PERM", []);
     await login(noPerm);
     const r = await getPendingExecutionRequests();
-    expect(r.success).toBe(false);
-    if (r.success) return;
-    expect(r.error).toContain("权限");
+    expect(r).toEqual({ success: true, data: [] });
   });
 
   it("c2) 列表同时包含 UPGRADE 与 REPLACE 待执行单，且条目带 businessType", async () => {

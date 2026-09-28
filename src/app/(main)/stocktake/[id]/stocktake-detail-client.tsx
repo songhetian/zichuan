@@ -28,6 +28,7 @@ import {
 } from "@/actions/stocktake.actions";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { ExportPreview } from "@/components/features/export-preview";
+import { usePermission } from "@/hooks/use-permission";
 
 interface StocktakeRecord {
   id: number;
@@ -56,6 +57,7 @@ const statusMap: Record<string, string> = {
   IN_USE: "在用",
   IN_MAINTENANCE: "维修中",
   SCRAPPED: "已报废",
+  RESERVED: "预占",
 };
 
 /** 异常报告导出的列定义（与后端 importStocktakeAbnormalRow 字段 key 一一对应），用于 ExportPreview 复用 */
@@ -99,6 +101,7 @@ export function StocktakeDetailClient({
 }: StocktakeDetailClientProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const canImport = usePermission("asset.manage");
   const [records, setRecords] = useState(initialRecords);
   const [selectedRecord, setSelectedRecord] = useState<StocktakeRecord | null>(
     null
@@ -342,9 +345,11 @@ export function StocktakeDetailClient({
                   导出异常报告 ({abnormalRecords.length})
                 </Button>
               )}
-              <Button variant="secondary" size="sm" onClick={handleImportExcel} disabled={importing}>
-                {importing ? "对账中…" : "选择 Excel 并上传"}
-              </Button>
+              {canImport && (
+                <Button variant="secondary" size="sm" onClick={handleImportExcel} disabled={importing}>
+                  {importing ? "对账中…" : "选择 Excel 并上传"}
+                </Button>
+              )}
             </div>
           </div>
 

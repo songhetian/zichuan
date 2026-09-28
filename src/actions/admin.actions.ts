@@ -5,14 +5,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { requireAuthSafe } from "@/lib/auth";
-import { guardPermission, PERMISSIONS, expandEffective } from "@/lib/permissions";
+import { guardPermission, hasPermission, PERMISSIONS, expandEffective } from "@/lib/permissions";
 
 const createAdminSchema = z.object({
   username: z.string().min(1, "用户名不能为空"),
   password: z.string().min(6, "密码至少 6 位"),
-  roleId: z.number().int().positive().optional(),
+  roleId: z.number().int().positive("新建账号必须选择角色"),
   displayName: z.string().optional(),
-  employeeId: z.number().int().positive().optional(),
+  employeeId: z.number().int().positive("新建账号必须关联员工"),
 });
 
 const updateAdminRoleSchema = z.object({
@@ -38,23 +38,22 @@ export async function createAdmin(
       return { success: false, error: "用户名已存在" };
     }
 
-    if (employeeId != null) {
-      const emp = await prisma.employee.findUnique({
-        where: { id: employeeId },
-        select: { id: true },
-      });
-      if (!emp) {
-        return { success: false, error: "员工不存在" };
-      }
-      const bound = await prisma.admin.findUnique({ where: { employeeId } });
-      if (bound) {
-        return { success: false, error: "该员工已被其他账号绑定" };
-      }
+    const emp = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true },
+    });
+    if (!emp) {
+      return { success: false, error: "员工不存在" };
+    }
+    const bound = await prisma.admin.findUnique({ where: { employeeId } });
+    if (bound) {
+      return { success: false, error: "该员工已被其他账号绑定" };
     }
 
     const hashed = await bcrypt.hash(password, 10);
     const admin = await prisma.admin.create({
-      data: { username, password: hashed, roleId, displayName, employeeId },
+      // 新账号默认首登强制改密：初始密码由管理员设定，员工首次登录必须修改
+      data: { username, password: hashed, roleId, displayName, employeeId, mustChangePassword: true },
     });
 
     return { success: true, data: { id: admin.id, username: admin.username } };
@@ -66,7 +65,7 @@ async function guardAccountManage(user: { id: number }): Promise<ActionResult<ne
   return guardPermission(user, "system.account.manage", "没有管理账号的权限");
 }
 
-/** 全部账号列表（含角色/显示名/停用态/关联员工） */
+/** 全部账号列表（含角色/显示名/停用态/关联员工/账号级部门范围） */
 export async function getAdmins(): Promise<
   ActionResult<
     {
@@ -76,6 +75,8 @@ export async function getAdmins(): Promise<
       isActive: boolean;
       role: { key: string; name: string } | null;
       employee: { id: number; name: string } | null;
+      departmentScope: string;
+      departmentIds: number[];
     }[]
   >
 > {
@@ -92,9 +93,17 @@ export async function getAdmins(): Promise<
         isActive: true,
         role: { select: { key: true, name: true } },
         employee: { select: { id: true, name: true } },
+        departmentScope: true,
+        departmentLinks: { select: { departmentId: true } },
       },
     });
-    return { success: true, data: admins };
+    return {
+      success: true,
+      data: admins.map((a) => ({
+        ...a,
+        departmentIds: a.departmentLinks.map((d) => d.departmentId),
+      })),
+    };
   });
 }
 
@@ -147,8 +156,6 @@ export async function getRoles(): Promise<
       key: string;
       name: string;
       isSystem: boolean;
-      departmentScope: string;
-      departmentIds: number[];
       permissions: string[];
     }[]
   >
@@ -164,8 +171,6 @@ export async function getRoles(): Promise<
         key: true,
         name: true,
         isSystem: true,
-        departmentScope: true,
-        departments: { select: { departmentId: true } },
         permissions: { select: { permission: { select: { key: true } } } },
       },
     });
@@ -173,7 +178,6 @@ export async function getRoles(): Promise<
       success: true,
       data: roles.map((r) => ({
         ...r,
-        departmentIds: r.departments.map((d) => d.departmentId),
         permissions: Array.from(expandEffective(r.permissions.map((x) => x.permission.key))),
       })),
     };
@@ -224,35 +228,36 @@ export async function updateRolePermissions(
   });
 }
 
-const roleScopeSchema = z.object({
-  // 'ALL'（不限，沿用权限矩阵默认范围）| 'SPEC'（仅 departments 关联部门）
+const accountScopeSchema = z.object({
+  // 'ALL'（按权限矩阵默认）| 'SPEC'（本部门+扩展部门，追加式）；'EXACT'（仅扩展部门）为迁移旧精确限定的只读态，不在此写入
   scope: z.enum(["ALL", "SPEC"]),
   departmentIds: z.array(z.number().int().positive()).default([]),
 });
 
 /**
- * 设置角色数据范围（部门范围）：
- * - scope='ALL'：清除部门限定（角色沿用权限矩阵默认范围）
- * - scope='SPEC'：把角色限定到所列部门（资产见部门内持有设备、人员仅这些部门）
- * 超级管理员（SUPER_ADMIN）不可限定部门。
+ * 设置账号数据范围（部门范围，账号级）：
+ * - scope='ALL'：清除部门限定（账号按权限矩阵默认范围）
+ * - scope='SPEC'：把账号限定到所列部门（资产见部门内持有设备、人员仅这些部门）
+ * 拥有「账号与权限管理」的账号不可限定部门（防止锁死范围）。
  */
-export async function setRoleDepartmentScope(
-  roleId: number,
-  input: z.infer<typeof roleScopeSchema>
+export async function setAccountDepartmentScope(
+  adminId: number,
+  input: z.infer<typeof accountScopeSchema>
 ): Promise<ActionResult<{ id: number }>> {
   return requireAuthSafe(async (user) => {
     const denied = await guardAccountManage(user);
     if (denied) return denied;
 
-    const validated = roleScopeSchema.safeParse(input);
+    const validated = accountScopeSchema.safeParse(input);
     if (!validated.success) {
       return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
     }
 
-    const role = await prisma.role.findUnique({ where: { id: roleId } });
-    if (!role) return { success: false, error: "角色不存在" };
-    if (role.key === "SUPER_ADMIN" && validated.data.scope === "SPEC") {
-      return { success: false, error: "超级管理员不可限定部门范围" };
+    const target = await prisma.admin.findUnique({ where: { id: adminId } });
+    if (!target) return { success: false, error: "账号不存在" };
+    const isSuper = await hasPermission({ id: adminId }, "system.account.manage");
+    if (isSuper && validated.data.scope === "SPEC") {
+      return { success: false, error: "拥有账号管理权限的账号不可限定部门范围" };
     }
 
     const deptIds = validated.data.departmentIds;
@@ -262,14 +267,17 @@ export async function setRoleDepartmentScope(
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.roleDepartment.deleteMany({ where: { roleId } });
-      await tx.role.update({ where: { id: roleId }, data: { departmentScope: validated.data.scope } });
+      await tx.adminDepartment.deleteMany({ where: { adminId } });
+      await tx.admin.update({
+        where: { id: adminId },
+        data: { departmentScope: validated.data.scope },
+      });
       if (validated.data.scope === "SPEC" && deptIds.length > 0) {
-        await tx.roleDepartment.createMany({
-          data: deptIds.map((departmentId) => ({ roleId, departmentId })),
+        await tx.adminDepartment.createMany({
+          data: deptIds.map((departmentId) => ({ adminId, departmentId })),
         });
       }
     });
-    return { success: true, data: { id: roleId } };
+    return { success: true, data: { id: adminId } };
   });
 }

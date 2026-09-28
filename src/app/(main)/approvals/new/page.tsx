@@ -50,7 +50,42 @@ export default async function NewApprovalPage() {
     orderBy: { employeeNo: "asc" },
   });
 
+  // 加购配件(PURCHASE)：配件全部分类 → 该分类下的型号（含品牌）
+  const componentModels = await prisma.componentModel.findMany({
+    select: {
+      id: true,
+      name: true,
+      brand: true,
+      categoryId: true,
+      category: { select: { id: true, name: true } },
+    },
+    orderBy: { categoryId: "asc" },
+  });
+  const componentCatalog = Array.from(
+    new Map(
+      componentModels.map((m) => [
+        m.categoryId,
+        {
+          id: m.categoryId,
+          name: m.category.name,
+          models: [] as { id: number; name: string; brand: string | null }[],
+        },
+      ])
+    ).values()
+  ).map((cat) => ({
+    ...cat,
+    models: componentModels
+      .filter((m) => m.categoryId === cat.id)
+      .map((m) => ({ id: m.id, name: m.name, brand: m.brand })),
+  }));
+
   return (
-    <NewRequestClient assets={assets} assetCats={assetCats} employees={employees} delegation={delegation} />
+    <NewRequestClient
+      assets={assets}
+      assetCats={assetCats}
+      employees={employees}
+      delegation={delegation}
+      componentCatalog={componentCatalog}
+    />
   );
 }

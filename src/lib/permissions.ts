@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { getTestPermissionOverride } from "./auth";
 import { ActionResult } from "./types";
+import type { Prisma } from "@prisma/client";
 
 // ============================================================
 // 权限点建模（模块 → 页面 → 操作）
@@ -57,7 +58,7 @@ export const PERMISSION_MODULES: PermModule[] = [
         ],
       },
       {
-        label: "批量入库",
+        label: "设备导入",
         key: "asset.import.view",
         actions: [{ key: "asset.import.execute", label: "执行导入" }],
       },
@@ -73,6 +74,14 @@ export const PERMISSION_MODULES: PermModule[] = [
       {
         label: "库存流水",
         key: "asset.stockflow.view",
+      },
+      {
+        label: "加购配件 / 采购留痕",
+        key: "asset.purchase.view",
+        actions: [
+          { key: "asset.purchase.submit", label: "发起加购" },
+          { key: "asset.purchase.export", label: "导出留痕" },
+        ],
       },
       {
         label: "库存盘点",
@@ -139,6 +148,16 @@ export const PERMISSION_MODULES: PermModule[] = [
         ],
       },
       { label: "申请单详情", key: "approval.detail.view" },
+      {
+        label: "我办理的记录",
+        key: "approval.done.view",
+        actions: [{ key: "approval.done.export", label: "导出记录" }],
+      },
+      {
+        label: "我的抄送",
+        key: "approval.cc.view",
+        actions: [{ key: "approval.cc.export", label: "导出记录" }],
+      },
     ],
   },
   {
@@ -298,6 +317,7 @@ export const ROLE_PERMISSION_MATRIX: Record<RoleKey, readonly PermissionKey[]> =
   SUPER_ADMIN: ALL_PERMISSION_KEYS,
   ASSET_MANAGER: [
     "asset.manage",
+    "asset.purchase.view",
     "dept.data.view",
     "approval.submit",
     "approval.approve",
@@ -372,19 +392,88 @@ export async function guardPermission<T = never>(
 }
 
 /**
- * 解析账号角色的显式部门数据范围：
- * - 拥有 system.account.manage（超管/账号管理）→ 'ALL'（不限，含全部资产与部门）
- * - 角色 departmentScope='SPEC' → 该角色关联的部门 id 列表（仅限这些部门的资产/人员）
- * - 否则 → 'ALL'（沿用权限矩阵默认范围：asset.manage 全部 / dept.data.view 主管部门）
+ * 解析账号的显式部门数据范围（账号级）：
+ * - 拥有 system.account.manage（超管/账号管理）→ 'ALL'（不限，含全部部门）
+ * - departmentScope='EXACT' → 仅账号关联的扩展部门（精确复现旧「角色级精确限定」范围，不含主管部门/所属部门）
+ * - 默认（departmentScope 非 'SPEC'/'EXACT'）→ 仅本人主管部门（managedDepartments，无则本人所属部门）
+ * - departmentScope='SPEC' → 本人主管部门 ∪ 账号关联的扩展部门（在默认基础上追加）
+ * - 兜底：经上述计算后无任何部门（未绑员工/部门且未设置扩展）→ 回退 'ALL'（避免资产管理员被误限为空）
  */
-export async function resolveRoleDepartmentScope(
+export async function resolveDepartmentScope(
   user: { id: number }
 ): Promise<"ALL" | number[]> {
   if (await hasPermission(user, "system.account.manage")) return "ALL";
   const admin = await prisma.admin.findUnique({
     where: { id: user.id },
-    include: { role: { include: { departments: { select: { departmentId: true } } } } },
+    include: {
+      departmentLinks: { select: { departmentId: true } },
+      employee: {
+        select: {
+          departmentId: true,
+          managedDepartments: { select: { id: true } },
+        },
+      },
+    },
   });
-  if (!admin?.role || admin.role.departmentScope !== "SPEC") return "ALL";
-  return admin.role.departments.map((d) => d.departmentId);
+  // EXACT：严格限定为指定部门，仅取扩展部门，精确复现旧行为
+  if (admin?.departmentScope === "EXACT") {
+    const exact = admin.departmentLinks.map((d) => d.departmentId);
+    return exact.length > 0 ? exact : "ALL";
+  }
+  // 默认 = 本人主管部门（无则本人所属部门）
+  const deptIds = new Set<number>();
+  admin?.employee?.managedDepartments?.forEach((d) => deptIds.add(d.id));
+  if (admin?.employee?.departmentId != null) deptIds.add(admin.employee.departmentId);
+  // 指定部门 = 在默认基础上追加扩展部门
+  if (admin?.departmentScope === "SPEC") {
+    admin.departmentLinks.forEach((d) => deptIds.add(d.departmentId));
+  }
+  return deptIds.size > 0 ? Array.from(deptIds) : "ALL";
+}
+
+/**
+ * 资产可见/可操作范围（越权防护的统一口径）：
+ * - 拥有 asset.manage → 走账号级部门范围（'ALL' 不限；否则仅这些部门员工持有的设备，闲置池无归属不计入）
+ * - 拥有 dept.data.view → 仅本人所属部门员工持有的设备
+ * - 否则 → 仅本人名下设备（无账号绑定时返回不可命中的空集）
+ */
+export async function resolveAssetScope(
+  adminId: number
+): Promise<Prisma.AssetWhereInput | undefined> {
+  if (await hasPermission({ id: adminId }, "asset.manage")) {
+    const scope = await resolveDepartmentScope({ id: adminId });
+    return scope === "ALL" ? undefined : { employee: { departmentId: { in: scope } } };
+  }
+  const me = await prisma.admin.findUnique({
+    where: { id: adminId },
+    select: { employeeId: true, employee: { select: { departmentId: true } } },
+  });
+  if ((await hasPermission({ id: adminId }, "dept.data.view")) && me?.employee?.departmentId != null) {
+    return { employee: { departmentId: me.employee.departmentId } };
+  }
+  return { employeeId: me?.employeeId ?? -1 };
+}
+
+/**
+ * 员工可见范围（与 resolveAssetScope 同口径，落到 Employee.departmentId）：
+ * - 拥有 system.account.manage → 不限
+ * - 拥有 asset.manage → 走账号级部门范围
+ * - 否则 → 本人所属部门（无部门归属时返回不可命中的空集）
+ */
+export async function resolveEmployeeScope(
+  adminId: number
+): Promise<Prisma.EmployeeWhereInput | undefined> {
+  if (await hasPermission({ id: adminId }, "system.account.manage")) return undefined;
+  if (await hasPermission({ id: adminId }, "asset.manage")) {
+    const scope = await resolveDepartmentScope({ id: adminId });
+    return scope === "ALL" ? undefined : { departmentId: { in: scope } };
+  }
+  const me = await prisma.admin.findUnique({
+    where: { id: adminId },
+    select: { employeeId: true, employee: { select: { departmentId: true } } },
+  });
+  if (me?.employee?.departmentId != null) {
+    return { departmentId: me.employee.departmentId };
+  }
+  return { id: -1 };
 }

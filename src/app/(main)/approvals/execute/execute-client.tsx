@@ -18,8 +18,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/hooks/use-toast";
-import { usePermission } from "@/hooks/use-permission";
 import { formatTime } from "@/lib/utils";
 import {
   getPendingExecutionRequests,
@@ -59,7 +59,6 @@ const TYPE_TABS = [
 
 export function ExecuteClient() {
   const { toast } = useToast();
-  const canExecute = usePermission("asset.upgrade.execute");
   const [items, setItems] = useState<PendingExecutionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState("");
@@ -72,10 +71,15 @@ export function ExecuteClient() {
   const [replacementAssetId, setReplacementAssetId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const result = await getPendingExecutionRequests();
-    setLoading(false);
-    if (result.success) setItems(result.data);
-    else toast({ title: "加载失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await getPendingExecutionRequests();
+      if (result.success) setItems(result.data);
+      else toast({ title: "加载失败", description: result.error, variant: "destructive" });
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   }, [toast]);
 
   useEffect(() => {
@@ -90,23 +94,28 @@ export function ExecuteClient() {
     setRows([]);
     setReplacementAssetId(null);
     setDetailLoading(true);
-    const result = await getExecutableDetail(requestId);
-    setDetailLoading(false);
-    if (result.success) {
-      setDetail(result.data);
-      if (result.data.currentComponents) {
-        setRows([
-          {
-            key: `${Date.now()}`,
-            modelId: 0,
-            modelName: "",
-            quantityDelta: 1,
-            isAdd: true,
-          },
-        ]);
+    try {
+      const result = await getExecutableDetail(requestId);
+      if (result.success) {
+        setDetail(result.data);
+        if (result.data.currentComponents) {
+          setRows([
+            {
+              key: `${Date.now()}`,
+              modelId: 0,
+              modelName: "",
+              quantityDelta: 1,
+              isAdd: true,
+            },
+          ]);
+        }
+      } else {
+        toast({ title: "获取详情失败", description: result.error, variant: "destructive" });
       }
-    } else {
-      toast({ title: "获取详情失败", description: result.error, variant: "destructive" });
+    } catch {
+      toast({ title: "加载失败", description: "加载异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -139,14 +148,19 @@ export function ExecuteClient() {
     okHint: string
   ) => {
     setSubmitting(true);
-    const result = await run();
-    setSubmitting(false);
-    if (result.success) {
-      toast({ title: "执行成功", description: okHint });
-      closeDetail();
-      await load();
-    } else {
-      toast({ title: "执行失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await run();
+      if (result.success) {
+        toast({ title: "执行成功", description: okHint });
+        closeDetail();
+        await load();
+      } else {
+        toast({ title: "执行失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "执行失败", description: "执行异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -188,7 +202,7 @@ export function ExecuteClient() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="待执行变更" description="审批已通过、由资产管理员执行的升级/降级、更换、维修申请" />
+      <PageHeader title="待执行变更" description="审批已通过、由你完成的升级/降级、更换、维修申请" />
 
       <div className="flex items-center gap-2 border-b">
         {TYPE_TABS.map((tab) => (
@@ -260,8 +274,6 @@ export function ExecuteClient() {
                       type="button"
                       size="sm"
                       onClick={() => openDetail(r.id)}
-                      disabled={!canExecute}
-                      title={canExecute ? undefined : "没有执行权限"}
                     >
                       执行
                     </Button>
@@ -284,91 +296,118 @@ export function ExecuteClient() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {detail?.businessType === "ASSET_REPLACE" || detail?.businessType === "ASSET_REPAIR"
-                ? "选定替换机"
-                : "执行配件变更"}
+              {detail?.businessType === "ASSET_REPLACE"
+                ? "执行设备更换"
+                : detail?.businessType === "ASSET_REPAIR"
+                  ? "执行设备维修"
+                  : "执行配件变更"}
             </DialogTitle>
-            {detail && (
-              <DialogDescription>
-                单号 {detail.requestNo} · 设备 {detail.assetNo}
-                {detail.assetName ? ` · ${detail.assetName}` : ""}
-                {detail.categoryName ? ` · 类别「${detail.categoryName}」` : ""}
-                {detail.action && (
-                  <Badge variant="default" className="ml-2">
-                    {detail.action === "UPGRADE" ? "升级" : "降级"}
-                  </Badge>
-                )}
-              </DialogDescription>
-            )}
+            <DialogDescription>该申请已审批通过，确认后由你完成最终执行</DialogDescription>
           </DialogHeader>
 
           {detailLoading ? (
-            <div className="py-8 text-center text-muted-foreground">加载中...</div>
+            <div className="py-10 text-center text-muted-foreground">加载中...</div>
           ) : detail ? (
-            <>
+            <div className="space-y-4 text-sm">
+              {/* 元信息条 */}
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-muted-foreground">单号</dt>
+                  <dd className="mt-0.5 font-mono font-medium">{detail.requestNo}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">业务类型</dt>
+                  <dd className="mt-0.5 font-medium">
+                    {TYPE_BADGE[detail.businessType]?.label ?? detail.businessType}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">设备</dt>
+                  <dd className="mt-0.5 truncate font-medium">
+                    {detail.assetNo}
+                    {detail.assetName ? ` · ${detail.assetName}` : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">配件类别</dt>
+                  <dd className="mt-0.5 font-medium">{detail.categoryName || "—"}</dd>
+                </div>
+              </dl>
+
+              {/* 申请原因 */}
+              <div className="rounded-md border border-border/70 bg-card p-3">
+                <p className="mb-1 text-xs text-muted-foreground">申请原因</p>
+                <p className="whitespace-pre-wrap leading-relaxed">{detail.reason || "—"}</p>
+              </div>
+
               {detail.businessType === "ASSET_REPLACE" || detail.businessType === "ASSET_REPAIR" ? (
                 /* 更换/维修：选择替换机 */
-                <div className="space-y-4">
-                  <div>
-                    <Label className="mb-1 block text-sm text-muted-foreground">申请原因</Label>
-                    <p className="text-sm">{detail.reason || "—"}</p>
-                  </div>
-                  <div>
-                    <Label className="mb-1 block text-sm text-muted-foreground">选择替换机</Label>
-                    <Select
-                      value={replacementAssetId ? String(replacementAssetId) : ""}
-                      onValueChange={(v) => setReplacementAssetId(Number(v))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择一台闲置设备" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {detail.availableAssets?.map((a) => (
-                          <SelectItem key={a.assetId} value={String(a.assetId)}>
-                            {a.assetNo} · {a.assetName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {(!detail.availableAssets || detail.availableAssets.length === 0) && (
-                      <p className="mt-1 text-xs text-muted-foreground">暂无可用的闲置设备</p>
-                    )}
-                  </div>
+                <div>
+                  <Label className="mb-1.5 block text-xs text-muted-foreground">选择替换机</Label>
+                  <SearchableSelect
+                    options={(detail.availableAssets ?? []).map((a) => ({
+                      value: String(a.assetId),
+                      label: a.assetNo,
+                      description: a.assetName,
+                    }))}
+                    value={replacementAssetId ? String(replacementAssetId) : ""}
+                    onValueChange={(v) => setReplacementAssetId(v ? Number(v) : null)}
+                    placeholder="搜索并选择一台闲置设备"
+                    searchPlaceholder="按设备编号 / 名称搜索"
+                    emptyText="无可用的闲置设备"
+                    triggerClassName="w-full"
+                  />
+                  {(!detail.availableAssets || detail.availableAssets.length === 0) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      当前无可选的闲置设备，请先归还设备后再执行
+                    </p>
+                  )}
                 </div>
               ) : (
                 /* 升级/降级：配件调整 */
                 <div className="space-y-4">
-                {/* 当前配件 */}
-                <div>
-                  <Label className="mb-1 block text-sm text-muted-foreground">设备当前配件</Label>
-                  {!detail.currentComponents || detail.currentComponents.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">该设备暂无配件</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {detail.currentComponents.map((c) => (
-                        <Badge key={c.assetComponentId} variant="outline">
-                          {c.modelName} ×{c.quantity}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                  <div>
+                    <Label className="mb-1.5 block text-xs text-muted-foreground">设备当前配件</Label>
+                    {!detail.currentComponents || detail.currentComponents.length === 0 ? (
+                      <p className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                        该设备暂无配件
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {detail.currentComponents.map((c) => (
+                          <span
+                            key={c.assetComponentId}
+                            className="inline-flex items-baseline gap-1.5 rounded-md border border-border/80 bg-card px-2.5 py-1.5"
+                          >
+                            <span className="text-sm text-foreground">{c.modelName}</span>
+                            <span className="text-xs text-muted-foreground">×{c.quantity}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                {/* 变更行 */}
-                <div>
-                  <Label className="mb-1 block text-sm text-muted-foreground">变更明细（增加=从库存出库，减少=退回库存）</Label>
-                  <div className="space-y-2">
-                    {rows.map((r) => {
-                      const stock = detail.categoryModels?.find((m) => m.modelId === r.modelId)?.stock;
-                      return (
-                        <div key={r.key} className="flex items-center gap-2">
-                          <div className="w-[110px]">
+                  <div>
+                    <Label className="mb-1.5 block text-xs text-muted-foreground">
+                      变更明细{" "}
+                      <span className="font-normal">（增加=从库存出库，减少=退回库存）</span>
+                    </Label>
+                    <div className="overflow-hidden rounded-lg border border-border/80">
+                      <div className="grid grid-cols-[1fr_7rem_5rem_2.25rem] items-center gap-2 border-b border-border/80 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                        <span>配件型号</span>
+                        <span>操作</span>
+                        <span>数量</span>
+                        <span />
+                      </div>
+                      <div className="divide-y divide-border/70">
+                        {rows.map((r) => (
+                          <div key={r.key} className="grid grid-cols-[1fr_7rem_5rem_2.25rem] items-center gap-2 bg-card px-3 py-2.5">
                             <Select
                               value={r.modelId ? String(r.modelId) : ""}
                               onValueChange={(v) => onModelChange(r.key, Number(v))}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="选型号" />
+                                <SelectValue placeholder="选择型号" />
                               </SelectTrigger>
                               <SelectContent>
                                 {detail.categoryModels?.map((m) => (
@@ -378,8 +417,6 @@ export function ExecuteClient() {
                                 ))}
                               </SelectContent>
                             </Select>
-                          </div>
-                          <div className="w-[110px]">
                             <Select
                               value={r.isAdd ? "add" : "remove"}
                               onValueChange={(v) =>
@@ -396,39 +433,43 @@ export function ExecuteClient() {
                                 <SelectItem value="remove">减少</SelectItem>
                               </SelectContent>
                             </Select>
-                          </div>
-                          <Input
-                            type="number"
-                            min={1}
-                            className="w-20"
-                            value={r.quantityDelta}
-                            onChange={(e) =>
-                              setRows((prev) =>
-                                prev.map((x) =>
-                                  x.key === r.key
-                                    ? { ...x, quantityDelta: Math.max(1, Number(e.target.value) || 1) }
-                                    : x
+                            <Input
+                              type="number"
+                              min={1}
+                              className="w-full"
+                              value={r.quantityDelta}
+                              onChange={(e) =>
+                                setRows((prev) =>
+                                  prev.map((x) =>
+                                    x.key === r.key
+                                      ? { ...x, quantityDelta: Math.max(1, Number(e.target.value) || 1) }
+                                      : x
+                                  )
                                 )
-                              )
-                            }
-                          />
-                          <span className="w-24 truncate text-sm text-muted-foreground">{r.modelName}</span>
-                          {r.isAdd && r.modelId !== 0 && (
-                            <span className="w-20 text-xs text-muted-foreground">
-                              {stock !== undefined ? `剩余库存 ${stock}` : ""}
-                            </span>
-                          )}
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeRow(r.key)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      );
-                    })}
+                              }
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9"
+                              onClick={() => removeRow(r.key)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        {rows.length === 0 && (
+                          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                            暂无变更项，点击下方「加一行」添加
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={addRow}>
+                      <Plus className="mr-1 h-4 w-4" /> 加一行
+                    </Button>
                   </div>
-                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={addRow}>
-                    <Plus className="mr-1 h-4 w-4" /> 加一行
-                  </Button>
-                </div>
                 </div>
               )}
 
@@ -440,9 +481,9 @@ export function ExecuteClient() {
                   {submitting ? "执行中..." : "确认执行"}
                 </Button>
               </DialogFooter>
-            </>
+            </div>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">无法获取详情</div>
+            <div className="py-10 text-center text-muted-foreground">无法获取详情</div>
           )}
         </DialogContent>
       </Dialog>

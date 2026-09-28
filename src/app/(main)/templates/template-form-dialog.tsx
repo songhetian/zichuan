@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,7 +10,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -30,6 +29,8 @@ import { createDeviceTemplate, updateDeviceTemplate } from "@/actions/device-tem
 const templateSchema = z.object({
   name: z.string().min(1, "模板名称不能为空"),
   categoryId: z.string().min(1, "请选择设备分类"),
+  brand: z.string().optional(),
+  model: z.string().optional(),
 });
 
 type TemplateFormValues = z.infer<typeof templateSchema>;
@@ -38,6 +39,8 @@ export interface TemplateData {
   id: number;
   name: string;
   categoryId: number;
+  brand: string | null;
+  model: string | null;
   createdAt: string;
   components: {
     id: number;
@@ -60,6 +63,19 @@ interface TemplateFormDialogProps {
   componentCategories: ComponentCategoryOption[];
 }
 
+/** 分区标题：细竖条强调 + 标签，右侧可挂载统计/操作 */
+function SectionTitle({ children, meta }: { children: ReactNode; meta?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-[3px] shrink-0 rounded-full bg-primary" />
+        <span className="text-[13px] font-medium text-foreground">{children}</span>
+      </div>
+      {meta}
+    </div>
+  );
+}
+
 export function TemplateFormDialog({
   open,
   onOpenChange,
@@ -77,7 +93,7 @@ export function TemplateFormDialog({
 
   const form = useForm<TemplateFormValues>({
     resolver: zodResolver(templateSchema),
-    defaultValues: { name: "", categoryId: "" },
+    defaultValues: { name: "", categoryId: "", brand: "", model: "" },
   });
 
   useEffect(() => {
@@ -86,6 +102,8 @@ export function TemplateFormDialog({
       form.reset({
         name: template.name,
         categoryId: template.categoryId.toString(),
+        brand: template.brand ?? "",
+        model: template.model ?? "",
       });
       // 构建 modelId → (categoryId, categoryName) 映射，用于补充配件分类信息
       const modelInfoMap = new Map(
@@ -105,7 +123,7 @@ export function TemplateFormDialog({
         })
       );
     } else {
-      form.reset({ name: "", categoryId: "" });
+      form.reset({ name: "", categoryId: "", brand: "", model: "" });
       setBomComponents([]);
     }
   }, [open, mode, template]);
@@ -115,6 +133,9 @@ export function TemplateFormDialog({
     const payload = {
       name: values.name.trim(),
       categoryId: Number(values.categoryId),
+      // 品牌/型号挂在模板上，建档时带出到每台设备；留空则清空
+      brand: values.brand?.trim() || null,
+      model: values.model?.trim() || null,
       components: bomComponents.map((c) => ({
         modelId: c.modelId,
         quantity: Number(c.quantity),
@@ -141,34 +162,34 @@ export function TemplateFormDialog({
     }
   };
 
+  const isCreate = mode === "create";
+  const totalQuantity = bomComponents.reduce((sum, c) => sum + (Number(c.quantity) || 0), 0);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden p-0">
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col flex-1 overflow-hidden">
-          <DialogHeader className="px-6 pb-4 pt-6 border-b border-border">
-            <DialogTitle className="text-xl">{mode === "create" ? "新建设备模板" : "编辑设备模板"}</DialogTitle>
-            <DialogDescription className="mt-1">
-              {mode === "create" ? "填写模板基本信息并配置配件清单" : "修改模板信息及配件配置"}
+      <DialogContent className="max-w-3xl max-h-[88vh] flex flex-col gap-0 overflow-hidden p-0">
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
+          <DialogHeader className="mb-0 border-b border-border px-7 pb-5 pt-6">
+            <DialogTitle className="text-lg">{isCreate ? "新建设备模板" : "编辑设备模板"}</DialogTitle>
+            <DialogDescription className="text-[13px]">
+              {isCreate ? "填写模板基本信息，并按需配置配件清单" : "修改模板信息及配件配置"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* 左侧：基本信息 */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-primary" />
-                  <span className="text-sm font-medium text-foreground">基本信息</span>
-                </div>
-
-                {/* 模板名称 + 设备分类 两列并排 */}
-                <div className="grid grid-cols-2 gap-3">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-7 py-6">
+            {/* 基本信息 */}
+            <section className="space-y-3">
+              <SectionTitle>基本信息</SectionTitle>
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label htmlFor="template-name">模板名称</Label>
+                    <Label htmlFor="template-name" className="req text-sm font-medium text-foreground">
+                      模板名称
+                    </Label>
                     <Input
                       id="template-name"
                       {...form.register("name")}
-                      placeholder="如：MacBook Pro 14寸"
+                      placeholder="如：MacBook Pro 14 英寸"
                       className="h-10"
                     />
                     {form.formState.errors.name && (
@@ -177,13 +198,15 @@ export function TemplateFormDialog({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="template-category">设备分类</Label>
+                    <Label htmlFor="template-category" className="req text-sm font-medium text-foreground">
+                      设备分类
+                    </Label>
                     <Select
                       value={form.watch("categoryId")}
                       onValueChange={(v) => form.setValue("categoryId", v)}
                     >
                       <SelectTrigger id="template-category" className="h-10">
-                        <SelectValue placeholder="选择分类" />
+                        <SelectValue placeholder="请选择设备分类" />
                       </SelectTrigger>
                       <SelectContent>
                         {categories.map((c) => (
@@ -197,31 +220,52 @@ export function TemplateFormDialog({
                       <p className="text-xs text-destructive">{form.formState.errors.categoryId.message}</p>
                     )}
                   </div>
-                </div>
 
-                {/* 唯一性设置已移至设备分类管理中 */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="template-brand" className="text-sm font-medium text-foreground">
+                      品牌
+                    </Label>
+                    <Input
+                      id="template-brand"
+                      {...form.register("brand")}
+                      placeholder="选填，如 戴尔"
+                      className="h-10"
+                    />
+                  </div>
 
-                {/* 提示信息 */}
-                <div className="p-3 rounded-lg bg-accent/50 border border-accent/30">
-                  <p className="text-xs text-accent-foreground leading-relaxed">
-                    配件清单为选填项，可在创建后通过"编辑"添加。
-                    也可从其他模板复制配件配置以提高效率。
-                  </p>
-                </div>
-              </div>
-
-              {/* 右侧：配件清单 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-sm font-medium text-foreground">配件清单</span>
-                    {bomComponents.length > 0 && (
-                      <span className="text-xs text-muted-foreground">（{bomComponents.length} 项）</span>
-                    )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="template-model" className="text-sm font-medium text-foreground">
+                      型号
+                    </Label>
+                    <Input
+                      id="template-model"
+                      {...form.register("model")}
+                      placeholder="选填，如 U2723QE"
+                      className="h-10"
+                    />
                   </div>
                 </div>
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  品牌 / 型号为选填，建档时自动带出到每台设备，无需逐台重复填写。
+                </p>
+              </div>
+            </section>
 
+            {/* 配件清单 */}
+            <section className="space-y-3">
+              <SectionTitle
+                meta={
+                  bomComponents.length > 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      已选 {bomComponents.length} 项 · 共 {totalQuantity} 件
+                    </span>
+                  ) : null
+                }
+              >
+                配件清单
+              </SectionTitle>
+
+              <div className="rounded-lg border border-border bg-card p-4">
                 <BomTable
                   modelOptions={componentModels}
                   templates={templates}
@@ -230,23 +274,29 @@ export function TemplateFormDialog({
                   onChange={setBomComponents}
                 />
               </div>
-            </div>
+
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                配件清单为选填项，创建后可通过「编辑」继续补充，也可直接从其他模板复制配件配置。
+              </p>
+            </section>
           </div>
 
-          {/* 底部固定操作栏 */}
-          <DialogFooter className="px-6 py-4 border-t border-border flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">
-              {bomComponents.length > 0 && `已配置 ${bomComponents.length} 项配件`}
-            </div>
+          {/* 底部操作栏 */}
+          <div className="flex items-center justify-between gap-4 border-t border-border px-7 py-4">
+            <p className="text-xs text-muted-foreground">
+              {bomComponents.length > 0
+                ? `已配置 ${bomComponents.length} 项配件，共 ${totalQuantity} 件`
+                : "尚未配置配件（选填）"}
+            </p>
             <div className="flex items-center gap-3">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" className="h-10 px-5" onClick={() => onOpenChange(false)}>
                 取消
               </Button>
               <Button type="submit" disabled={loading} className="h-10 px-6">
-                {loading ? (mode === "create" ? "创建中..." : "更新中...") : (mode === "create" ? "创建模板" : "保存更改")}
+                {loading ? (isCreate ? "创建中..." : "保存中...") : (isCreate ? "创建模板" : "保存更改")}
               </Button>
             </div>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

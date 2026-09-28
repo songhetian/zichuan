@@ -5,7 +5,7 @@ import { createAssetCategory } from "@/actions/asset-category.actions";
 import { createComponentCategory } from "@/actions/component-category.actions";
 import { createComponentModel } from "@/actions/component-model.actions";
 import { purchaseStockIn } from "@/actions/component-stock.actions";
-import { batchCreateAssets, getAssets } from "@/actions/asset.actions";
+import { createAsset, getAssets } from "@/actions/asset.actions";
 import { unwrap } from "./helpers";
 
 // ============================================================
@@ -41,9 +41,9 @@ async function setupWithAssets(count: number) {
     },
   });
 
-  await batchCreateAssets({
+  await createAsset({
     templateId: template.id,
-    count,
+    quantity: count,
     operator: "admin",
   });
 }

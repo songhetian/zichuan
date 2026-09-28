@@ -65,7 +65,7 @@ async function seedApprovedRepair(opts?: {
       assetNo: "DN-0002",
       name: "替换机",
       templateId: template.id,
-      status: "IN_STOCK",
+      status: "IDLE",
       employeeId: null,
     },
   });

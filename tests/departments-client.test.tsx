@@ -64,9 +64,9 @@ describe("部门管理 · 设置部门负责人", () => {
     const techRow = rows.find((r) => within(r).queryByText("技术部"))!;
     await user.click(within(techRow).getByRole("button", { name: /设置负责人/ }));
 
-    // 弹窗中选择员工韩梅梅
+    // 弹窗中选择员工韩梅梅（选项以「姓名+工号」两行展示）
     await user.click(screen.getByRole("combobox"));
-    await user.click(screen.getByRole("option", { name: "E002 · 韩梅梅" }));
+    await user.click(screen.getByRole("option", { name: /韩梅梅/ }));
     await user.click(screen.getByRole("button", { name: "确认" }));
 
     await waitFor(() => {

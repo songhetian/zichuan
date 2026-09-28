@@ -17,6 +17,10 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(1, "新密码不能为空"),
 });
 
+const forceChangePasswordSchema = z.object({
+  newPassword: z.string().min(6, "新密码至少 6 位"),
+});
+
 async function ensureAdminExists(): Promise<void> {
   const count = await prisma.admin.count();
   if (count === 0) {
@@ -41,12 +45,21 @@ export async function login(
   try {
     await ensureAdminExists();
 
-    const admin = await prisma.admin.findUnique({
+    // 登录名 = 员工编号（工号）。优先按账号名精确查，查不到再按工号反查绑定账号
+    let admin = await prisma.admin.findUnique({
       where: { username: validated.data.username },
       include: { employee: { select: { name: true } } },
     });
     if (!admin) {
-      return { success: false, error: "用户名或密码错误" };
+      const emp = await prisma.employee.findUnique({
+        where: { employeeNo: validated.data.username },
+        include: { account: { include: { employee: { select: { name: true } } } } },
+      });
+      admin = emp?.account ?? null;
+    }
+
+    if (!admin) {
+      return { success: false, error: "工号或密码错误" };
     }
     if (!admin.isActive) {
       return { success: false, error: "账号已停用，请联系管理员" };
@@ -54,7 +67,7 @@ export async function login(
 
     const valid = await bcrypt.compare(validated.data.password, admin.password);
     if (!valid) {
-      return { success: false, error: "用户名或密码错误" };
+      return { success: false, error: "工号或密码错误" };
     }
 
     await createSession(admin.id, admin.username, validated.data.remember === true);
@@ -99,6 +112,43 @@ export async function changePassword(
     const valid = await bcrypt.compare(validated.data.oldPassword, admin.password);
     if (!valid) {
       return { success: false, error: "旧密码不正确" };
+    }
+
+    // 不允许停留在默认密码上（首登强制改密）
+    if (DEFAULT_PASSWORDS.has(validated.data.newPassword)) {
+      return { success: false, error: "新密码不能与默认密码相同" };
+    }
+
+    const hashed = await bcrypt.hash(validated.data.newPassword, 10);
+    await prisma.admin.update({
+      where: { id: admin.id },
+      data: { password: hashed, mustChangePassword: false },
+    });
+
+    return { success: true, data: { success: true } };
+  } catch (e) {
+    return { success: false, error: "修改密码失败，请稍后重试" };
+  }
+}
+
+/** 首次登录强制改密：无需旧密码（默认密码已知），改密后清除 mustChangePassword 标记 */
+export async function forceChangePassword(
+  input: z.infer<typeof forceChangePasswordSchema>
+): Promise<ActionResult<{ success: true }>> {
+  const validated = forceChangePasswordSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
+  }
+
+  try {
+    const user = await requireAuth();
+    const admin = await prisma.admin.findUnique({ where: { id: user.id } });
+    if (!admin) {
+      return { success: false, error: "账号不存在" };
+    }
+    // 仅允许标记了强制改密的账号调用（首登/重置密码后），防止绕过正常改密路径
+    if (!admin.mustChangePassword) {
+      return { success: false, error: "当前账号无需强制修改密码" };
     }
 
     // 不允许停留在默认密码上（首登强制改密）

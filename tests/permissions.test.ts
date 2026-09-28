@@ -34,6 +34,7 @@ describe("默认权限矩阵（与 docs/approval-flow-v1.md §6 对齐）", () =
 
     expect(ROLE_PERMISSION_MATRIX.ASSET_MANAGER).toEqual([
       "asset.manage",
+      "asset.purchase.view",
       "dept.data.view",
       "approval.submit",
       "approval.approve",
@@ -64,6 +65,12 @@ describe("默认权限矩阵（与 docs/approval-flow-v1.md §6 对齐）", () =
       "approval.my.view",
     ]);
     expect(eff(["asset.manage"])).toContain("asset.device.view");
+    // 模块级「审批操作」展开后含「我办理的记录」页与导出动作点
+    expect(eff(["approval.approve"])).toContain("approval.done.view");
+    expect(eff(["approval.approve"])).toContain("approval.done.export");
+    // 同组「我的抄送」页与导出动作点独立授权
+    expect(eff(["approval.approve"])).toContain("approval.cc.view");
+    expect(eff(["approval.approve"])).toContain("approval.cc.export");
   });
 
   it("矩阵引用的每个权限点都已定义", () => {

@@ -237,15 +237,15 @@ describe("待执行变更：executeApprovedChange / 列表 / 详情", () => {
     expect(r.error).toContain("不满足执行条件或已执行");
   });
 
-  it("无 asset.manage 权限 → 拒绝执行", async () => {
+  it("非末节点角色账号（EMPLOYEE）→ 拒绝执行", async () => {
     const org = await seedApprovedUpgrade();
-    const noPerm = await seedAccount("staff", "EMPLOYEE", ["approval.submit"]);
-    await login(noPerm);
+    const staff = await seedAccount("staff", "EMPLOYEE", ["approval.submit"]);
+    await login(staff);
 
     const r = await executeApprovedChange(org.request.id, [{ modelId: org.newModel.id, quantityDelta: 1 }]);
     expect(r.success).toBe(false);
     if (r.success) return;
-    expect(r.error).toContain("执行权限");
+    expect(r.error).toContain("不满足执行条件或已执行");
   });
 
   it("非 APPROVED（PENDING）→ 执行被拒", async () => {

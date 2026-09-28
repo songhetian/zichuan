@@ -33,14 +33,19 @@ export function ActionButtons({
   const { toast } = useToast();
 
   const handleDelete = async () => {
-    const result = await onDelete();
-    if (result.success) {
-      toast({ title: "删除成功" });
-      onSuccess?.();
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await onDelete();
+      if (result.success) {
+        toast({ title: "删除成功" });
+        onSuccess?.();
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDeleteOpen(false);
     }
-    setDeleteOpen(false);
   };
 
   const handleEdit = async (values: Record<string, string>) => {

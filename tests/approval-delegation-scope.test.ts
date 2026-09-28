@@ -88,6 +88,28 @@ describe("代申数据范围 getApprovalDelegationTargets", () => {
     expect(zhang.assets.every((a) => a.id !== undefined)).toBe(true);
   });
 
+  it("资产管理员 SPEC：代申范围 = 主管部门 ∪ 扩展部门（追加式，与 resolveDepartmentScope 一致）", async () => {
+    const amRole = await seedRole("AM", ["asset.manage", "dept.data.view"]);
+    const d1 = await prisma.department.create({ data: { name: "技术部" } });
+    const d2 = await prisma.department.create({ data: { name: "运营部" } });
+    const d3 = await prisma.department.create({ data: { name: "拓展部" } });
+    const amEmp = await prisma.employee.create({ data: { employeeNo: "M01", name: "管理员", departmentId: d1.id } });
+    const am = await prisma.admin.create({ data: { username: "am", password: "x", roleId: amRole.id, employeeId: amEmp.id } });
+    // 技术部管辖 + 扩展运营部；拓展部不在范围内
+    await prisma.department.update({ where: { id: d1.id }, data: { managerId: amEmp.id } });
+    await prisma.adminDepartment.create({ data: { adminId: am.id, departmentId: d2.id } });
+    await prisma.admin.update({ where: { id: am.id }, data: { departmentScope: "SPEC" } });
+    const e1 = await prisma.employee.create({ data: { employeeNo: "E001", name: "员工A", departmentId: d1.id } });
+    const e2 = await prisma.employee.create({ data: { employeeNo: "E002", name: "员工B", departmentId: d2.id } });
+    await prisma.employee.create({ data: { employeeNo: "E003", name: "员工C", departmentId: d3.id } });
+
+    setTestUser({ id: am.id, username: "am", permissions: ["asset.manage", "dept.data.view"] });
+    const targets = await getApprovalDelegationTargets(am.id);
+    const empNos = targets.map((t) => t.employeeNo);
+    expect(empNos).toEqual(expect.arrayContaining(["M01", "E001", "E002"]));
+    expect(empNos).not.toContain("E003");
+  });
+
   it("具备 system.account.manage 时返回全部部门在职员工", async () => {
     const allRole = seedRole("ALL", ["system.account.manage"]);
     const d1 = await prisma.department.create({ data: { name: "技术部" } });

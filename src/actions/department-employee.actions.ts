@@ -4,7 +4,7 @@ import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, SessionUser } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, resolveDepartmentScope } from "@/lib/permissions";
 import { generateEmployeeNo } from "@/lib/employee-no";
 import { handleUniqueViolation } from "@/lib/prisma-error";
 import bcrypt from "bcryptjs";
@@ -13,6 +13,7 @@ import bcrypt from "bcryptjs";
 // 员工管理（部门主管弹窗）：添加/修改/分配设备编码/标记离职
 // 数据范围守卫：
 //   - 拥有「账号与权限管理」(system.account.manage) → 不受部门限制
+//   - 设置了账号级部门范围（SPEC/EXACT）或拥有 asset.manage → 走统一口径 resolveDepartmentScope
 //   - 否则必须拥有「本部门数据可见」(dept.data.view)，且目标员工必须在本人主管的部门内
 // 离职联动：Employee.status→LEFT、绑定账号停用、名下设备立即自动回收写 RETURNED 日志
 // ============================================================
@@ -80,23 +81,39 @@ function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
 
 /**
  * 解析当前账号可操作的部门集合。
- * 返回 null = 不受部门限制（拥有 system.account.manage）；否则为其主管的部门 id 列表。
- * 角色设置了显式部门范围（departmentScope='SPEC'）时，以该列表为准（资产管理员可据此限定到指定部门）。
- * 两者都不满足时抛 NO_DEPT_ACCESS。
+ * 返回 null = 不受部门限制；否则为可操作的部门 id 列表（命中为空数组即什么都不可操作）。
+ *
+ * 口径（与 permissions.ts 的统一口径对齐）：
+ *  - 拥有 system.account.manage → 不限（null）
+ *  - 账号设置了 departmentScope='SPEC' / 'EXACT' → 交给 resolveDepartmentScope 解析
+ *    （SPEC = 本部门 + 扩展部门「追加」，禁止仅取扩展部门替换；EXACT = 精确限定，空则回退 ALL）
+ *  - 拥有 asset.manage → 同样走 resolveDepartmentScope（无部门归属回退 ALL=不限），
+ *    与 resolveEmployeeScope / resolveAssetScope 保持一致，避免「列表可见但操作被拒」的错位
+ *  - 否则须拥有 dept.data.view → 仅本人担任主管的部门（managedDepartments）；
+ *    无该权限时一律拒绝（fail-closed），不沿用统一口径的「回退 ALL」，避免越权
  */
 async function resolveAllowedDeptIds(user: { id: number }): Promise<number[] | null> {
   if (await hasPermission(user, "system.account.manage")) return null;
+
   const admin = await prisma.admin.findUnique({
     where: { id: user.id },
     include: {
-      role: { include: { departments: { select: { departmentId: true } } } },
+      departmentLinks: { select: { departmentId: true } },
       employee: { select: { managedDepartments: { select: { id: true } } } },
     },
   });
-  // 角色显式限定部门：优先于“主管部门”口径
-  if (admin?.role?.departmentScope === "SPEC") {
-    return admin.role.departments.map((d) => d.departmentId);
+
+  // 账号显式限定了部门范围，或为资产管理员：统一交给 resolveDepartmentScope（单一权威口径）
+  const needsUnifiedScope =
+    admin?.departmentScope === "SPEC" ||
+    admin?.departmentScope === "EXACT" ||
+    (await hasPermission(user, "asset.manage"));
+  if (needsUnifiedScope) {
+    const scope = await resolveDepartmentScope(user);
+    return scope === "ALL" ? null : scope;
   }
+
+  // 部门主管：仅本人担任主管的部门；无 dept.data.view 一律拒绝
   if (!(await hasPermission(user, "dept.data.view"))) throw new Error("NO_DEPT_ACCESS");
   return (admin?.employee?.managedDepartments ?? []).map((d) => d.id);
 }
@@ -243,7 +260,7 @@ export async function setEmployeeDevice(
       // 已分配给自己 → 幂等成功
       if (asset.employeeId === employeeId) return { success: true, data: { employeeId } };
       if (asset.employeeId !== null) return { success: false, error: "该设备已分配给他人" };
-      if (!["IDLE", "IN_STOCK"].includes(asset.status)) {
+      if (asset.status !== "IDLE") {
         return { success: false, error: "该设备不在可用状态" };
       }
       await prisma.$transaction([

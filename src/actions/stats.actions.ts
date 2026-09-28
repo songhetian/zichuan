@@ -2,9 +2,10 @@
 
 import { z } from "zod";
 import { requireAuth } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { resolveAssetScope } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ActionResult } from "@/lib/types";
+import type { Prisma } from "@prisma/client";
 
 type AssetStatsResult = {
   total: number;
@@ -17,23 +18,15 @@ type AssetStatsResult = {
 export async function getAssetStats(
   input: { groupBy?: "category" | "department" | "employee" } = {}
 ): Promise<ActionResult<AssetStatsResult>> {
-  // 数据范围过滤：拥有 asset.manage 者可见全部资产；否则仅统计本人名下资产
   const user = await requireAuth();
-  const canViewAll = await hasPermission(user, "asset.manage");
-  let meEmployeeId: number | null = null;
-  if (!canViewAll) {
-    const me = await prisma.admin.findUnique({
-      where: { id: user.id },
-      select: { employeeId: true },
-    });
-    meEmployeeId = me?.employeeId ?? null;
-  }
-  // 本人名下（employeeId 匹配）；无账号绑定的员工身份不可见任何资产
-  const mine = meEmployeeId ?? -1;
+  // 数据范围过滤（统一口径）：asset.manage 走账号级部门范围；dept.data.view → 本部门；否则仅本人名下
+  const scope = await resolveAssetScope(user.id);
+  const scoped = (extra: Prisma.AssetWhereInput = {}): Prisma.AssetWhereInput =>
+    scope ? { AND: [scope, extra] } : extra;
 
   const statusGroups = await prisma.asset.groupBy({
     by: ["status"],
-    where: canViewAll ? undefined : { employeeId: mine },
+    where: scope,
     _count: { id: true },
   });
 
@@ -42,6 +35,7 @@ export async function getAssetStats(
     IN_USE: 0,
     IN_MAINTENANCE: 0,
     SCRAPPED: 0,
+    RESERVED: 0,
   };
   for (const g of statusGroups) {
     byStatus[g.status] = g._count.id;
@@ -53,7 +47,7 @@ export async function getAssetStats(
 
   if (input.groupBy === "category") {
     const catGroups = await prisma.asset.findMany({
-      where: canViewAll ? undefined : { employeeId: mine },
+      where: scope,
       include: {
         template: {
           select: {
@@ -83,7 +77,7 @@ export async function getAssetStats(
 
   if (input.groupBy === "department") {
     const empGroups = await prisma.asset.findMany({
-      where: canViewAll ? { employeeId: { not: null } } : { employeeId: mine },
+      where: scoped({ employeeId: { not: null } }),
       include: {
         employee: {
           select: {
@@ -113,7 +107,7 @@ export async function getAssetStats(
 
   if (input.groupBy === "employee") {
     const empAssets = await prisma.asset.findMany({
-      where: canViewAll ? { employeeId: { not: null } } : { employeeId: mine },
+      where: scoped({ employeeId: { not: null } }),
       include: {
         employee: {
           select: {
@@ -179,6 +173,184 @@ export async function getStockStats(): Promise<
   return { success: true, data };
 }
 
+/** 呆滞判定阈值（天）：闲置态超过该时长即视为呆滞资产。 */
+const STAGNANT_THRESHOLD_DAYS = 90;
+
+/** 出入库流水对账：按型号汇总流水签量，与实际结存对比，暴露账面与实存差异。 */
+export async function getStockReconciliation(): Promise<
+  ActionResult<{
+    matchedCount: number;
+    discrepantCount: number;
+    rows: {
+      modelId: number;
+      modelName: string;
+      brand: string;
+      categoryName: string;
+      stockQuantity: number;
+      loggedBalance: number;
+      difference: number;
+      isBalanced: boolean;
+    }[];
+  }>
+> {
+  await requireAuth();
+
+  const stocks = await prisma.componentStock.findMany({
+    include: {
+      model: {
+        include: { category: { select: { name: true } } },
+      },
+    },
+  });
+  const logs = await prisma.componentStockLog.groupBy({
+    by: ["modelId"],
+    _sum: { quantity: true },
+  });
+  const balanceMap = new Map(logs.map((l) => [l.modelId, l._sum.quantity ?? 0]));
+
+  let matchedCount = 0;
+  let discrepantCount = 0;
+  const rows = stocks.map((s) => {
+    const stockQuantity = s.quantity;
+    const loggedBalance = balanceMap.get(s.modelId) ?? 0;
+    const isBalanced = stockQuantity === loggedBalance;
+    if (isBalanced) matchedCount++;
+    else discrepantCount++;
+    return {
+      modelId: s.modelId,
+      modelName: s.model?.name ?? "",
+      brand: s.model?.brand ?? "",
+      categoryName: s.model?.category?.name ?? "",
+      stockQuantity,
+      loggedBalance,
+      difference: stockQuantity - loggedBalance,
+      isBalanced,
+    };
+  });
+
+  return { success: true, data: { matchedCount, discrepantCount, rows } };
+}
+
+/** 分配建议 FIFO：仅返回可分配（闲置）资产，按建档时间先进先出排序。 */
+export async function suggestAllocation(input: { categoryId?: number } = {}): Promise<
+  ActionResult<{
+    total: number;
+    rows: {
+      id: number;
+      assetNo: string;
+      name: string;
+      status: string;
+      createdAt: Date;
+      categoryName: string;
+    }[];
+  }>
+> {
+  const user = await requireAuth();
+  // 数据范围过滤（统一口径）：与设备列表一致
+  const scope = await resolveAssetScope(user.id);
+
+  const assets = await prisma.asset.findMany({
+    where: {
+      status: "IDLE",
+      ...(scope ?? {}),
+      template: input.categoryId ? { categoryId: input.categoryId } : undefined,
+    },
+    select: {
+      id: true,
+      assetNo: true,
+      name: true,
+      status: true,
+      createdAt: true,
+      template: { select: { category: { select: { name: true } } } },
+    },
+    orderBy: { createdAt: "asc" }, // FIFO：先建档优先
+  });
+
+  const rows = assets.map((a) => ({
+    id: a.id,
+    assetNo: a.assetNo,
+    name: a.name,
+    status: a.status,
+    createdAt: a.createdAt,
+    categoryName: a.template?.category?.name ?? "",
+  }));
+
+  return { success: true, data: { total: rows.length, rows } };
+}
+
+/** 库龄/呆滞统计：库龄按建档日期计；呆滞仅对当前闲置态设备，按最近活动（无则建档）距今天数判定。 */
+export async function getAssetAgeStats(
+  input: { thresholdDays?: number } = {}
+): Promise<
+  ActionResult<{
+    thresholdDays: number;
+    total: number;
+    stagnantCount: number;
+    rows: {
+      id: number;
+      assetNo: string;
+      name: string;
+      status: string;
+      ageDays: number;
+      idleDays: number | null;
+      isStagnant: boolean;
+      categoryName: string;
+    }[];
+  }>
+> {
+  const user = await requireAuth();
+  // 数据范围过滤（统一口径）：与设备列表一致
+  const scope = await resolveAssetScope(user.id);
+  const assets = await prisma.asset.findMany({
+    where: scope,
+    select: {
+      id: true,
+      assetNo: true,
+      name: true,
+      status: true,
+      createdAt: true,
+      template: { select: { category: { select: { name: true } } } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  // 每台设备最近一次生命周期动作时间（无动作则没有记录）
+  const lastEvents = await prisma.lifecycleLog.groupBy({
+    by: ["assetId"],
+    _max: { createdAt: true },
+  });
+  const lastEventMap = new Map(lastEvents.map((e) => [e.assetId, e._max.createdAt]));
+
+  const DAY = 86400000;
+  const now = Date.now();
+  const thresholdDays = input.thresholdDays ?? STAGNANT_THRESHOLD_DAYS;
+
+  let stagnantCount = 0;
+  const rows = assets.map((a) => {
+    const ageDays = Math.floor((now - a.createdAt.getTime()) / DAY);
+
+    // 只有闲置态才有「闲置天数」：呆滞基线 = 最近活动时间，无活动则用建档日
+    // 非闲置设备（在用/维修中/报废）不计呆滞，idleDays 为 null
+    const baseline = lastEventMap.get(a.id) ?? a.createdAt;
+    const idleDays = a.status === "IDLE" ? Math.floor((now - baseline.getTime()) / DAY) : null;
+    const isStagnant = idleDays != null && idleDays >= thresholdDays;
+    if (isStagnant) stagnantCount++;
+
+    return {
+      id: a.id,
+      assetNo: a.assetNo,
+      name: a.name,
+      status: a.status,
+      ageDays,
+      idleDays,
+      isStagnant,
+      categoryName: a.template?.category?.name ?? "",
+    };
+  });
+
+  return { success: true, data: { thresholdDays, total: rows.length, stagnantCount, rows } };
+}
+
 export async function getLifecycleTrend(
   input: { months?: number } = {}
 ): Promise<
@@ -190,24 +362,25 @@ export async function getLifecycleTrend(
     scrapped: number;
   }[]>
 > {
-  await requireAuth();
+  const user = await requireAuth();
 
   const months = input.months ?? 6;
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - months + 1);
-  startDate.setDate(1);
-  startDate.setHours(0, 0, 0, 0);
+  const now = new Date();
+  // 以「当月 1 日」为基准回退：若以今天为基准 setMonth，当天为 29–31 日时会月份溢出，
+  // 导致起始月偏移、月份桶 key 重复甚至少一个桶。
+  const startDate = new Date(now.getFullYear(), now.getMonth() - months + 1, 1, 0, 0, 0, 0);
 
+  // 数据范围过滤（统一口径）：仅统计可见资产的流水
+  const scope = await resolveAssetScope(user.id);
   const logs = await prisma.lifecycleLog.findMany({
-    where: { createdAt: { gte: startDate } },
+    where: { createdAt: { gte: startDate }, ...(scope ? { asset: scope } : {}) },
     select: { action: true, createdAt: true },
   });
 
   const monthMap = new Map<string, { allocated: number; returned: number; transferred: number; scrapped: number }>();
 
   for (let i = 0; i < months; i++) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - months + 1 + i);
+    const d = new Date(now.getFullYear(), now.getMonth() - months + 1 + i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     monthMap.set(key, { allocated: 0, returned: 0, transferred: 0, scrapped: 0 });
   }

@@ -14,8 +14,8 @@ import {
 } from "@/lib/approval-execute";
 
 // ============================================================
-// 资产管理员「待执行变更」：审批通过后手动执行升级/降级配件
-// 只处理 末节点=资产管理员(ASSET_MANAGER) 且 未执行(executedAt=null) 的单
+// 末节点审批角色即执行人：审批通过后手动执行升级/降级配件
+// 只处理 已通过(APPROVED)、未执行(executedAt=null) 且 末节点角色(finalNodeRole) = 当前用户角色 的单
 // ============================================================
 
 const adjustmentsSchema = z
@@ -26,6 +26,18 @@ const adjustmentsSchema = z
     })
   )
   .min(1, "调整列表不能为空");
+
+/**
+ * 取当前用户所属角色 key（finalNodeRole 由末节点 assigneeRole 写入，二者须同源匹配）。
+ * 无角色返回 null → 视为无权查看/执行。
+ */
+async function getRoleKey(userId: number): Promise<string | null> {
+  const admin = await prisma.admin.findUnique({
+    where: { id: userId },
+    select: { role: { select: { key: true } } },
+  });
+  return admin?.role?.key ?? null;
+}
 
 /** 解析升级/降级申请 payload（兼容历史 JSON 字符串存储），无效返回 null */
 function parseUpgradePayload(
@@ -52,8 +64,9 @@ export async function executeApprovedChange(
   adjustments: { modelId: number; quantityDelta: number }[]
 ): Promise<ActionResult<{ requestId: number; executedAt: Date }>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.upgrade.execute", "没有执行权限");
-  if (denied) return denied;
+  // 末节点审批角色即执行人：仅当当前用户角色 = 该单 finalNodeRole 时可执行
+  const roleKey = await getRoleKey(user.id);
+  if (!roleKey) return { success: false, error: "当前账号无角色，无法执行" };
 
   const parsed = adjustmentsSchema.safeParse(adjustments);
   if (!parsed.success) {
@@ -68,7 +81,7 @@ export async function executeApprovedChange(
           id: requestId,
           status: "APPROVED",
           businessType: "ASSET_UPGRADE",
-          finalNodeRole: "ASSET_MANAGER",
+          finalNodeRole: roleKey,
           executedAt: null,
         },
         data: { executedAt: now },
@@ -119,6 +132,11 @@ export async function executeApprovedChange(
         data: { status: restored, reservedByRequestId: null, reservedFromStatus: null },
       });
 
+      // 「我办理的记录」归因：记录执行人（末节点审批角色持有者）
+      await tx.approvalLog.create({
+        data: { requestId, actorId: user.id, action: "EXECUTE", fromNodeKey: null, toNodeKey: null },
+      });
+
       return { requestId, executedAt: now };
     });
 
@@ -159,14 +177,15 @@ export interface PendingExecutionRequest {
 /** 待执行变更列表：末节点=资产管理员 且 已通过未执行（升级/更换/维修） */
 export async function getPendingExecutionRequests(): Promise<ActionResult<PendingExecutionRequest[]>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.upgrade.execute", "没有查看待执行变更的权限");
-  if (denied) return denied;
+  // 末节点审批角色即执行人：列表只展示「我这种角色」能执行的单
+  const roleKey = await getRoleKey(user.id);
+  if (!roleKey) return { success: true, data: [] };
 
   const reqs = await prisma.approvalRequest.findMany({
     where: {
       status: "APPROVED",
       businessType: { in: ["ASSET_UPGRADE", "ASSET_REPLACE", "ASSET_REPAIR"] },
-      finalNodeRole: "ASSET_MANAGER",
+      finalNodeRole: roleKey,
       executedAt: null,
     },
     orderBy: { submittedAt: "desc" },
@@ -273,15 +292,16 @@ export async function getExecutableDetail(
   requestId: number
 ): Promise<ActionResult<ExecutableDetail>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.upgrade.execute", "没有执行权限");
-  if (denied) return denied;
+  // 末节点审批角色即执行人：非当前角色维度的单拒绝查看
+  const roleKey = await getRoleKey(user.id);
+  if (!roleKey) return { success: false, error: "当前账号无角色，无法查看" };
 
   const req = await prisma.approvalRequest.findUnique({ where: { id: requestId } });
   if (
     !req ||
     !["ASSET_UPGRADE", "ASSET_REPLACE", "ASSET_REPAIR"].includes(req.businessType) ||
     req.status !== "APPROVED" ||
-    req.finalNodeRole !== "ASSET_MANAGER" ||
+    req.finalNodeRole !== roleKey ||
     req.executedAt !== null
   ) {
     return { success: false, error: "申请单不满足执行条件或已执行" };
@@ -308,7 +328,7 @@ export async function getExecutableDetail(
 
     const availableAssets = await prisma.asset.findMany({
       where: {
-        status: { in: ["IDLE", "IN_STOCK"] },
+        status: "IDLE",
         employeeId: null,
       },
       orderBy: { assetNo: "asc" },
@@ -411,8 +431,9 @@ export async function executeReplaceChange(
   newAssetId: number
 ): Promise<ActionResult<{ requestId: number; executedAt: Date }>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.replace.execute", "没有执行权限");
-  if (denied) return denied;
+  // 末节点审批角色即执行人：仅当当前用户角色 = 该单 finalNodeRole 时可执行
+  const roleKey = await getRoleKey(user.id);
+  if (!roleKey) return { success: false, error: "当前账号无角色，无法执行" };
 
   if (!Number.isInteger(requestId) || requestId <= 0 || !Number.isInteger(newAssetId) || newAssetId <= 0) {
     return { success: false, error: "参数无效" };
@@ -426,7 +447,7 @@ export async function executeReplaceChange(
           id: requestId,
           status: "APPROVED",
           businessType: "ASSET_REPLACE",
-          finalNodeRole: "ASSET_MANAGER",
+          finalNodeRole: roleKey,
           executedAt: null,
         },
         data: { executedAt: now },
@@ -437,14 +458,34 @@ export async function executeReplaceChange(
       const p = parseReplacePayload(req.payload);
       if (!p) throw new Error("BAD_PAYLOAD");
 
-      const oldAsset = await tx.asset.findUnique({ where: { id: p.assetId } });
+      const oldAsset = await tx.asset.findUnique({
+        where: { id: p.assetId },
+        include: { template: { select: { name: true } } },
+      });
       if (!oldAsset) throw new Error("ASSET_NOT_FOUND");
 
-      const newAsset = await tx.asset.findUnique({ where: { id: newAssetId } });
+      const newAsset = await tx.asset.findUnique({
+        where: { id: newAssetId },
+        include: { template: { select: { name: true, category: { select: { name: true } } } } },
+      });
       if (!newAsset) throw new Error("NEW_ASSET_NOT_FOUND");
       if (newAsset.id === oldAsset.id) throw new Error("NEW_ASSET_NOT_AVAILABLE");
-      if (!["IDLE", "IN_STOCK"].includes(newAsset.status)) throw new Error("NEW_ASSET_NOT_AVAILABLE");
+      if (newAsset.status !== "IDLE") throw new Error("NEW_ASSET_NOT_AVAILABLE");
       if (newAsset.employeeId !== null) throw new Error("NEW_ASSET_NOT_AVAILABLE");
+
+      // 命名规则：有归属 =「{使用人}的{设备分类}」，无归属（回池）= 模板名
+      const assignee = oldAsset.employeeId
+        ? await tx.employee.findUnique({
+            where: { id: oldAsset.employeeId },
+            select: { name: true },
+          })
+        : null;
+      const newAssetName = assignee
+        ? `${assignee.name}的${newAsset.template.category.name}`
+        : newAsset.template.name;
+      // 原机无使用人（如资产管理员对闲置机发起更换）时，新机无人可绑 → 回闲置池，
+      // 否则会出现「状态=在用 但 使用人=空」的矛盾态（违 R2/R3）
+      const newStatus = assignee ? "IN_USE" : "IDLE";
 
       // 回收旧机：置闲置、归还人员、释放预占，写 REPLACED 日志
       await tx.lifecycleLog.create({
@@ -464,27 +505,33 @@ export async function executeReplaceChange(
         data: {
           status: "IDLE",
           employeeId: null,
+          name: oldAsset.template.name,
           reservedByRequestId: null,
           reservedFromStatus: null,
         },
       });
 
-      // 分配新机给申请人：置在用、绑定人员，写 ALLOCATED 日志
+      // 分配新机：有归属则置在用并绑定人员，无归属则回闲置池
       await tx.lifecycleLog.create({
         data: {
           assetId: newAsset.id,
-          action: "ALLOCATED",
+          action: assignee ? "ALLOCATED" : "CREATED",
           fromStatus: newAsset.status,
-          toStatus: "IN_USE",
+          toStatus: newStatus,
           operator: user.username,
           operatorId: user.id,
           requestId,
-          remark: `更换分配`,
+          remark: assignee ? `更换分配` : `更换入库（原机无使用人）`,
         },
       });
       await tx.asset.update({
         where: { id: newAsset.id },
-        data: { status: "IN_USE", employeeId: oldAsset.employeeId },
+        data: { status: newStatus, employeeId: assignee ? oldAsset.employeeId : null, name: newAssetName },
+      });
+
+      // 「我办理的记录」归因：记录执行人（末节点审批角色持有者）
+      await tx.approvalLog.create({
+        data: { requestId, actorId: user.id, action: "EXECUTE", fromNodeKey: null, toNodeKey: null },
       });
 
       return { requestId, executedAt: now };
@@ -533,8 +580,9 @@ export async function executeRepairChange(
   replacementAssetId: number
 ): Promise<ActionResult<{ requestId: number; executedAt: Date }>> {
   const user = await requireAuth();
-  const denied = await guardPermission(user, "asset.repair.execute", "没有执行权限");
-  if (denied) return denied;
+  // 末节点审批角色即执行人：仅当当前用户角色 = 该单 finalNodeRole 时可执行
+  const roleKey = await getRoleKey(user.id);
+  if (!roleKey) return { success: false, error: "当前账号无角色，无法执行" };
 
   if (
     !Number.isInteger(requestId) ||
@@ -553,7 +601,7 @@ export async function executeRepairChange(
           id: requestId,
           status: "APPROVED",
           businessType: "ASSET_REPAIR",
-          finalNodeRole: "ASSET_MANAGER",
+          finalNodeRole: roleKey,
           executedAt: null,
         },
         data: { executedAt: now },
@@ -567,11 +615,25 @@ export async function executeRepairChange(
       const oldAsset = await tx.asset.findUnique({ where: { id: p.assetId } });
       if (!oldAsset) throw new Error("ASSET_NOT_FOUND");
 
-      const replacement = await tx.asset.findUnique({ where: { id: replacementAssetId } });
+      const replacement = await tx.asset.findUnique({
+        where: { id: replacementAssetId },
+        include: { template: { select: { name: true, category: { select: { name: true } } } } },
+      });
       if (!replacement) throw new Error("NEW_ASSET_NOT_FOUND");
       if (replacement.id === oldAsset.id) throw new Error("NEW_ASSET_NOT_AVAILABLE");
-      if (!["IDLE", "IN_STOCK"].includes(replacement.status)) throw new Error("NEW_ASSET_NOT_AVAILABLE");
+      if (replacement.status !== "IDLE") throw new Error("NEW_ASSET_NOT_AVAILABLE");
       if (replacement.employeeId !== null) throw new Error("NEW_ASSET_NOT_AVAILABLE");
+
+      // 命名规则：有归属 =「{使用人}的{设备分类}」，无归属（回池）= 模板名
+      const assignee = oldAsset.employeeId
+        ? await tx.employee.findUnique({
+            where: { id: oldAsset.employeeId },
+            select: { name: true },
+          })
+        : null;
+      const replacementName = assignee
+        ? `${assignee.name}的${replacement.template.category.name}`
+        : replacement.template.name;
 
       // 旧机置维修中、释放预占，写 MAINTENANCE_START 日志
       await tx.lifecycleLog.create({
@@ -610,7 +672,12 @@ export async function executeRepairChange(
       });
       await tx.asset.update({
         where: { id: replacement.id },
-        data: { status: "IN_USE", employeeId: oldAsset.employeeId },
+        data: { status: "IN_USE", employeeId: oldAsset.employeeId, name: replacementName },
+      });
+
+      // 「我办理的记录」归因：记录执行人（末节点审批角色持有者）
+      await tx.approvalLog.create({
+        data: { requestId, actorId: user.id, action: "EXECUTE", fromNodeKey: null, toNodeKey: null },
       });
 
       return { requestId, executedAt: now };
@@ -672,6 +739,7 @@ export async function confirmHandover(
       const assets = await tx.asset.findMany({
         where: { employeeId: order.employeeId },
         orderBy: { id: "asc" },
+        include: { template: { select: { name: true } } },
       });
       for (const asset of assets) {
         await tx.lifecycleLog.create({
@@ -692,6 +760,7 @@ export async function confirmHandover(
           data: {
             status: "IDLE",
             employeeId: null,
+            name: asset.template.name,
             reservedByRequestId: null,
             reservedFromStatus: null,
           },

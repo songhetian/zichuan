@@ -4,6 +4,7 @@ import { downloadExcelFile } from "@/lib/excel-download";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePermission } from "@/hooks/use-permission";
 import { PageHeader } from "@/components/features/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -122,45 +123,60 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
   const handleCreate = async () => {
     if (!name.trim()) return;
     setLoading(true);
-    const result = await createDepartment({ name: name.trim() });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "创建成功" });
-      setDepartments([...departments, result.data]);
-      setCreateOpen(false);
-      setName("");
-    } else {
-      toast({ title: "创建失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await createDepartment({ name: name.trim() });
+      if (result.success) {
+        toast({ title: "创建成功" });
+        setDepartments([...departments, result.data]);
+        setCreateOpen(false);
+        setName("");
+      } else {
+        toast({ title: "创建失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleEdit = async () => {
     if (!currentId || !name.trim()) return;
     setLoading(true);
-    const result = await updateDepartment(currentId, { name: name.trim() });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "更新成功" });
-      setDepartments(departments.map((d) => (d.id === currentId ? { ...d, name: result.data.name } : d)));
-      setEditOpen(false);
-      setName("");
-      setCurrentId(null);
-    } else {
-      toast({ title: "更新失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await updateDepartment(currentId, { name: name.trim() });
+      if (result.success) {
+        toast({ title: "更新成功" });
+        setDepartments(departments.map((d) => (d.id === currentId ? { ...d, name: result.data.name } : d)));
+        setEditOpen(false);
+        setName("");
+        setCurrentId(null);
+      } else {
+        toast({ title: "更新失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async () => {
     if (!currentId) return;
-    const result = await deleteDepartment(currentId);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      setDepartments(departments.filter((d) => d.id !== currentId));
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await deleteDepartment(currentId);
+      if (result.success) {
+        toast({ title: "删除成功" });
+        setDepartments(departments.filter((d) => d.id !== currentId));
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDeleteOpen(false);
+      setCurrentId(null);
     }
-    setDeleteOpen(false);
-    setCurrentId(null);
   };
 
   const openEdit = (dept: { id: number; name: string }) => {
@@ -280,30 +296,40 @@ function AssetCategoryManager({
   const handleCreate = async () => {
     if (!catName.trim() || !catCode.trim()) return;
     setLoading(true);
-    const result = await createAssetCategory({ name: catName.trim(), code: catCode.trim() });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "创建成功" });
-      setCategories([...categories, result.data]);
-      setCreateOpen(false);
-      setCatName("");
-      setCatCode("");
-    } else {
-      toast({ title: "创建失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await createAssetCategory({ name: catName.trim(), code: catCode.trim() });
+      if (result.success) {
+        toast({ title: "创建成功" });
+        setCategories([...categories, result.data]);
+        setCreateOpen(false);
+        setCatName("");
+        setCatCode("");
+      } else {
+        toast({ title: "创建失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async () => {
     if (!currentId) return;
-    const result = await deleteAssetCategory(currentId);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      setCategories(categories.filter((c) => c.id !== currentId));
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await deleteAssetCategory(currentId);
+      if (result.success) {
+        toast({ title: "删除成功" });
+        setCategories(categories.filter((c) => c.id !== currentId));
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDeleteOpen(false);
+      setCurrentId(null);
     }
-    setDeleteOpen(false);
-    setCurrentId(null);
   };
 
   return (
@@ -396,29 +422,39 @@ function ComponentCategoryManager({
   const handleCreate = async () => {
     if (!catName.trim()) return;
     setLoading(true);
-    const result = await createComponentCategory({ name: catName.trim() });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "创建成功" });
-      setCategories([...categories, result.data]);
-      setCreateOpen(false);
-      setCatName("");
-    } else {
-      toast({ title: "创建失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await createComponentCategory({ name: catName.trim() });
+      if (result.success) {
+        toast({ title: "创建成功" });
+        setCategories([...categories, result.data]);
+        setCreateOpen(false);
+        setCatName("");
+      } else {
+        toast({ title: "创建失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async () => {
     if (!currentId) return;
-    const result = await deleteComponentCategory(currentId);
-    if (result.success) {
-      toast({ title: "删除成功" });
-      setCategories(categories.filter((c) => c.id !== currentId));
-    } else {
-      toast({ title: "删除失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await deleteComponentCategory(currentId);
+      if (result.success) {
+        toast({ title: "删除成功" });
+        setCategories(categories.filter((c) => c.id !== currentId));
+      } else {
+        toast({ title: "删除失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setDeleteOpen(false);
+      setCurrentId(null);
     }
-    setDeleteOpen(false);
-    setCurrentId(null);
   };
 
   return (
@@ -490,6 +526,8 @@ function ComponentCategoryManager({
 function DataIOSection() {
   const { toast } = useToast();
   const [loading, setLoading] = useState("");
+  const canImportEmployees = usePermission("employee.import");
+  const canImportComponents = usePermission("asset.component.create");
 
   const handleExport = async (type: "assets" | "employees" | "components") => {
     setLoading(type);
@@ -573,14 +611,18 @@ function DataIOSection() {
         <div>
           <h4 className="text-sm font-medium mb-3">数据导入</h4>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => handleImport("employees")} disabled={!!loading}>
-              <Upload className="mr-2 h-4 w-4" />
-              {loading === "employees" ? "导入中..." : "导入员工"}
-            </Button>
-            <Button variant="outline" onClick={() => handleImport("components")} disabled={!!loading}>
-              <Upload className="mr-2 h-4 w-4" />
-              {loading === "components" ? "导入中..." : "导入配件型号"}
-            </Button>
+            {canImportEmployees && (
+              <Button variant="outline" onClick={() => handleImport("employees")} disabled={!!loading}>
+                <Upload className="mr-2 h-4 w-4" />
+                {loading === "employees" ? "导入中..." : "导入员工"}
+              </Button>
+            )}
+            {canImportComponents && (
+              <Button variant="outline" onClick={() => handleImport("components")} disabled={!!loading}>
+                <Upload className="mr-2 h-4 w-4" />
+                {loading === "components" ? "导入中..." : "导入配件型号"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -611,14 +653,19 @@ function PasswordSection() {
       return;
     }
     setLoading(true);
-    const result = await changePassword({ oldPassword, newPassword });
-    setLoading(false);
-    if (result.success) {
-      toast({ title: "密码修改成功" });
-      setOldPassword("");
-      setNewPassword("");
-    } else {
-      toast({ title: "修改失败", description: result.error, variant: "destructive" });
+    try {
+      const result = await changePassword({ oldPassword, newPassword });
+      if (result.success) {
+        toast({ title: "密码修改成功" });
+        setOldPassword("");
+        setNewPassword("");
+      } else {
+        toast({ title: "修改失败", description: result.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 

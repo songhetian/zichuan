@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { Prisma } from "@prisma/client";
-import { hasPermission, resolveRoleDepartmentScope } from "./permissions";
+import { hasPermission, resolveDepartmentScope } from "./permissions";
 
 /**
  * 发起升级申请时用户可选的设备（数据范围，对应权限矩阵「查看本人资产」）：
@@ -17,7 +17,7 @@ export async function getUpgradeAssetOptions(adminId: number) {
   const baseWhere = { status: { not: "RESERVED" as const } };
   let where: Prisma.AssetWhereInput = baseWhere;
   if (canManageAll) {
-    const scope = await resolveRoleDepartmentScope({ id: adminId });
+    const scope = await resolveDepartmentScope({ id: adminId });
     if (scope !== "ALL") {
       where = { ...baseWhere, employee: { departmentId: { in: scope } } };
     }
@@ -48,20 +48,14 @@ export async function getApprovalDelegationTargets(adminId: number): Promise<
   const canAll = await hasPermission({ id: adminId }, "system.account.manage");
   if (!canAll && !(await hasPermission({ id: adminId }, "dept.data.view"))) return [];
 
-  const admin = await prisma.admin.findUnique({
-    where: { id: adminId },
-    include: {
-      role: { include: { departments: { select: { departmentId: true } } } },
-      employee: { select: { managedDepartments: { select: { id: true } } } },
-    },
-  });
-  let managed = admin?.employee?.managedDepartments?.map((d) => d.id) ?? [];
-  // 角色显式限定部门：以该列表为准（资产管理员限定部门后代申范围同此）
-  if (admin?.role?.departmentScope === "SPEC") {
-    managed = admin.role.departments.map((d) => d.departmentId);
-  } else if (canAll) {
+  // 统一走 resolveDepartmentScope（账号级，本部门+扩展部门追加式），保证代审与资产/人员数据范围一致
+  const scope = await resolveDepartmentScope({ id: adminId });
+  let managed: number[];
+  if (scope === "ALL") {
     const all = await prisma.department.findMany({ select: { id: true } });
     managed = all.map((d) => d.id);
+  } else {
+    managed = scope;
   }
   if (managed.length === 0) return [];
 

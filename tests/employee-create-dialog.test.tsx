@@ -35,7 +35,7 @@ describe("EmployeeListClient 新建员工工号", () => {
   it("新建员工弹窗中工号为自动生成（只读），无需手动填写", async () => {
     const user = userEvent.setup();
     render(
-      <EmployeeListClient employees={[]} departments={[{ id: 1, name: "技术部" }]} />
+      <EmployeeListClient employees={[]} departments={[{ id: 1, name: "技术部" }]} canManageAccounts />
     );
 
     await user.click(screen.getByRole("button", { name: "新建员工" }));
