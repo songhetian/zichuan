@@ -35,4 +35,3 @@ vitest*.config.ts.timestamp-*.mjs
 
 docs/**
 **.md
-tests/**
