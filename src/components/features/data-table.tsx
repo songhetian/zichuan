@@ -13,6 +13,7 @@ import {
   SortingState,
   ColumnFiltersState,
   ExpandedState,
+  RowData,
 } from "@tanstack/react-table"
 import {
   Table,
@@ -34,6 +35,15 @@ import {
 import { useState, useEffect, Fragment, type CSSProperties } from "react"
 import { Search, Inbox, ArrowUpDown } from "lucide-react"
 
+// 列 meta 扩展：align（对齐）/ sticky（冻结列）。
+// 让"操作列"等需要常驻可见的列可声明 sticky: "right"，由本组件统一渲染冻结样式。
+declare module "@tanstack/react-table" {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    align?: "left" | "center" | "right"
+    sticky?: "right"
+  }
+}
+
 // TanStack 默认列宽为 150。为让 table-fixed 按预期分布列宽，
 // 必须给 ALL 列都写入真实宽度（否则未设宽度的列会被挤到几乎 0，导致换行错位）。
 const DEFAULT_COLUMN_SIZE = 150
@@ -41,7 +51,14 @@ const DEFAULT_COLUMN_SIZE = 150
 function getColStyle<TData, TValue>(column: Column<TData, TValue>): CSSProperties {
   const size = column.getSize() ?? DEFAULT_COLUMN_SIZE
   const maxSize = column.columnDef.maxSize
+  const minSize = column.columnDef.minSize
   const style: CSSProperties = { width: `${size}px` }
+  // minSize 仅当列定义显式声明时生效（TanStack 默认 20 不应强制为最小宽度）。
+  // 这是操作列按钮被压没的根因修复：显式 minSize 现在会转成 CSS min-width，
+  // 列宽不会跌破声明值；放不下时整表变宽并触发已有 overflow-x-auto 横向滚动。
+  if (typeof minSize === "number" && minSize > 0) {
+    style.minWidth = `${minSize}px`
+  }
   // maxSize 默认值极大（MAX_SAFE_INTEGER），仅当显式设置且非默认时才应用
   if (typeof maxSize === "number" && maxSize < 100000) {
     style.maxWidth = `${maxSize}px`
@@ -109,16 +126,29 @@ export function DataTable<TData, TValue>({
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="group sticky top-0 z-10 bg-secondary/80 backdrop-blur-md border-b border-border/80">
-                {headerGroup.headers.map((header) => {
-                  const align = (header.column.columnDef.meta as { align?: string } | undefined)?.align
-                  const alignClass = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
-                  return (
-                  <TableHead key={header.id} style={getColStyle(header.column)} className={`font-medium h-11 text-sm text-muted-foreground whitespace-nowrap ${alignClass}`}>
+              {headerGroup.headers.map((header) => {
+                const align = header.column.columnDef.meta?.align
+                const stickyRight = header.column.columnDef.meta?.sticky === "right"
+                const alignClass = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
+                const sorted = header.column.getIsSorted()
+                const ariaSort = sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"
+                const headerLabel =
+                  typeof header.column.columnDef.header === "string"
+                    ? header.column.columnDef.header
+                    : header.column.id
+                return (
+                <TableHead
+                  key={header.id}
+                  style={getColStyle(header.column)}
+                  aria-sort={header.column.getCanSort() ? ariaSort : undefined}
+                  className={`font-medium h-11 text-sm text-muted-foreground whitespace-nowrap ${alignClass} ${stickyRight ? "sticky right-0 z-30 bg-secondary border-l border-border/60" : ""}`}
+                >
                     {header.isPlaceholder
                       ? null
                       : header.column.getCanSort() ? (
                           <button
                             onClick={header.column.getToggleSortingHandler()}
+                            aria-label={`按${headerLabel}排序${sorted ? (sorted === "asc" ? "（当前升序）" : "（当前降序）") : ""}`}
                             className={`relative flex items-center w-full h-full text-muted-foreground hover:text-foreground transition-colors ${align === "left" ? "justify-start" : align === "right" ? "justify-end" : "justify-center"}`}
                           >
                             <span className="whitespace-nowrap">{flexRender(header.column.columnDef.header, header.getContext())}</span>
@@ -144,14 +174,19 @@ export function DataTable<TData, TValue>({
                       className={`group transition-colors duration-150 ${rowIndex % 2 === 1 ? 'bg-muted/[0.07]' : ''} border-b border-border/60 hover:bg-accent/30 ${renderExpandedRow ? 'cursor-pointer' : ''} ${row.getIsSelected() ? '!bg-primary/[0.08] border-l-2 border-l-primary' : ''}`}
                       onClick={renderExpandedRow ? () => row.toggleExpanded() : undefined}
                     >
-                      {row.getVisibleCells().map((cell) => {
-                        const align = (cell.column.columnDef.meta as { align?: string } | undefined)?.align
-                        const alignClass = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
-                        return (
-                        <TableCell key={cell.id} style={getColStyle(cell.column)} className={`py-2.5 align-middle ${alignClass}`}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                      )
+                    {row.getVisibleCells().map((cell) => {
+                      const align = cell.column.columnDef.meta?.align
+                      const stickyRight = cell.column.columnDef.meta?.sticky === "right"
+                      const alignClass = align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center"
+                      return (
+                      <TableCell
+                        key={cell.id}
+                        style={getColStyle(cell.column)}
+                        className={`py-2.5 align-middle ${alignClass} ${stickyRight ? "sticky right-0 z-20 bg-card border-l border-border/60" : ""}`}
+                      >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                    )
                     })}
                   </TableRow>
                   {row.getIsExpanded() && renderExpandedRow && (

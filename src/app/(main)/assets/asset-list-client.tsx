@@ -44,7 +44,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -277,7 +276,7 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
         notes: notes.trim() || null,
       });
       if (result.success) {
-        toast({ title: "更新成功" });
+        toast({ variant: "success", title: "更新成功" });
         onOpenChange(false);
         router.refresh();
       } else {
@@ -299,26 +298,26 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>设备名称</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入设备名称" />
+            <Label htmlFor="edit-name">设备名称</Label>
+            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入设备名称" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>品牌</Label>
-              <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="选填，如 戴尔" />
+              <Label htmlFor="edit-brand">品牌</Label>
+              <Input id="edit-brand" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="选填，如 戴尔" />
             </div>
             <div className="space-y-2">
-              <Label>型号</Label>
-              <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="选填，如 U2723QE" />
+              <Label htmlFor="edit-model">型号</Label>
+              <Input id="edit-model" value={model} onChange={(e) => setModel(e.target.value)} placeholder="选填，如 U2723QE" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>序列号</Label>
-            <Input value={serialNo} onChange={(e) => setSerialNo(e.target.value)} placeholder="选填，设备序列号（不作唯一校验）" />
+            <Label htmlFor="edit-serial">序列号</Label>
+            <Input id="edit-serial" value={serialNo} onChange={(e) => setSerialNo(e.target.value)} placeholder="选填，设备序列号（不作唯一校验）" />
           </div>
           <div className="space-y-2">
-            <Label>备注</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="可选备注信息" rows={3} />
+            <Label htmlFor="edit-notes">备注</Label>
+            <Textarea id="edit-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="可选备注信息" rows={3} />
           </div>
         </div>
         <DialogFooter>
@@ -371,7 +370,7 @@ function ActionButtons({
         remark: "手动报废",
       });
       if (result.success) {
-        toast({ title: "报废成功" });
+        toast({ variant: "success", title: "报废成功" });
         router.refresh();
       } else {
         toast({ title: "报废失败", description: result.error, variant: "destructive" });
@@ -386,7 +385,7 @@ function ActionButtons({
     try {
       const result = await deleteAsset(asset.id);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         router.refresh();
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -405,7 +404,7 @@ function ActionButtons({
         remark: "列表快捷归还",
       });
       if (result.success) {
-        toast({ title: "归还成功" });
+        toast({ variant: "success", title: "归还成功" });
         router.refresh();
       } else {
         toast({ title: "归还失败", description: result.error, variant: "destructive" });
@@ -427,7 +426,7 @@ function ActionButtons({
         remark: "列表快捷分配",
       });
       if (result.success) {
-        toast({ title: "分配成功" });
+        toast({ variant: "success", title: "分配成功" });
         setAllocateOpen(false);
         setAllocateEmployeeId("");
         router.refresh();
@@ -448,7 +447,7 @@ function ActionButtons({
         operator: "admin",
       });
       if (result.success) {
-        toast({ title: "送修成功" });
+        toast({ variant: "success", title: "送修成功" });
         router.refresh();
       } else {
         toast({ title: "送修失败", description: result.error, variant: "destructive" });
@@ -466,7 +465,7 @@ function ActionButtons({
         operator: "admin",
       });
       if (result.success) {
-        toast({ title: "维修完成" });
+        toast({ variant: "success", title: "维修完成" });
         router.refresh();
       } else {
         toast({ title: "操作失败", description: result.error, variant: "destructive" });
@@ -488,7 +487,7 @@ function ActionButtons({
         remark: "列表快捷调拨",
       });
       if (result.success) {
-        toast({ title: "调拨成功" });
+        toast({ variant: "success", title: "调拨成功" });
         setTransferOpen(false);
         setTransferEmployeeId("");
         router.refresh();
@@ -505,62 +504,66 @@ function ActionButtons({
   return (
     <>
       <div className="flex items-center gap-0.5 justify-center">
+        {/* 最高频：查看配置始终可见，不再藏进「更多」 */}
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-info hover:bg-info/10" title="查看配置" aria-label="查看配置" onClick={() => router.push(`/assets/${asset.id}`)}>
+          <Eye className="h-4 w-4" />
+        </Button>
+        {canEdit && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-info hover:bg-info/10" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
+        {/* 状态相关生命周期操作 */}
         {canManage && asset.status === "IDLE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="分配" aria-label="分配" onClick={() => setAllocateOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="分配" aria-label="分配" onClick={() => setAllocateOpen(true)}>
             <UserPlus className="h-4 w-4" />
           </Button>
         )}
         {canManage && asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="归还" aria-label="归还" onClick={() => setReturnOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="归还" aria-label="归还" onClick={() => setReturnOpen(true)}>
             <RotateCcw className="h-4 w-4" />
           </Button>
         )}
         {canManage && asset.status === "IN_MAINTENANCE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600" title="维修完成" aria-label="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="维修完成" aria-label="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
             <CheckCircle2 className="h-4 w-4" />
           </Button>
         )}
         {canManage && asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-cyan-500 hover:bg-cyan-50 hover:text-cyan-600" title="调拨" aria-label="调拨" onClick={() => setTransferOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-violet hover:bg-violet/10" title="调拨" aria-label="调拨" onClick={() => setTransferOpen(true)}>
             <ArrowRightLeft className="h-4 w-4" />
           </Button>
         )}
         {canManage && asset.status !== "SCRAPPED" && asset.status !== "IN_MAINTENANCE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-amber-500 hover:bg-amber-50 hover:text-amber-600" title="送修" aria-label="送修" onClick={() => setMaintenanceOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-warning hover:bg-warning/10" title="送修" aria-label="送修" onClick={() => setMaintenanceOpen(true)}>
             <Wrench className="h-4 w-4" />
           </Button>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="更多操作" aria-label="更多操作">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onSelect={() => router.push(`/assets/${asset.id}`)}>
-              <Eye className="mr-2 h-4 w-4 text-blue-500" />查看配置
-            </DropdownMenuItem>
-            {canEdit && (
-              <DropdownMenuItem onSelect={() => setEditOpen(true)}>
-                <Pencil className="mr-2 h-4 w-4 text-blue-500" />编辑
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            {canManage && asset.status !== "SCRAPPED" && (
-              <DropdownMenuItem onSelect={() => setScrapOpen(true)} className="text-orange-600 focus:text-orange-700">
-                <Ban className="mr-2 h-4 w-4" />报废
-              </DropdownMenuItem>
-            )}
-            {canDelete && (
-              <DropdownMenuItem
-                onSelect={() => setDeleteOpen(true)}
-                className="text-red-600 focus:text-red-700"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />删除
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* 低频 / 破坏性操作收进「更多」，避免遮挡高频操作；无溢出项时隐藏「更多」 */}
+        {(canManage && asset.status !== "SCRAPPED") || canDelete ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="更多操作" aria-label="更多操作">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              {canManage && asset.status !== "SCRAPPED" && (
+                <DropdownMenuItem onSelect={() => setScrapOpen(true)} className="text-warning focus:text-warning">
+                  <Ban className="mr-2 h-4 w-4" />报废
+                </DropdownMenuItem>
+              )}
+              {canDelete && (
+                <DropdownMenuItem
+                  onSelect={() => setDeleteOpen(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />删除
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
       <EditAssetDialog open={editOpen} onOpenChange={setEditOpen} asset={asset} />
       <ConfirmDialog
@@ -612,8 +615,9 @@ function ActionButtons({
             <DialogDescription>选择要分配的员工</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>选择员工</Label>
+            <Label htmlFor="allocate-employee">选择员工</Label>
             <SearchableSelect
+              id="allocate-employee"
               value={allocateEmployeeId}
               onValueChange={setAllocateEmployeeId}
               placeholder="请选择员工"
@@ -640,8 +644,9 @@ function ActionButtons({
             <DialogDescription>将设备调拨给其他员工</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>目标员工</Label>
+            <Label htmlFor="transfer-employee">目标员工</Label>
             <SearchableSelect
+              id="transfer-employee"
               value={transferEmployeeId}
               onValueChange={setTransferEmployeeId}
               placeholder="请选择目标员工"
@@ -693,15 +698,17 @@ function AssetNoCell({ asset }: { asset: AssetItem }) {
   return (
     <Popover open={preview.isOpen} onOpenChange={() => {}}>
       <PopoverTrigger asChild>
-        <div
+        <button
+          type="button"
           className="text-center cursor-pointer group min-w-0"
           onClick={() => router.push(`/assets/${asset.id}`)}
           onMouseEnter={preview.handleMouseEnter}
           onMouseLeave={preview.handleMouseLeave}
+          aria-label={`查看设备 ${asset.assetNo}（${asset.name}）详情`}
         >
           <div className="text-primary group-hover:underline truncate">{asset.assetNo}</div>
           <div className="text-muted-foreground text-xs truncate">{asset.name}</div>
-        </div>
+        </button>
       </PopoverTrigger>
       <PopoverContent
         className="w-72 p-0"
@@ -827,7 +834,7 @@ function getColumns(
     },
     {
       id: "actions",
-      meta: { align: "center" as const },
+      meta: { align: "center" as const, sticky: "right" as const },
       header: "操作",
       size: 176,
       minSize: 168,
@@ -1050,7 +1057,7 @@ export function AssetListClient({
       const result = await exportAssetsToExcel(selectedFields, assetIds);
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
-        toast({ title: "导出成功" });
+        toast({ variant: "success", title: "导出成功" });
         setExportPreviewOpen(false);
       } else {
         toast({ title: "导出失败", description: result.error, variant: "destructive" });
@@ -1106,10 +1113,10 @@ export function AssetListClient({
           toast({
             title: `导入完成，成功 ${importedCount} 条，${errors.length} 条有误`,
             description: errors.slice(0, 3).join("；") + (errors.length > 3 ? "..." : ""),
-            variant: "destructive",
+            variant: "warning",
           });
         } else {
-          toast({ title: `导入成功，共 ${importedCount} 条` });
+          toast({ variant: "success", title: `导入成功，共 ${importedCount} 条` });
         }
         router.refresh();
       } else {
@@ -1142,10 +1149,10 @@ export function AssetListClient({
           toast({
             title: `自动导入完成，成功 ${importedCount} 条，${errors.length} 条有误`,
             description: errors.slice(0, 3).join("；") + (errors.length > 3 ? "..." : ""),
-            variant: "destructive",
+            variant: "warning",
           });
         } else {
-          toast({ title: `自动导入成功，共 ${importedCount} 条` });
+          toast({ variant: "success", title: `自动导入成功，共 ${importedCount} 条` });
         }
         router.refresh();
       } else {
@@ -1172,7 +1179,7 @@ export function AssetListClient({
         remark: "批量分配",
       });
       if (result.success) {
-        toast({ title: "批量分配成功" });
+        toast({ variant: "success", title: "批量分配成功" });
         setBatchAllocateOpen(false);
         setBatchAllocateEmployeeId("");
         setSelectedAssets([]);
@@ -1198,7 +1205,7 @@ export function AssetListClient({
         remark: "批量归还",
       });
       if (result.success) {
-        toast({ title: "批量归还成功" });
+        toast({ variant: "success", title: "批量归还成功" });
         setBatchReturnOpen(false);
         setSelectedAssets([]);
         router.refresh();
@@ -1223,7 +1230,7 @@ export function AssetListClient({
         remark: "批量报废",
       });
       if (result.success) {
-        toast({ title: "批量报废成功" });
+        toast({ variant: "success", title: "批量报废成功" });
         setBatchScrapOpen(false);
         setSelectedAssets([]);
         router.refresh();
@@ -1249,7 +1256,7 @@ export function AssetListClient({
         remark: "批量调拨",
       });
       if (result.success) {
-        toast({ title: "批量调拨成功" });
+        toast({ variant: "success", title: "批量调拨成功" });
         setBatchTransferOpen(false);
         setBatchTransferEmployeeId("");
         setSelectedAssets([]);
@@ -1275,7 +1282,7 @@ export function AssetListClient({
         remark: "批量送修",
       });
       if (result.success) {
-        toast({ title: "批量送修成功" });
+        toast({ variant: "success", title: "批量送修成功" });
         setBatchMaintenanceOpen(false);
         setSelectedAssets([]);
         router.refresh();
@@ -1311,7 +1318,7 @@ export function AssetListClient({
       setBatchLoading(false);
     }
     if (fail === 0) {
-      toast({ title: `批量删除成功，共 ${ok} 台` });
+      toast({ variant: "success", title: `批量删除成功，共 ${ok} 台` });
     } else {
       toast({ title: `删除完成：${ok} 成功，${fail} 失败`, variant: "destructive" });
     }
@@ -1418,7 +1425,7 @@ export function AssetListClient({
                 size="sm"
                 onClick={() => setBatchDeleteOpen(true)}
                 disabled={batchLoading}
-                className="border-red-200 text-red-600 hover:bg-red-50"
+                className="border-destructive/30 text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="mr-1 h-3 w-3" />
                 批量删除
@@ -1445,7 +1452,7 @@ export function AssetListClient({
             className="pl-9 pr-8"
           />
           {keyword && (
-            <button
+            <button aria-label="清除搜索"
               type="button"
               onClick={() => setKeyword("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted transition-colors"
@@ -1566,8 +1573,9 @@ export function AssetListClient({
             <DialogDescription>将选中的 {selectedAssets.length} 台设备分配给指定员工</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>选择员工</Label>
+            <Label htmlFor="batch-allocate-employee">选择员工</Label>
             <SearchableSelect
+              id="batch-allocate-employee"
               value={batchAllocateEmployeeId}
               onValueChange={setBatchAllocateEmployeeId}
               placeholder="请选择员工"
@@ -1595,8 +1603,9 @@ export function AssetListClient({
             <DialogDescription>将选中的 {selectedAssets.length} 台设备调拨给指定员工</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>目标员工</Label>
+            <Label htmlFor="batch-transfer-employee">目标员工</Label>
             <SearchableSelect
+              id="batch-transfer-employee"
               value={batchTransferEmployeeId}
               onValueChange={setBatchTransferEmployeeId}
               placeholder="请选择目标员工"

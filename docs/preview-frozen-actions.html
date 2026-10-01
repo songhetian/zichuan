@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN" data-page-node-id="Ld92PJb1H8aK4FanrKvEww">
+<head data-page-node-id="PfLgRr6yzzqW9VPT3OaFAq">
+<meta charset="utf-8" data-page-node-id="68EW8wHXkBBgMhfMmS54bz" />
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="CoxPzrh88VVufWV2sglpvi" />
+<title>操作列布局修复预览 · 设备列表</title>
+<style>
+  :root{
+    --card:#ffffff; --secondary:#f4f4f5; --border:rgba(24,24,27,.10);
+    --muted:#71717a; --fg:#18181b; --accent:#f4f4f5; --success:#0f9d6b; --violet:#7c3aed;
+    --warning:#d97706; --destructive:#dc2626; --info:#0ea5e9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;background:#fafafa;color:var(--fg);padding:24px}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-size:13px}
+  .toolbar label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .legend{font-size:12px;color:var(--muted);margin-left:auto}
+  .legend b{color:var(--success)}
+  /* 容器模拟窄视口（内容宽 ≈ 760px，11 列放不下 → 横向滚动） */
+  .scroll{overflow-x:auto;max-width:760px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+  table{border-collapse:collapse;table-layout:fixed;width:100%;font-size:13px}
+  /* after 模式：总列宽 > 容器 → 表格变宽并触发横向滚动 */
+  table.after{width:1140px}
+  thead th{position:sticky;top:0;z-index:10;background:var(--secondary);font-weight:600;color:var(--muted);
+           height:44px;padding:0 12px;text-align:center;white-space:nowrap;border-bottom:1px solid var(--border)}
+  tbody td{padding:10px 12px;text-align:center;border-bottom:1px solid rgba(24,24,27,.06);vertical-align:middle}
+  tbody tr:nth-child(even){background:rgba(24,24,27,.035)}
+  tbody tr:hover{background:var(--accent)}
+  /* 列宽（对齐线上 data-table 的真实 size 声明） */
+  .c-sel{width:40px;min-width:40px}
+  .c-no{width:200px;min-width:180px}
+  .c-brand{width:120px;min-width:110px}
+  .c-model{width:140px;min-width:120px}
+  .c-sn{width:150px;min-width:140px}
+  .c-cfg{width:180px;min-width:160px}
+  .c-st{width:90px}
+  .c-cat{width:110px}
+  .c-loc{width:120px}
+  .c-dep{width:130px}
+  .c-time{width:170px;min-width:150px}
+  .c-act{width:176px}
+
+  /* ===== before 模式：复刻旧 bug =====
+     1) 不尊重 minSize（getColStyle 不输出 min-width）→ 操作列被 table-fixed 压窄
+     2) 操作列不冻结 → 必须横向滚到最右才看得到按钮
+     为直观呈现"按钮被压没"，把操作列压到 64px 并裁切溢出 */
+  table.before .c-act{width:64px;min-width:0;max-width:64px}
+  table.before td.c-act{overflow:hidden}
+  table.before th.c-act,table.before td.c-act{position:static}
+
+  /* ===== after 模式：修复后 =====
+     1) min-width 兜底（来自列 minSize）→ 操作列不会跌破 168
+     2) sticky right-0 冻结 → 数据列滚动时操作列常驻右侧可见 */
+  table.after .c-act{width:176px;min-width:168px}
+  table.after th.c-act,table.after td.c-act{position:sticky;right:0}
+  table.after th.c-act{z-index:30;background:var(--secondary);border-left:1px solid var(--border)}
+  table.after td.c-act{z-index:20;background:var(--card);border-left:1px solid var(--border)}
+
+  .acts{display:flex;align-items:center;justify-content:center;gap:2px}
+  .ibtn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;cursor:pointer}
+  .ibtn:hover{background:rgba(24,24,27,.06)}
+  .ibtn.s{color:var(--success)} .ibtn.v{color:var(--violet)} .ibtn.w{color:var(--warning)}
+  .ibtn.m{color:var(--muted)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:rgba(14,165,233,.12);color:#0369a1}
+  .badge.idle{background:rgba(113,113,122,.14);color:#52525b}
+  .badge.use{background:rgba(15,157,107,.14);color:#047857}
+  .note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6}
+  .note code{background:#f4f4f5;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body data-page-node-id="S0J6RaMsecTWpnN34neQPM">
+  <h1 data-page-node-id="FAM3aOLLjE2m2i5HsmEwgk">操作列布局修复预览 · 设备列表</h1>
+  <p class="sub" data-page-node-id="hemzBW6GdJxmig5Mq3p2Fj">复刻 <code data-page-node-id="leQoCDaGwLizpasPmJihiW">DataTable</code> 的 <code data-page-node-id="vMvbvMcRn1sS9ABIrqLv8A">table-fixed + overflow-x-auto</code> + 新 <code data-page-node-id="K6bQPs4qruwznLOsL56Dp1">min-width</code>/<code data-page-node-id="QXs7F6dA7FI7GtE61OzOTj">sticky</code> 规则（无需登录即可核对）。</p>
+
+  <div class="toolbar" data-page-node-id="0fOVQp7gjCRz66Ddrcvaz0">
+    <label data-page-node-id="8g95m6qRKUFgsRN0ZMgjF2"><input type="checkbox" id="toggle" data-page-node-id="IcKzFUrApDzLF2Wc2dBMiO" /> 显示「修复前」状态（复刻旧 bug）</label>
+    <span class="legend" data-page-node-id="siMJgmZBFrBNfzgLdtVORP">横向滚动表格 → 观察右侧<b data-page-node-id="yF5Mw95GtvKEsty4o5QIlk">操作列</b>是否常驻可见</span>
+  </div>
+
+  <div class="scroll" data-page-node-id="SHIAP4Ygdn158KaAnPPtTa">
+    <table id="tbl" class="after" data-page-node-id="qCe2wDzK3rNDLftAqfwz6D">
+      <thead data-page-node-id="zGRepUin8igjkD9vHVN7vC">
+        <tr data-page-node-id="KAliitJPBCI9nQ12E5LbaB">
+          <th class="c-sel" data-page-node-id="oFNfiBRqCqz5CbSqe1uQUL">□</th>
+          <th class="c-no" data-page-node-id="zBi6p00RrcdpQZkXUnlaXk">编号/名称</th>
+          <th class="c-brand" data-page-node-id="avYjOxA4LrXM00ol3uuiAH">品牌</th>
+          <th class="c-model" data-page-node-id="S2NYnKXVF7mrD8C7mLoCto">型号</th>
+          <th class="c-sn" data-page-node-id="35toloGoEV9Z8r2WpwZ1Pe">序列号</th>
+          <th class="c-cfg" data-page-node-id="v7CA21xFOEomLBay6dGL59">配置</th>
+          <th class="c-st" data-page-node-id="cew3Z3uBOuQEQyqJlrTNTj">状态</th>
+          <th class="c-cat" data-page-node-id="TQmFtz5fP0AnpRtHkHpOCr">分类</th>
+          <th class="c-loc" data-page-node-id="JODFTF9Q0S69Z0bCaHLmcH">存放位置</th>
+          <th class="c-dep" data-page-node-id="UbWEA30Sxbsks12YVT7KV2">部门</th>
+          <th class="c-time" data-page-node-id="ZnykxhS3nyBNnPz88PdNZJ">创建时间</th>
+          <th class="c-act" data-page-node-id="nrSUGsiaU3CC8jEtN10GhD">操作</th>
+        </tr>
+      </thead>
+      <tbody id="tbody" data-page-node-id="Z8kKu5uHoMOq21xXsYWKGK"></tbody>
+    </table>
+  </div>
+
+  <p class="note" data-page-node-id="xmTRpTGXz4awTnggQ2W0Px">
+    <b data-page-node-id="Pj07bDRuQjFGaw2V6Jpe3E">修复点 1（根因）</b>：<code data-page-node-id="PaEdJM5259C1trEpbM8pZt">getColStyle</code> 现在把列定义的 <code data-page-node-id="pPpGtyCMuACaeBDZYHolot">minSize</code> 输出为 CSS <code data-page-node-id="KzdVa70MiUCC7v5XI7fPHu">min-width</code>。
+    此前 <code data-page-node-id="jcLjUqdrImnhSrbkcRHRta">minSize:168</code> 被忽略，<code data-page-node-id="VKJDENzSgjZBD6CIynYE1D">table-fixed</code> 在窄屏把操作列压到内容宽度以下 → 图标按钮溢出/裁切。<br data-page-node-id="6ofcZASgDADFj9EY1lRimT"/>
+    <b data-page-node-id="PUIyusi1aLGDbsM5OVPyrY">修复点 2（体验）</b>：操作列声明 <code data-page-node-id="lpv8oS9zrwUyhz4l7P1aWF">meta.sticky:"right"</code> → 渲染为 <code data-page-node-id="rjYtUWSPcGYEQ2COHnGPIF">sticky right-0</code> 冻结列，
+    数据列横向滚动时操作列常驻右侧，无需滚到最右即可操作。<br data-page-node-id="YnuA1CAoQdESJp5ZdtOF8V"/>
+    切换上方复选框可见旧「按钮被压没 + 须滚动」与新「常驻可见」的对比。
+  </p>
+
+<script>
+  const rows = [
+    ["A-1001","联想","ThinkPad X1","PF-3K9X","i7-1365U / 32G / 512G","使用中","笔记本","3F-研发","研发部","2026-03-12"],
+    ["A-1002","戴尔","OptiPlex 7090","SN8821","i5-12500 / 16G / 1T","闲置","台式机","2F-运维","运维部","2026-02-28"],
+    ["A-1003","惠普","EliteBook 840","HP-5512","i7-1260P / 16G / 512G","送修中","笔记本","3F-研发","研发部","2026-01-15"],
+    ["A-1004","苹果","MacBook Pro","MAC-7731","M3 / 18G / 1T","使用中","笔记本","5F-设计","设计部","2025-12-09"],
+    ["A-1005","华为","MateStation X","HW-2290","i9-13900 / 32G / 2T","闲置","台式机","1F-前台","行政部","2025-11-30"],
+    ["A-1006","联想","ThinkCentre M90","TC-1180","i5-12400 / 8G / 512G","报废","台式机","B1-库房","仓储部","2025-10-21"],
+  ];
+  const badge = (s)=>({ "使用中":'<span class="badge use">使用中</span>', "闲置":'<span class="badge idle">闲置</span>',
+    "送修中":'<span class="badge" style="background:rgba(217,119,6,.14);color:#b45309">送修中</span>',
+    "报废":'<span class="badge" style="background:rgba(220,38,38,.14);color:#b91c1c">报废</span>' }[s]||s);
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = rows.map(r=>`
+    <tr>
+      <td class="c-sel"><input type="checkbox"></td>
+      <td class="c-no" style="text-align:left">${r[0]}<div style="color:var(--muted);font-size:12px">${r[1]} ${r[2]}</div></td>
+      <td class="c-brand">${r[1]}</td>
+      <td class="c-model">${r[2]}</td>
+      <td class="c-sn">${r[3]}</td>
+      <td class="c-cfg" style="text-align:left;font-size:12px">${r[4]}</td>
+      <td class="c-st">${badge(r[5])}</td>
+      <td class="c-cat">${r[6]}</td>
+      <td class="c-loc">${r[7]}</td>
+      <td class="c-dep">${r[8]}</td>
+      <td class="c-time">${r[9]}</td>
+      <td class="c-act">
+        <div class="acts">
+          <button class="ibtn s" title="归还" aria-label="归还">↩</button>
+          <button class="ibtn v" title="调拨" aria-label="调拨">⇄</button>
+          <button class="ibtn w" title="送修" aria-label="送修">🔧</button>
+          <button class="ibtn m" title="更多操作" aria-label="更多操作">⋮</button>
+        </div>
+      </td>
+    </tr>`).join("");
+
+  document.getElementById("toggle").addEventListener("change",(e)=>{
+    document.getElementById("tbl").className = e.target.checked ? "before" : "after";
+  });
+</script>
+</body>
+</html>

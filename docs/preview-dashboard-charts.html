@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="aXO1nIyNVkcrvlckglhYgQ">
+<head data-page-node-id="CdHBi6VwsfSZC1DjJz8mrx">
+<meta charset="UTF-8" data-page-node-id="S4TWcAkXhHot1v5003nWrA" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="PgSY1EoRzDZmiR8ajkQmDE" />
+<title>驾驶舱图表修复预览 · 环图中心文字 + 分类色板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: hsl(224 30% 98%); font-family: "PingFang SC","Microsoft YaHei",sans-serif; color: hsl(226 22% 14%); padding: 28px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: hsl(224 14% 38%); font-size: 13px; margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 980px; }
+  @media (max-width: 760px){ .grid { grid-template-columns: 1fr; } }
+  .card { background: #fff; border: 1px solid hsl(226 16% 88%); border-radius: 12px; padding: 18px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; display:flex; align-items:center; gap:8px; }
+  .card h2 svg { width:16px; height:16px; color: hsl(243 68% 47%); }
+  .ring-wrap { position: relative; }
+  .ring-center { position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%); display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+  .ring-center .num { font-size: 28px; font-weight: 700; line-height: 1; color: hsl(226 22% 14%); font-variant-numeric: tabular-nums; }
+  .ring-center .lbl { margin-top: 4px; font-size: 11px; color: hsl(224 14% 38%); }
+  .legend { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .legend div { display:flex; align-items:center; gap:6px; font-size:12px; color: hsl(224 14% 38%); }
+  .legend .dot { width:8px; height:8px; border-radius:50%; }
+  .fix { background: hsl(152 52% 94%); border:1px solid hsl(152 42% 82%); color: hsl(152 66% 25%); font-size:12px; padding:8px 10px; border-radius:8px; margin-top:12px; }
+  .fix b { color: hsl(152 66% 22%); }
+</style>
+</head>
+<body data-page-node-id="QAU5acL0wOezYgDIZiErIv">
+  <h1 data-page-node-id="C2EUOVq8wohBPeApxLqpzC">驾驶舱图表修复预览</h1>
+  <p class="sub" data-page-node-id="zsPYlNfA1KYp3WSHO2KWia">使用与线上完全一致的 token 色值（globals.css 亮色）渲染。左：设备状态环图（中心文字改 DOM 覆盖层）；右：部门×分类柱状图（重做的分类色板）。</p>
+
+  <div class="grid" data-page-node-id="7aUBgqh4Unp2BHqv08fZOQ">
+    <div class="card" data-page-node-id="4ZijTfZF2YQsnLy3yMTXjA">
+      <h2 data-page-node-id="f5wXX4yoReW0lySkBRHb1q"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" data-page-node-id="XkgEhJtQbzO5GHF4RlGJLy"><path d="M21 12a9 9 0 1 1-9-9" data-page-node-id="RPyy5czFizCAxmihL8ma3m"/><path d="M21 3v6h-6" data-page-node-id="fMdBSCXHFqgBTySL29GM1B"/></svg>设备状态分布（环图）</h2>
+      <div class="ring-wrap" data-page-node-id="4uJ1T80YVVCralSKBQp7M1">
+        <div id="ring" style="height:220px;" data-page-node-id="669QjdmjpegjBsXvEEL8gX"></div>
+        <div class="ring-center" data-page-node-id="hkWpnqoIojRiz4Dw8hukLr">
+          <span class="num" id="ringTotal" data-page-node-id="6ykuwPdZQosvG4Sb9VmGNU">0</span>
+          <span class="lbl" data-page-node-id="WstumEezD2jnkxE7IYxsdH">设备总数 · 台</span>
+        </div>
+      </div>
+      <div class="legend" id="ringLegend" data-page-node-id="KBuRX2fezF6MiVCAJVrpkC"></div>
+      <div class="fix" data-page-node-id="uLdmG2cDg5dvT2MBjVHnYv">✅ <b data-page-node-id="ESVLGlxEdDkLn2R9V6BpOX">修复点</b>：环图中心文字由 ECharts <code data-page-node-id="c2idHfB8iEWLu53vs2rXce">title</code> 改为 DOM 覆盖层（<code data-page-node-id="yD9f7D8XbFZGMGwTZCcqCC">pointer-events-none</code> + 设计 token 色），彻底避免被扇区遮挡，且自动适配亮/暗主题。</div>
+    </div>
+
+    <div class="card" data-page-node-id="6DLRttgxrHOCbA13wRAFhB">
+      <h2 data-page-node-id="fQ1hDqg11JaNGEeBsDDmjL"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" data-page-node-id="br0WFB8MGwcG5rMEg8NP1Z"><path d="M3 3v18h18" data-page-node-id="jIdwt9oPiHfnuxaE41UhNv"/><rect x="7" y="10" width="3" height="8" data-page-node-id="ur1XsjBmR955kqpUokUnfg"/><rect x="13" y="6" width="3" height="12" data-page-node-id="S7ZGBblRuht5ZibeIU3sIM"/></svg>各部门设备分类分布（柱状图）</h2>
+      <div id="bar" style="height:300px;" data-page-node-id="ghpB7F3rVgVNNmvS3DDdSM"></div>
+      <div class="fix" data-page-node-id="Ci7o9ztKOYNk55SZN4KbVl">✅ <b data-page-node-id="KeMt3XG715byZKCS5JFeRx">修复点</b>：分类色板重做——11 色相分散、对语义色 ΔE00≥7、彼此 ΔE00≥6.5（闸门 0 违规）；对白卡对比度最差 3.39:1，柱体清晰可辨。</div>
+    </div>
+  </div>
+
+<script>
+// 与 src/lib/use-theme-colors.ts 完全一致的 HSL→#rrggbb
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360; s /= 100; l /= 100;
+  const k = (n) => (n + h * 12) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to = (x) => Math.round(255 * x).toString(16).padStart(2, "0");
+  return "#" + to(f(0)) + to(f(8)) + to(f(4));
+}
+// 状态语义色（与 globals.css 亮色一致）
+const STATUS = {
+  "在用":   [152, 64, 30],
+  "闲置":   [224, 14, 38],
+  "维修中": [32, 90, 34],
+  "报废":   [350, 60, 48],
+  "预留":   [262, 62, 50],
+};
+const statusData = [
+  { name: "在用", value: 142 },
+  { name: "闲置", value: 53 },
+  { name: "维修中", value: 11 },
+  { name: "报废", value: 8 },
+  { name: "预留", value: 6 },
+];
+const ring = echarts.init(document.getElementById("ring"));
+ring.setOption({
+  tooltip: { trigger: "item", formatter: "{b}: <b>{c}</b> 台 · {d}%" },
+  legend: { show: false },
+  series: [{
+    type: "pie", radius: ["56%", "78%"], center: ["50%", "46%"], minAngle: 3,
+    itemStyle: { borderRadius: 4, borderColor: "#ffffff", borderWidth: 1, borderJoin: "round" },
+    label: { show: false }, labelLine: { show: false }, animationType: "scale",
+    data: statusData.map((s) => ({ name: s.name, value: s.value, itemStyle: { color: hslToHex(...STATUS[s.name]) } })),
+  }],
+});
+const total = statusData.reduce((a, s) => a + s.value, 0);
+document.getElementById("ringTotal").textContent = total;
+document.getElementById("ringLegend").innerHTML = statusData.map((s) =>
+  `<div><span class="dot" style="background:${hslToHex(...STATUS[s.name])}"></span>${s.name} · ${s.value}</div>`
+).join("");
+
+// 分类色板（与 globals.css 亮色一致：S=63 L=48，11 色相求解结果）
+const CAT_HUES = [151, 194, 118, 182, 14, 29, 50, 294, 321, 206, 39];
+const cats = CAT_HUES.map((h) => hslToHex(h, 63, 48));
+const departments = ["研发部", "市场部", "运维部", "财务部", "行政部"];
+const categories = ["笔记本", "台式机", "显示器", "打印机", "服务器", "网络设备"];
+// 构造示例堆叠数据
+const matrix = categories.map((_, ci) => departments.map((_, di) => ((ci * 3 + di * 5 + 7) % 23) + 2));
+const bar = echarts.init(document.getElementById("bar"));
+bar.setOption({
+  tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+  legend: { data: categories, bottom: 0, left: "center", itemWidth: 12, itemHeight: 12, textStyle: { fontSize: 11 } },
+  grid: { left: "3%", right: "4%", bottom: 56, top: 16, containLabel: true },
+  xAxis: { type: "category", data: departments, axisLabel: { interval: 0 }, axisTick: { show: false } },
+  yAxis: { type: "value", name: "设备数量" },
+  series: categories.map((cat, i) => ({
+    name: cat, type: "bar", stack: "total", barMaxWidth: 42,
+    itemStyle: { color: cats[i % cats.length], borderRadius: i === categories.length - 1 ? [6, 6, 0, 0] : 0 },
+    data: matrix[i],
+  })),
+});
+window.addEventListener("resize", () => { ring.resize(); bar.resize(); });
+</script>
+</body>
+</html>

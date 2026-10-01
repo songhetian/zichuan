@@ -73,25 +73,28 @@ const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: str
     cell: ({ row }) => {
       const stock = row.original.stock;
       if (stock === 0) {
-        return <span className="text-red-600 font-medium">缺货</span>;
+        return <span className="text-destructive font-medium">缺货</span>;
       }
       if (stock <= 5) {
         return (
           <span className="inline-flex items-center gap-1.5">
-            <span className="text-red-600 font-medium">{stock}</span>
+            <span className="text-destructive font-medium">{stock}</span>
             <Badge variant="destructive" className="text-[10px] px-1.5 py-0 leading-normal">
               低库存
             </Badge>
           </span>
         );
       }
-      return <span className="text-green-600 font-medium">{stock}</span>;
+      return <span className="text-success font-medium">{stock}</span>;
     },
   },
   {
-    id: "actions",
-    header: "操作",
-    cell: ({ row }) => {
+      id: "actions",
+      header: "操作",
+      size: 120,
+      minSize: 120,
+      meta: { align: "center" as const, sticky: "right" as const },
+      cell: ({ row }) => {
       const model = row.original;
       return (
         <div className="flex items-center gap-1 justify-center">
@@ -135,7 +138,7 @@ function ComponentActionButtons({
         operator: "admin",
       });
       if (result.success) {
-        toast({ title: `入库成功，当前库存: ${result.data.quantity}` });
+        toast({ variant: "success", title: `入库成功，当前库存: ${result.data.quantity}` });
         setStockInOpen(false);
         setQuantity("");
         router.refresh();
@@ -153,7 +156,7 @@ function ComponentActionButtons({
     try {
       const result = await deleteComponentModel(model.id);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         router.refresh();
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -166,6 +169,8 @@ function ComponentActionButtons({
   };
 
   const handleEdit = async () => {
+    // 防重复提交：loading 期间直接忽略（state 更新是异步的，仅靠 disabled 不够）
+    if (editLoading) return;
     if (!editName.trim() || !editCategoryId) return;
     setEditLoading(true);
     try {
@@ -175,7 +180,7 @@ function ComponentActionButtons({
         categoryId: Number(editCategoryId),
       });
       if (result.success) {
-        toast({ title: "更新成功" });
+        toast({ variant: "success", title: "更新成功" });
         setEditOpen(false);
         router.refresh();
       } else {
@@ -199,13 +204,13 @@ function ComponentActionButtons({
 
   return (
     <>
-      <Button type="button" variant="ghost" size="icon" title="入库" onClick={() => setStockInOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="入库" aria-label="入库" onClick={() => setStockInOpen(true)}>
         <PackagePlus className="h-4 w-4" />
       </Button>
-      <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
         <Pencil className="h-4 w-4 text-primary" />
       </Button>
-      <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
 
@@ -216,8 +221,9 @@ function ComponentActionButtons({
             <DialogDescription>为「{model.name}」添加库存</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>入库数量</Label>
+            <Label htmlFor="stock-qty">入库数量</Label>
             <Input
+              id="stock-qty"
               type="number"
               min="1"
               value={quantity}
@@ -246,7 +252,7 @@ function ComponentActionButtons({
           <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); handleEdit(); }}>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="edit-name" className="text-sm font-medium">型号名称 <span className="text-red-500">*</span></Label>
+                <Label htmlFor="edit-name" className="text-sm font-medium">型号名称 <span className="text-destructive">*</span></Label>
                 <Input
                   id="edit-name"
                   value={editName}
@@ -254,9 +260,13 @@ function ComponentActionButtons({
                   placeholder="请输入型号名称"
                   className="h-10"
                   autoFocus
+                  aria-invalid={!editName.trim()}
+                  aria-describedby={!editName.trim() ? "edit-name-error" : undefined}
                 />
                 {!editName.trim() && (
-                  <p className="text-xs text-red-500">请输入型号名称</p>
+                  <p id="edit-name-error" role="alert" className="text-xs text-destructive">
+                    请输入型号名称
+                  </p>
                 )}
               </div>
               <div className="space-y-1.5">
@@ -270,9 +280,9 @@ function ComponentActionButtons({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm font-medium">配件分类 <span className="text-red-500">*</span></Label>
+                <Label className="text-sm font-medium" htmlFor="comp-category">配件分类 <span className="text-destructive">*</span></Label>
                 <Select value={editCategoryId} onValueChange={setEditCategoryId}>
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger className="h-10" id="comp-category">
                     <SelectValue placeholder="请选择分类" />
                   </SelectTrigger>
                   <SelectContent>
@@ -286,8 +296,8 @@ function ComponentActionButtons({
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-              <Button type="submit" onClick={handleEdit} disabled={editLoading || !editName.trim() || !editCategoryId} className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={editLoading}>取消</Button>
+              <Button type="submit" disabled={editLoading || !editName.trim() || !editCategoryId} className="gap-2">
                 {editLoading ? "更新中..." : <>
                   <Save className="h-4 w-4" />保存
                 </>}
@@ -369,7 +379,7 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
         categoryId: Number(categoryId),
       });
       if (result.success) {
-        toast({ title: "创建成功" });
+        toast({ variant: "success", title: "创建成功" });
         setCreateOpen(false);
         setName("");
         setBrand("");
@@ -436,17 +446,17 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>型号名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入型号名称" />
+              <Label htmlFor="model-name">型号名称</Label>
+              <Input id="model-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入型号名称" />
             </div>
             <div className="space-y-2">
-              <Label>品牌</Label>
-              <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="可选" />
+              <Label htmlFor="brand">品牌</Label>
+              <Input id="brand" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="可选" />
             </div>
             <div className="space-y-2">
-              <Label>配件分类</Label>
+              <Label htmlFor="comp-category-2">配件分类</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
+                <SelectTrigger id="comp-category-2">
                   <SelectValue placeholder="选择分类" />
                 </SelectTrigger>
                 <SelectContent>

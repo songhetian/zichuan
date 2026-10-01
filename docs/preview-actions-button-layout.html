@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN" data-page-node-id="4FsFZtKA5QwuARpiDwKKXf">
+<head data-page-node-id="zjFhjrnVcnN5IS8OqAWTnp">
+<meta charset="utf-8" data-page-node-id="6DzqXAPr0hupWv3Es0Xkms" />
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="FFKa3DhC7zBBXgsLQLjHB4" />
+<title>操作列按钮布局 · 修复前/后对照</title>
+<style>
+  :root{
+    --bg:#fafaf9; --card:#ffffff; --border:#e7e5e4; --muted:#78716c;
+    --fg:#1c1917; --teal:#149e8f; --info:#0ea5e9; --success:#16a34a;
+    --violet:#7c3aed; --warning:#d97706; --danger:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg);color:var(--fg);padding:28px;line-height:1.5}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .card h2{font-size:14px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .tag{font-size:11px;padding:2px 8px;border-radius:999px;font-weight:600}
+  .tag.before{background:#fef2f2;color:var(--danger)}
+  .tag.after{background:#ecfdf5;color:var(--teal)}
+  .note{font-size:12px;color:var(--muted);margin:0 0 12px}
+  /* 模拟表格行 + 冻结操作列 */
+  .row{display:flex;align-items:center;gap:8px;border:1px dashed var(--border);
+       border-radius:8px;padding:8px;overflow:hidden;position:relative}
+  .row .data{flex:1;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .actions{display:flex;align-items:center;gap:4px;justify-content:center;
+           background:var(--card);border-left:1px solid var(--border);
+           padding-left:10px;margin-left:auto;flex-shrink:0}
+  .btn{height:30px;min-width:30px;padding:0 8px;border:1px solid var(--border);
+       background:#fff;border-radius:7px;font-size:12px;color:var(--fg);
+       display:inline-flex;align-items:center;gap:4px;cursor:default}
+  .btn .ic{width:14px;height:14px;display:inline-block}
+  .c-info{color:var(--info)} .c-success{color:var(--success)}
+  .c-violet{color:var(--violet)} .c-warning{color:var(--warning)}
+  .more{color:var(--muted)}
+  .legend{margin-top:14px;font-size:12px;color:var(--muted)}
+  .legend b{color:var(--fg)}
+  .section{margin-top:26px}
+  .section h3{font-size:15px;margin:0 0 10px}
+  .frozen-wrap{border:1px solid var(--border);border-radius:10px;overflow:auto;
+               background:var(--card);max-width:520px}
+  .frozen-wrap table{width:760px;border-collapse:collapse;font-size:12px}
+  .frozen-wrap th,.frozen-wrap td{border-bottom:1px solid var(--border);
+       padding:8px 10px;text-align:left;white-space:nowrap}
+  .frozen-wrap thead th{background:#f5f5f4;color:var(--muted);font-weight:600}
+  .frozen-col{position:sticky;right:0;background:var(--card);
+       border-left:1px solid var(--border);z-index:2}
+  .frozen-wrap thead .frozen-col{background:#f5f5f4}
+</style>
+</head>
+<body data-page-node-id="7uEPJLO1bLlI2eUgn06QXG">
+  <h1 data-page-node-id="dWiUwOTPaEYsGjCZJytYSi">操作列按钮展示方式 · 修复前 / 后对照</h1>
+  <div class="sub" data-page-node-id="Gh6714zlYinvuYkEj9YrA0">以「设备列表（IN_USE 状态）」为例。其余 5 个含操作列的页面已统一启用冻结列。</div>
+
+  <div class="grid" data-page-node-id="MFQ2MlRPOvdPaZgypclIpG">
+    <div class="card" data-page-node-id="VR4vW1c0lHrcUaatQCwQhx">
+      <h2 data-page-node-id="ifH5qEpfwOrSH5RGJgRvns"><span class="tag before" data-page-node-id="TaG4MuLZ5GRP6cyCKDhDsB">修复前</span> 高频操作藏在「更多」里</h2>
+      <p class="note" data-page-node-id="tCrLnwp4P0LBQ0pDLLcHXl">行内仅显示状态相关操作；查看 / 编辑需点 ⋮ 才能出现。</p>
+      <div class="row" data-page-node-id="JqDQNQFo3VyaGYXzG32bjO">
+        <div class="data" data-page-node-id="qlONfXrs7YNB7cAGw1GPFn">ThinkPad X1 · 资产编号 ZC-000123 · 使用中 · 归属 张三</div>
+        <div class="actions" data-page-node-id="SZRJBJvF7Fq3Yba8wmMAUn">
+          <span class="btn c-success" data-page-node-id="7lodaTRVoRn0eiZ1Iup0Ut">归还</span>
+          <span class="btn c-violet" data-page-node-id="JhjBMoXdkLfmoh4khYoYDP">调拨</span>
+          <span class="btn c-warning" data-page-node-id="Hj3IYlhOT9RjPWUv0GyqYD">送修</span>
+          <span class="btn more" data-page-node-id="DedwtgvODtyPE2XMQJ64V7">⋮ 更多</span>
+        </div>
+      </div>
+      <div class="legend" data-page-node-id="hWc3lvTpwVwfeyhW7kG1VD">点 ⋮ 后弹出：<b data-page-node-id="cKQVPPrcMPGk5IXr1omvIx">查看配置 · 编辑 · 报废 · 删除</b><br data-page-node-id="eIGQlaPQvVYNbqBg0SlnhJ"/>
+        痛点：每天最常用「查看 / 编辑」要多一次点击，且容易被忽略。</div>
+    </div>
+
+    <div class="card" data-page-node-id="XigWHy8NkNThvJevormrEh">
+      <h2 data-page-node-id="GrDaHubZvcgHF9RRkkCPFg"><span class="tag after" data-page-node-id="8LTuJqPi4sNPCcPuEuCXTX">修复后</span> 高频操作常驻行内</h2>
+      <p class="note" data-page-node-id="USJW4uMNpmBLyGpXfgnV6k">查看 / 编辑 提到行内；仅低频 / 破坏性操作（报废 · 删除）留在「更多」。</p>
+      <div class="row" data-page-node-id="NPJsKI366rbS6E81dofWep">
+        <div class="data" data-page-node-id="smJtGR6FLT7oxQxromhAFt">ThinkPad X1 · 资产编号 ZC-000123 · 使用中 · 归属 张三</div>
+        <div class="actions" data-page-node-id="FCQsQkX8QfrcUUSH1O7gM5">
+          <span class="btn c-info" data-page-node-id="WLrOAPkH8B21MEbQT4BD9I">查看</span>
+          <span class="btn c-info" data-page-node-id="PK51X4lPZzkHSkRNEyucu0">编辑</span>
+          <span class="btn c-success" data-page-node-id="iX7DmQnD0AfH5wVVWoZOF1">归还</span>
+          <span class="btn c-violet" data-page-node-id="UHqazcUAtbMP1DOMSWfBTd">调拨</span>
+          <span class="btn c-warning" data-page-node-id="0hJAH1d8Wh8KcARJdjYndQ">送修</span>
+          <span class="btn more" data-page-node-id="etIYBEQ9xEfJm7kB7Mpqaz">⋮ 更多</span>
+        </div>
+      </div>
+      <div class="legend" data-page-node-id="m5Wy4bCuqebMEedBqTpJhW">点 ⋮ 后仅剩：<b data-page-node-id="QZkTg7yAy5mEMP7YvtNXnE">报废 · 删除</b>（低频 / 破坏性）。<br data-page-node-id="qpAappuaLdPIGUxnx73tt8"/>
+        无报废 / 删除权限时，「更多」自动隐藏，不出现空菜单。</div>
+    </div>
+  </div>
+
+  <div class="section" data-page-node-id="7z1fnMiIf08juRytdK4kOj">
+    <h3 data-page-node-id="uIDgCBKBYZBYeIGGZU56Ap">冻结操作列在窄屏下的表现（所有列表页已启用）</h3>
+    <p class="note" data-page-node-id="lCCE7zB4AV7GHIq6yMzdCt">数据列可横向滚动，操作列（含查看 / 编辑）始终冻结在右侧可见，无需滚动找按钮。</p>
+    <div class="frozen-wrap" data-page-node-id="LX7vkNkryrM2Hv0po9YAYG">
+      <table data-page-node-id="1VAoqPYKN18uNeokmxCtYb">
+        <thead data-page-node-id="Y6BSHycGOCJY978ugHogOo">
+          <tr data-page-node-id="7K2XMFES4xVeJDvAAfilRO"><th data-page-node-id="vCwrdXDr6lGtl0UfNCvRwW">资产编号</th><th data-page-node-id="jYVNc0rQkgq4MX1wSl6Ft7">名称</th><th data-page-node-id="ZSDuxQ0VQWNx9NUvKvL09R">分类</th><th data-page-node-id="332ETb4IXoq1gtSjbqIxK1">状态</th><th data-page-node-id="kCikgQenqxg1GKVjyECohv">归属人</th><th data-page-node-id="8ySYraL4At12DThw2UxCfE">部门</th><th data-page-node-id="ejPW4NABADDa9AtKHsCHD2">购入日期</th><th class="frozen-col" data-page-node-id="Wn4vg5HkTBERdV8l3SBJBo">操作</th></tr>
+        </thead>
+        <tbody data-page-node-id="WcdUcdO4WAeFYULZBdpUAk">
+          <tr data-page-node-id="paxDekGkkGeXmOBNTAzIY9"><td data-page-node-id="FQzMWjOULCENSk5mtY3TPU">ZC-000123</td><td data-page-node-id="B1kL0HjcwrChQJ5dHO6sGV">ThinkPad X1</td><td data-page-node-id="FT1d7aoS2nt4VBWE3xpnTp">笔记本</td><td data-page-node-id="i533MSTLXVv7bSPQyulA8N">使用中</td><td data-page-node-id="2H9TKgdSSmDMuNs6mITJ8m">张三</td><td data-page-node-id="q5qwSUrVfBb4LirdjSM9mU">研发部</td><td data-page-node-id="QeRGm3EFtKGnaPWzCGKhtD">2024-03-12</td>
+              <td class="frozen-col" data-page-node-id="i5gfiarsVdQd4yqXGJ7hd4"><span class="btn c-info" data-page-node-id="i2txbDqm6b4wVqysnFtvHU">查看</span> <span class="btn c-info" data-page-node-id="2PdI5ey7TAfKg2NkU2Atgr">编辑</span> <span class="btn c-success" data-page-node-id="U9UalgFwDHj5VCZGb5SvUI">归还</span> <span class="btn c-violet" data-page-node-id="FQHwiIncLlx3imEnGjOfYE">调拨</span></td></tr>
+          <tr data-page-node-id="QWHmj68mqEBGbiA1HWAAyF"><td data-page-node-id="shR0dHGbUssNkkzMkUhD8j">ZC-000124</td><td data-page-node-id="wvAHIkjTC4seMyKhMnUZNj">Dell U2720</td><td data-page-node-id="kV6vqDWBnv7z9r8yQIEK4t">显示器</td><td data-page-node-id="OmAtP0UdGVM3Q5zMOsfQlh">闲置</td><td data-page-node-id="OaHjP1azgtxkNFTCNJBHzo">李四</td><td data-page-node-id="TwAUHIvUjcvm5vP6RB5TJk">设计部</td><td data-page-node-id="oxbhKzeRce5t453FBbZTGc">2023-11-02</td>
+              <td class="frozen-col" data-page-node-id="r0yoKUdKV2ZYLuZLKE4LUW"><span class="btn c-info" data-page-node-id="BTQDIM8DpGGVRO7LTxQTc5">查看</span> <span class="btn c-info" data-page-node-id="zlb9NjOZXXu2p2C5cr5Z8x">编辑</span> <span class="btn c-success" data-page-node-id="ly2kWhg4y43Kx4a9jSECKy">分配</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section" data-page-node-id="Z2jcY80hCvaQ0lPc1hSuC6">
+    <h3 data-page-node-id="HyCgoArxL7KMWSF6lXras2">本轮改动范围</h3>
+    <ul style="font-size:13px;color:var(--muted);max-width:640px" data-page-node-id="JI9Ogn23A3gy5KW6D58eWR">
+      <li data-page-node-id="PPM3mqERbLd2J20ukcKrhL"><b data-page-node-id="wJXfMWUGNDtopmFndC0BKm">共享层</b>（上次已落地）：<code data-page-node-id="0IeOlWVBBWcq6tUAzXi8bK">DataTable</code> 的 <code data-page-node-id="tFnK8S85WFjnNTKLAoVai7">getColStyle</code> 尊重 <code data-page-node-id="BwCM3lZtJeurWn3CpCLHBx">minSize</code>、支持 <code data-page-node-id="kdChVcHr2O0guohHJbNWzz">meta.sticky:"right"</code> 冻结列 —— 所有列表页自动受益。</li>
+      <li data-page-node-id="ZfwN2MiQvnKlSlZG7zSWBw"><b data-page-node-id="n7DDvDbjAoBiXPZkc82ncM">本次新增冻结</b>：模板列表、盘点列表、配件型号、配件库存、审批-我处理的「查看」、审批-我的抄送「查看」。</li>
+      <li data-page-node-id="EK0AMyExH9dftFSMcqDzd1"><b data-page-node-id="q6FOOSmqjdShR5j6q8BBE2">按钮展示优化</b>：仅设备列表（全仓唯一用「更多」下拉的页面）将「查看 / 编辑」提到行内，列宽 176→200（minSize 176）。</li>
+    </ul>
+  </div>
+</body>
+</html>

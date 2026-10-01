@@ -4,51 +4,7 @@
 
 @layer base {
   :root {
-    /* 线性·克制工具风 —— 暗色
-      —— 深灰蓝底 + 单一靛蓝强调色 + 发丝边框，去投影，靠色阶分层 */
-
-    --background: 226 25% 9%;
-    --foreground: 214 26% 96%;
-
-    --card: 226 22% 12%;
-    --card-foreground: 214 26% 96%;
-
-    --popover: 226 22% 12%;
-    --popover-foreground: 214 26% 96%;
-
-    /* 靛蓝 —— 全站唯一强调色（沉稳、专业） */
-    --primary: 243 75% 66%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 226 20% 16%;
-    --secondary-foreground: 214 24% 94%;
-    --muted: 226 20% 14%;
-    --muted-foreground: 219 18% 74%;
-
-    --accent: 243 40% 22%;
-    --accent-foreground: 224 40% 92%;
-
-    --destructive: 350 62% 58%;
-    --destructive-foreground: 0 0% 100%;
-
-    /* 发丝边框（明一档，空间层级更清晰） */
-    --border: 226 16% 22%;
-    --input: 226 16% 24%;
-    --ring: 243 75% 66%;
-
-    --radius: 0.625rem;
-
-    /* 侧边栏略深，形成停靠感（不靠阴影，靠色差） */
-    --sidebar-bg: 226 28% 7%;
-    --sidebar-fg: 220 20% 80%;
-    --sidebar-active: 243 75% 66%;
-    --sidebar-active-fg: 0 0% 100%;
-
-    color-scheme: dark;
-  }
-
-  :root.light {
-    /* 线性·克制工具风 —— 亮色
+    /* 线性·克制工具风 —— 亮色（默认）
       —— 中性白灰底 + 单一靛蓝强调色 + 发丝边框，去投影，靠色阶分层 */
 
     --background: 224 30% 98%;
@@ -64,9 +20,16 @@
     --primary: 243 68% 47%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 226 22% 94%;
+    /* 中性底色层次 —— 靠色阶分层，所以写 `bg-muted` 就必须让人看得见。
+       亮色明度序：card 100% > background 98% > sidebar-bg 96% > muted 93% > secondary 88%。
+       承载关系（由全仓实际用法 grep 得出）：
+         `bg-muted`（实色 18 处 / 半透明 38 处）→ 表头、斑马纹、进度轨道、图标底，坐在 card 或 background 上；
+         `bg-secondary`（实色 27 处 / 半透明 13 处）→ 次要按钮 **与侧栏条目**，坐在 card / background / sidebar-bg 上。
+       ⇒ secondary 必须同时远离 card/background/sidebar-bg 三者，muted 必须远离 card/background。
+       改值前跑 `npm run check:color`（中性层次已纳入闸门，阈值 ΔE00 >= 2.5）。 */
+    --secondary: 226 22% 88%;
     --secondary-foreground: 226 20% 20%;
-    --muted: 226 22% 95%;
+    --muted: 226 22% 93%;
     --muted-foreground: 224 14% 38%;
 
     --accent: 243 80% 95%;
@@ -75,10 +38,73 @@
     --destructive: 350 60% 48%;
     --destructive-foreground: 0 0% 100%;
 
+    /* 语义色（toast / 状态提示）—— 亮底压暗一档保证对比。
+       L 值经实测反推：实色会被当作 text-success / text-warning 用在
+       页面底、白卡、以及 *-soft 浅底上，三者都须 ≥4.5:1（WCAG 1.4.3）。 */
+    --success: 152 64% 30%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 90% 34%;
+    --warning-foreground: 0 0% 100%;
+
+    /* 语义「柔和」层 —— 状态胶囊 / 浅底强调块（亮色：提亮底 + 压暗前景，保证 4.5:1） */
+    --info-soft: 217 92% 96%;
+    --info-soft-foreground: 217 74% 33%;
+    --info-soft-border: 217 62% 86%;
+
+    --success-soft: 152 52% 94%;
+    --success-soft-foreground: 152 66% 25%;
+    --success-soft-border: 152 42% 82%;
+
+    --warning-soft: 40 92% 94%;
+    --warning-soft-foreground: 30 84% 29%;
+    --warning-soft-border: 38 72% 82%;
+
+    --destructive-soft: 350 88% 96%;
+    --destructive-soft-foreground: 350 64% 37%;
+    --destructive-soft-border: 350 68% 88%;
+
+    --violet-soft: 262 84% 96%;
+    --violet-soft-foreground: 262 56% 42%;
+    --violet-soft-border: 262 58% 88%;
+
+    /* 信息 / 特殊强调（实色：图标、圆点、色条） */
+    --info: 217 76% 46%;
+    --info-foreground: 0 0% 100%;
+    --violet: 262 62% 50%;
+    --violet-foreground: 0 0% 100%;
+
+    /* 分类标识色 —— 配件分类等「纯区分」用途，不承载状态语义。
+       色值由 CIEDE2000 约束求解（模拟退火随机搜索）得出：
+       对 6 个语义色 ΔE00 >= 7、彼此 ΔE00 >= 6.5（这两项为硬性闸门）。
+       对卡片底对比度仅「报告」不阻断——分类色只作柱状图大块柱体，区分度由彼此/语义
+       隔离 + 图例保证；含黄色的 11 色相轮完整 3:1(vs 白卡) 数学不可达（连 Okabe-Ito 黄也仅 ~1.2:1）。
+       阈值 2026-09-29 放宽：分类色仅用于「部门×分类」柱状图（实际 3–6 类、与状态环图
+       分属不同图表），亮色下语义色明度差过小，11 色在 (9/8) 下数学无解；7/6.5 仍明显可辨。
+       改值前请跑 `npm run check:color`，否则会与语义色「撞色」
+       （历史上 --cat-rose 与 --destructive 曾只差 ΔE00=2.2）。 */
+    --cat-indigo: 151 63% 48%;
+    --cat-violet: 194 63% 48%;
+    --cat-blue: 118 63% 48%;
+    --cat-emerald: 182 63% 48%;
+    --cat-sky: 14 63% 48%;
+    --cat-rose: 29 63% 48%;
+    --cat-cyan: 50 63% 48%;
+    --cat-teal: 294 63% 48%;
+    --cat-purple: 321 63% 48%;
+    --cat-pink: 206 63% 48%;
+    --cat-fuchsia: 39 63% 48%;
+
     /* 发丝边框 */
     --border: 226 16% 88%;
-    --input: 226 16% 86%;
+    --input: 226 16% 58%;
     --ring: 243 68% 47%;
+
+    /* 弹层遮罩 —— 必须始终是「压暗」色。不可用 --foreground：
+       暗色下 --foreground 接近白，会让遮罩变成白色蒙层（反而变亮）。 */
+    --overlay: 226 30% 12%;
+
+    --radius: 0.625rem;
 
     /* 侧边栏中性浅灰 */
     --sidebar-bg: 226 24% 96%;
@@ -87,6 +113,114 @@
     --sidebar-active-fg: 0 0% 100%;
 
     color-scheme: light;
+  }
+
+  :root.dark {
+    /* 线性·克制工具风 —— 暗色（.dark 覆盖）
+      —— 深灰蓝底 + 单一靛蓝强调色 + 发丝边框，去投影，靠色阶分层 */
+
+    --background: 226 25% 9%;
+    --foreground: 214 26% 96%;
+
+    --card: 226 22% 12%;
+    --card-foreground: 214 26% 96%;
+
+    --popover: 226 22% 12%;
+    --popover-foreground: 214 26% 96%;
+
+    /* 靛蓝 —— 全站唯一强调色（沉稳、专业）。
+       暗色下 primary 同时是「按钮实底」与「正文/图标色 text-primary」，两者对明度需求相反,
+       故取 L=70% + 深墨前景字：深墨压 70% 靛蓝 5.06:1、白字仅 3.59:1、作正文色 4.78:1。
+       改值前跑 `npm run check:color`。 */
+    --primary: 243 75% 70%;
+    --primary-foreground: 226 30% 10%;
+
+    /* 中性底色层次（暗色，语义见亮色块注释）：secondary 20% > muted 16% > card 12% > background 9% > sidebar-bg 7% */
+    --secondary: 226 20% 20%;
+    --secondary-foreground: 214 24% 94%;
+    --muted: 226 20% 16%;
+    --muted-foreground: 219 18% 74%;
+
+    --accent: 243 40% 22%;
+    --accent-foreground: 224 40% 92%;
+
+    /* destructive 同样是双角色（危险按钮实底 + text-destructive 正文）：
+       L=62% + 深墨字 → 按钮 4.95:1、正文/卡片 4.90:1（白字压 62% 红仅 3.51）。 */
+    --destructive: 350 62% 62%;
+    --destructive-foreground: 226 30% 12%;
+
+    /* 语义色（toast / 状态提示）—— 与靛蓝主色同一套低频饱和度，避免刺眼。
+       success 提到 48% 是为了让 text-success 在 success-soft 暗底上 ≥4.5:1；
+       其 -foreground 必须用深墨（白字压 48% 绿仅 2.32:1，是最危险的组合）。 */
+    --success: 150 58% 48%;
+    --success-foreground: 226 30% 12%;
+
+    --warning: 38 92% 58%;
+    --warning-foreground: 226 30% 12%;
+
+    /* 语义「柔和」层 —— 状态胶囊 / 浅底强调块（暗色：压暗底 + 提亮前景，保证 4.5:1） */
+    --info-soft: 217 52% 23%;
+    --info-soft-foreground: 213 92% 80%;
+    --info-soft-border: 217 45% 34%;
+
+    --success-soft: 152 42% 19%;
+    --success-soft-foreground: 150 60% 73%;
+    --success-soft-border: 152 38% 30%;
+
+    --warning-soft: 36 48% 20%;
+    --warning-soft-foreground: 40 88% 71%;
+    --warning-soft-border: 36 44% 31%;
+
+    --destructive-soft: 350 40% 23%;
+    --destructive-soft-foreground: 352 88% 79%;
+    --destructive-soft-border: 350 42% 34%;
+
+    --violet-soft: 262 38% 25%;
+    --violet-soft-foreground: 262 82% 82%;
+    --violet-soft-border: 262 40% 36%;
+
+    /* 信息 / 特殊强调（实色：图标、圆点、色条） */
+    --info: 217 78% 64%;
+    --info-foreground: 226 30% 10%;
+    --violet: 262 76% 70%;
+    --violet-foreground: 226 30% 10%;
+
+    /* 分类标识色 —— 配件分类等「纯区分」用途，不承载状态语义。
+       色值由 CIEDE2000 约束求解（模拟退火随机搜索）得出：
+       对 6 个语义色 ΔE00 >= 7、彼此 ΔE00 >= 6.5（这两项为硬性闸门）；
+       对卡片底对比度仅报告不阻断（理由见亮色块同位置注释）。
+       改值前请跑 `npm run check:color`，否则会与语义色「撞色」
+       （历史上 --cat-rose 与 --destructive 曾只差 ΔE00=2.2）。
+       ⚠️ 联动：语义实色的 L 一旦调整，紧邻分类色必须重新求解避让——
+       例：primary 66→70% 时 cat-indigo 70→75%（ΔE00 4.0→10.1）；
+           destructive 58→62% 时 cat-rose 68→73%（5.1→10.2）。 */
+    --cat-indigo: 170 66% 60%;
+    --cat-violet: 17 66% 60%;
+    --cat-blue: 330 66% 60%;
+    --cat-emerald: 190 66% 60%;
+    --cat-sky: 55 66% 60%;
+    --cat-rose: 28 66% 60%;
+    --cat-cyan: 120 66% 60%;
+    --cat-teal: 79 66% 60%;
+    --cat-purple: 303 66% 60%;
+    --cat-pink: 255 66% 60%;
+    --cat-fuchsia: 201 66% 60%;
+
+    /* 发丝边框（明一档，空间层级更清晰） */
+    --border: 226 16% 22%;
+    --input: 226 16% 46%;
+    --ring: 243 75% 70%;
+
+    /* 弹层遮罩 —— 纯黑，在暗底上仍能形成有效压暗 */
+    --overlay: 0 0% 0%;
+
+    /* 侧边栏略深，形成停靠感（不靠阴影，靠色差） */
+    --sidebar-bg: 226 28% 7%;
+    --sidebar-fg: 220 20% 80%;
+    --sidebar-active: 243 75% 70%;
+    --sidebar-active-fg: 226 30% 10%;
+
+    color-scheme: dark;
   }
 
   * {
@@ -109,7 +243,7 @@
 
   /* 全站选区：单一强调色淡化 */
   ::selection {
-    background-color: hsl(243 75% 60% / 0.24);
+    background-color: hsl(var(--primary) / 0.24);
     color: inherit;
   }
 }
@@ -143,7 +277,7 @@
   .req::after {
     content: "*";
     margin-left: 3px;
-    color: hsl(350 62% 55%);
+    color: hsl(var(--destructive));
   }
 }
 
@@ -151,20 +285,36 @@
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: hsl(226 16% 38%) transparent;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
   }
   *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   *::-webkit-scrollbar-thumb {
-    background-color: hsl(226 16% 38%);
+    background-color: hsl(var(--muted-foreground) / 0.35);
     border-radius: 9999px;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(226 16% 46%);
+    background-color: hsl(var(--muted-foreground) / 0.5);
   }
   *::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+/*
+  动效降级：尊重系统的「减少动态效果」偏好。
+  骨架屏 animate-pulse、弹窗 zoom/slide、全站 transition-* 会让前庭功能敏感的用户不适。
+  放在 @layer 之外，配合 !important 覆盖 Tailwind 的 utilities 层。
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

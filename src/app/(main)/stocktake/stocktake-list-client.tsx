@@ -81,6 +81,9 @@ const columns: ColumnDef<StocktakeSession>[] = [
   {
     id: "actions",
     header: "操作",
+    size: 120,
+    minSize: 110,
+    meta: { align: "center" as const, sticky: "right" as const },
     cell: ({ row }) => {
       const session = row.original;
       return (
@@ -108,6 +111,7 @@ function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
     setLoading(false);
     if (result.success) {
       toast({
+        variant: "success",
         title: "盘点完成",
         description: `正常: ${result.data.normal}, 盘亏: ${result.data.missing}, 盘盈: ${result.data.extra}`,
       });
@@ -120,7 +124,7 @@ function StocktakeActionButtons({ session }: { session: StocktakeSession }) {
 
   return (
     <>
-      <Button type="button" variant="ghost" size="icon" title="详情" onClick={handleViewDetail}>
+      <Button type="button" variant="ghost" size="icon" title="详情" aria-label="详情" onClick={handleViewDetail}>
         <Eye className="h-4 w-4" />
       </Button>
       {session.status === "OPEN" && (
@@ -163,7 +167,7 @@ export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
     });
     setLoading(false);
     if (result.success) {
-      toast({ title: "盘点任务创建成功" });
+      toast({ variant: "success", title: "盘点任务创建成功" });
       setCreateOpen(false);
       createForm.reset();
       router.refresh();
@@ -197,15 +201,23 @@ export function StocktakeListClient({ sessions }: StocktakeListClientProps) {
           </DialogHeader>
           <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="space-y-2">
-              <Label>盘点名称</Label>
-              <Input {...createForm.register("name")} placeholder="请输入盘点名称" />
+              <Label htmlFor="stocktake-name">盘点名称</Label>
+              <Input
+                id="stocktake-name"
+                {...createForm.register("name")}
+                placeholder="请输入盘点名称"
+                aria-invalid={!!createForm.formState.errors.name}
+                aria-describedby={createForm.formState.errors.name ? "stocktake-name-error" : undefined}
+              />
               {createForm.formState.errors.name && (
-                <p className="text-sm text-destructive">{createForm.formState.errors.name.message}</p>
+                <p id="stocktake-name-error" role="alert" className="text-sm text-destructive">
+                  {createForm.formState.errors.name.message}
+                </p>
               )}
             </div>
             <div className="space-y-2">
-              <Label>备注说明</Label>
-              <Textarea {...createForm.register("description")} placeholder="可选" rows={3} />
+              <Label htmlFor="stocktake-desc">备注说明</Label>
+              <Textarea id="stocktake-desc" {...createForm.register("description")} placeholder="可选" rows={3} />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>

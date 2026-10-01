@@ -131,7 +131,7 @@ export function DoneRecordsClient({
       const res = await exportHandledRecordsToExcel(queryRef.current);
       if (res.success) {
         downloadExcelFile(res.data.fileName, res.data.buffer);
-        toast({ title: "导出成功" });
+        toast({ variant: "success", title: "导出成功" });
       } else {
         toast({ title: "导出失败", description: res.error, variant: "destructive" });
       }
@@ -222,6 +222,8 @@ export function DoneRecordsClient({
         id: "detail",
         header: "操作",
         size: 90,
+        minSize: 90,
+        meta: { align: "center" as const, sticky: "right" as const },
         cell: ({ row }) => (
           <Button asChild variant="ghost" className="h-7 px-2.5 text-primary hover:bg-primary/5 hover:text-primary">
             <Link href={`/approvals/${row.original.requestId}`}>查看</Link>
@@ -278,8 +280,9 @@ export function DoneRecordsClient({
       <div className="rounded-lg border border-border/60 bg-card p-4">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">关键字</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="keyword">关键字</Label>
             <Input
+              id="keyword"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               placeholder="单号 / 申请标题"
@@ -287,8 +290,9 @@ export function DoneRecordsClient({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">部门</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="dept">部门</Label>
             <SearchableSelect
+              id="dept"
               options={[
                 { value: ALL, label: "全部部门" },
                 ...options.departments.map((d) => ({ value: String(d.id), label: d.name })),
@@ -300,8 +304,9 @@ export function DoneRecordsClient({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">人员</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="person">人员</Label>
             <SearchableSelect
+              id="person"
               options={[
                 { value: ALL, label: "全部人员" },
                 ...options.initiators.map((p) => ({ value: String(p.id), label: p.name })),
@@ -314,8 +319,9 @@ export function DoneRecordsClient({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">配件类型</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="comp-type">配件类型</Label>
             <SearchableSelect
+              id="comp-type"
               options={[
                 { value: ALL, label: "全部配件类型" },
                 ...options.componentCategories.map((c) => ({ value: String(c.id), label: c.name })),
@@ -327,8 +333,9 @@ export function DoneRecordsClient({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">业务类型</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="biz-type">业务类型</Label>
             <SearchableSelect
+              id="biz-type"
               options={BUSINESS_TYPE_OPTIONS}
               value={businessType}
               onValueChange={setBusinessType}
@@ -337,12 +344,12 @@ export function DoneRecordsClient({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">开始时间</Label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9" />
+            <Label className="text-xs text-muted-foreground" htmlFor="start-time">开始时间</Label>
+            <Input id="start-time" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">结束时间</Label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
+            <Label className="text-xs text-muted-foreground" htmlFor="end-time">结束时间</Label>
+            <Input id="end-time" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
           </div>
         </div>
       </div>

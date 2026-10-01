@@ -58,6 +58,7 @@ import {
 } from "@/actions/admin.actions";
 import { exportEmployeesToExcel, importEmployeesFromExcel } from "@/actions/excel.actions";
 import { getSystemLogs } from "@/actions/system-log.actions";
+import { toneInline } from "@/lib/status-styles";
 
 const employeeSchema = z.object({
   // 新建员工时工号自动生成，无需手动填写
@@ -167,16 +168,16 @@ interface AssetLogItem {
 }
 
 const assetStatusMap: Record<string, { label: string; className: string }> = {
-  IDLE: { label: "闲置", className: "bg-gray-100 text-gray-700" },
-  IN_USE: { label: "在用", className: "bg-green-100 text-green-700" },
-  IN_MAINTENANCE: { label: "维修中", className: "bg-yellow-100 text-yellow-700" },
-  SCRAPPED: { label: "已报废", className: "bg-red-100 text-red-700" },
+  IDLE: { label: "闲置", className: toneInline("neutral") },
+  IN_USE: { label: "在用", className: toneInline("success") },
+  IN_MAINTENANCE: { label: "维修中", className: toneInline("warning") },
+  SCRAPPED: { label: "已报废", className: toneInline("danger") },
 };
 
 const logModuleColorMap: Record<string, string> = {
-  "分配": "text-green-600 bg-green-50",
-  "归还": "text-orange-600 bg-orange-50",
-  "调拨": "text-blue-600 bg-blue-50",
+  分配: toneInline("success"),
+  归还: toneInline("info"),
+  调拨: toneInline("violet"),
 };
 
 const LOG_MODULES = ["分配", "归还", "调拨"];
@@ -331,25 +332,28 @@ function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
               {assets.map((asset) => {
                 const status = assetStatusMap[asset.status] ?? assetStatusMap.IDLE;
                 return (
-                  <div
+                  <button
                     key={asset.id}
-                    className="flex items-center justify-between rounded-md border bg-background px-3 py-1.5 cursor-pointer hover:bg-accent/40"
+                    type="button"
                     onClick={() => setViewAsset(asset)}
                     title="点击查看设备详情"
+                    className="flex w-full cursor-pointer items-center justify-between rounded-md border bg-background px-3 py-1.5 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    {/* 原为 <div onClick>（无 role/tabIndex/onKeyDown）→ 键盘无法打开详情。
+                        改为真 <button>：内部块级元素一律用 <span>（button 只允许 phrasing content）。 */}
+                    <span className="flex items-center gap-2.5 min-w-0">
                       <Monitor className="h-4 w-4 shrink-0 text-primary" />
-                      <div className="min-w-0">
+                      <span className="min-w-0">
                         <span className="font-medium">{asset.assetNo}</span>
                         <span className="ml-2 text-xs text-muted-foreground">
                           {asset.name} · {asset.categoryName} · {asset.templateName}
                         </span>
-                      </div>
-                    </div>
+                      </span>
+                    </span>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>
                       {status.label}
                     </span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -376,7 +380,7 @@ function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
                   <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${logModuleColorMap[log.module] ?? "bg-gray-100 text-gray-700"}`}>
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${logModuleColorMap[log.module] ?? toneInline("neutral")}`}>
                         {log.module}
                       </span>
                       <span className="text-xs text-muted-foreground">
@@ -431,7 +435,7 @@ function AssetConfigList({ assetId }: { assetId: number }) {
   if (rows === null) {
     return <div className="space-y-2"><SkeletonList rows={3} /></div>;
   }
-  if (error) return <div className="py-4 text-center text-sm text-destructive">{error}</div>;
+  if (error) return <div role="alert" className="py-4 text-center text-sm text-destructive">{error}</div>;
   if (rows.length === 0) {
     return <div className="py-6 text-center text-sm text-muted-foreground">该主机暂无配置详情</div>;
   }
@@ -496,7 +500,7 @@ function EmployeeActionButtons({
   const handleDelete = async () => {
     const result = await deleteEmployee(employee.id);
     if (result.success) {
-      toast({ title: "删除成功" });
+      toast({ variant: "success", title: "删除成功" });
       onDeleted?.(employee.id);
       router.refresh();
     } else {
@@ -518,7 +522,7 @@ function EmployeeActionButtons({
     });
     setEditLoading(false);
     if (result.success) {
-      toast({ title: "更新成功" });
+      toast({ variant: "success", title: "更新成功" });
       onEdited?.(result.data, values);
       setEditOpen(false);
       router.refresh();
@@ -546,10 +550,10 @@ function EmployeeActionButtons({
       {/* 员工增删改后端统一要求「账号与权限管理」，无权限时不展示操作入口，避免点了才报错 */}
       {canManageAccounts && (
         <>
-          <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
             <Pencil className="h-4 w-4 text-primary" />
           </Button>
-          <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </>
@@ -564,23 +568,42 @@ function EmployeeActionButtons({
           <form onSubmit={editForm.handleSubmit(handleEdit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>工号</Label>
-                <Input {...editForm.register("employeeNo")} placeholder="请输入工号" />
+                <Label htmlFor="emp-no">工号</Label>
+                <Input
+                  id="emp-no"
+                  {...editForm.register("employeeNo")}
+                  placeholder="请输入工号"
+                  aria-invalid={!!editForm.formState.errors.employeeNo}
+                  aria-describedby={
+                    editForm.formState.errors.employeeNo ? "emp-no-error" : undefined
+                  }
+                />
                 {editForm.formState.errors.employeeNo && (
-                  <p className="text-sm text-destructive">{editForm.formState.errors.employeeNo.message}</p>
+                  <p id="emp-no-error" role="alert" className="text-sm text-destructive">
+                    {editForm.formState.errors.employeeNo.message}
+                  </p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label>姓名</Label>
-                <Input {...editForm.register("name")} placeholder="请输入姓名" />
+                <Label htmlFor="emp-name">姓名</Label>
+                <Input
+                  id="emp-name"
+                  {...editForm.register("name")}
+                  placeholder="请输入姓名"
+                  aria-invalid={!!editForm.formState.errors.name}
+                  aria-describedby={editForm.formState.errors.name ? "emp-name-error" : undefined}
+                />
                 {editForm.formState.errors.name && (
-                  <p className="text-sm text-destructive">{editForm.formState.errors.name.message}</p>
+                  <p id="emp-name-error" role="alert" className="text-sm text-destructive">
+                    {editForm.formState.errors.name.message}
+                  </p>
                 )}
               </div>
             </div>
             <div className="space-y-2">
-              <Label>部门</Label>
+              <Label htmlFor="dept">部门</Label>
               <SearchableSelect
+                id="dept"
                 value={editForm.watch("departmentId")}
                 onValueChange={(v) => {
                   // 部门为必填，忽略 toggle-off 空串保持原选中
@@ -589,33 +612,45 @@ function EmployeeActionButtons({
                 placeholder="选择部门"
                 ariaLabel="部门"
                 triggerClassName="w-full"
+                invalid={!!editForm.formState.errors.departmentId}
+                describedBy={editForm.formState.errors.departmentId ? "dept-error" : undefined}
                 options={(departments ?? []).map((d) => ({ value: d.id.toString(), label: d.name }))}
               />
               {editForm.formState.errors.departmentId && (
-                <p className="text-sm text-destructive">{editForm.formState.errors.departmentId.message}</p>
+                <p id="dept-error" role="alert" className="text-sm text-destructive">
+                  {editForm.formState.errors.departmentId.message}
+                </p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>电话</Label>
-                <Input {...editForm.register("phone")} placeholder="可选" />
+                <Label htmlFor="phone">电话</Label>
+                <Input id="phone" {...editForm.register("phone")} placeholder="可选" />
               </div>
               <div className="space-y-2">
-                <Label>邮箱</Label>
-                <Input {...editForm.register("email")} placeholder="可选" />
+                <Label htmlFor="email">邮箱</Label>
+                <Input
+                  id="email"
+                  {...editForm.register("email")}
+                  placeholder="可选"
+                  aria-invalid={!!editForm.formState.errors.email}
+                  aria-describedby={editForm.formState.errors.email ? "email-error" : undefined}
+                />
                 {editForm.formState.errors.email && (
-                  <p className="text-sm text-destructive">{editForm.formState.errors.email.message}</p>
+                  <p id="email-error" role="alert" className="text-sm text-destructive">
+                    {editForm.formState.errors.email.message}
+                  </p>
                 )}
               </div>
             </div>
             {canManageAccounts && (
               <div className="space-y-2">
-                <Label>角色</Label>
+                <Label htmlFor="role">角色</Label>
                 <Select
                   value={editForm.watch("roleId")}
                   onValueChange={(v) => editForm.setValue("roleId", v)}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="role" className="w-full">
                     <SelectValue placeholder="请选择角色" />
                   </SelectTrigger>
                   <SelectContent>
@@ -708,7 +743,7 @@ export function EmployeeListClient({
     try {
       const result = await resetEmployeePassword(resetPwd.id);
       if (result.success) {
-        toast({ title: "重置成功", description: "密码已重置为 123456，该员工下次登录需修改密码" });
+        toast({ variant: "success", title: "重置成功", description: "密码已重置为 123456，该员工下次登录需修改密码" });
         router.refresh();
         setResetPwd(null);
       } else {
@@ -731,7 +766,7 @@ export function EmployeeListClient({
         departmentIds: scope === "SPEC" ? scopeDeptIds : [],
       });
       if (result.success) {
-        toast({ title: "保存成功" });
+        toast({ variant: "success", title: "保存成功" });
         setEmployeeData((prev) =>
           prev.map((e) =>
             e.id === scopeTargetId
@@ -764,7 +799,7 @@ export function EmployeeListClient({
     try {
       const result = await setAdminActive(acc.id, !acc.isActive);
       if (result.success) {
-        toast({ title: "操作成功" });
+        toast({ variant: "success", title: "操作成功" });
         setEmployeeData((prev) =>
           prev.map((e) =>
             e.id === activeTargetId
@@ -887,6 +922,10 @@ export function EmployeeListClient({
       id: "actions",
       header: "操作",
       size: canManageAccounts ? 340 : 120,
+      // 账号管理态下内容含「编辑/删除 + 数据范围 + 重置密码 + 启用停用」，
+      // 实测约 316px，minSize 留余量确保横向滚动时按钮不被压没
+      minSize: canManageAccounts ? 360 : 120,
+      meta: { align: "center" as const, sticky: "right" as const },
       cell: ({ row }) => {
         const emp = row.original;
         const acc = emp.account ?? null;
@@ -978,7 +1017,7 @@ export function EmployeeListClient({
     });
     setLoading(false);
     if (result.success) {
-      toast({ title: "创建成功", description: "登录账号已自动创建（工号 + 初始密码 123456，首登需修改密码）" });
+      toast({ variant: "success", title: "创建成功", description: "登录账号已自动创建（工号 + 初始密码 123456，首登需修改密码）" });
       // 本地追加新员工，避免整表刷新卡顿
       setEmployeeData((prev) => {
         const d = result.data;
@@ -1028,7 +1067,7 @@ export function EmployeeListClient({
       const result = await exportEmployeesToExcel(selectedFields);
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
-        toast({ title: "导出成功" });
+        toast({ variant: "success", title: "导出成功" });
       } else {
         toast({ title: "导出失败", description: result.error, variant: "destructive" });
       }
@@ -1054,7 +1093,7 @@ export function EmployeeListClient({
         const desc = result.data.errors.length > 0
           ? `成功 ${result.data.importedCount} 条，失败 ${result.data.errors.length} 条`
           : `成功导入 ${result.data.importedCount} 条`;
-        toast({ title: "导入完成", description: desc });
+        toast({ variant: "success", title: "导入完成", description: desc });
         router.refresh();
       } else {
         toast({ title: "导入失败", description: result.error, variant: "destructive" });
@@ -1230,21 +1269,30 @@ export function EmployeeListClient({
           <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>工号</Label>
-                <Input value="自动生成" disabled className="text-muted-foreground" />
+                <Label htmlFor="emp-no-2">工号</Label>
+                <Input id="emp-no-2" value="自动生成" disabled className="text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">保存后自动生成（如 EMP0001）</p>
               </div>
               <div className="space-y-2">
-                <Label>姓名</Label>
-                <Input {...createForm.register("name")} placeholder="请输入姓名" />
+                <Label htmlFor="emp-name-2">姓名</Label>
+                <Input
+                  id="emp-name-2"
+                  {...createForm.register("name")}
+                  placeholder="请输入姓名"
+                  aria-invalid={!!createForm.formState.errors.name}
+                  aria-describedby={createForm.formState.errors.name ? "emp-name-2-error" : undefined}
+                />
                 {createForm.formState.errors.name && (
-                  <p className="text-sm text-destructive">{createForm.formState.errors.name.message}</p>
+                  <p id="emp-name-2-error" role="alert" className="text-sm text-destructive">
+                    {createForm.formState.errors.name.message}
+                  </p>
                 )}
               </div>
             </div>
             <div className="space-y-2">
-              <Label>部门</Label>
+              <Label htmlFor="dept-2">部门</Label>
               <SearchableSelect
+                id="dept-2"
                 value={createForm.watch("departmentId")}
                 onValueChange={(v) => {
                   // 部门为必填，忽略 toggle-off 空串保持原选中
@@ -1253,22 +1301,34 @@ export function EmployeeListClient({
                 placeholder="选择部门"
                 ariaLabel="部门"
                 triggerClassName="w-full"
+                invalid={!!createForm.formState.errors.departmentId}
+                describedBy={createForm.formState.errors.departmentId ? "dept-2-error" : undefined}
                 options={departments.map((d) => ({ value: d.id.toString(), label: d.name }))}
               />
               {createForm.formState.errors.departmentId && (
-                <p className="text-sm text-destructive">{createForm.formState.errors.departmentId.message}</p>
+                <p id="dept-2-error" role="alert" className="text-sm text-destructive">
+                  {createForm.formState.errors.departmentId.message}
+                </p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>电话</Label>
-                <Input {...createForm.register("phone")} placeholder="可选" />
+                <Label htmlFor="phone-2">电话</Label>
+                <Input id="phone-2" {...createForm.register("phone")} placeholder="可选" />
               </div>
               <div className="space-y-2">
-                <Label>邮箱</Label>
-                <Input {...createForm.register("email")} placeholder="可选" />
+                <Label htmlFor="email-2">邮箱</Label>
+                <Input
+                  id="email-2"
+                  {...createForm.register("email")}
+                  placeholder="可选"
+                  aria-invalid={!!createForm.formState.errors.email}
+                  aria-describedby={createForm.formState.errors.email ? "email-2-error" : undefined}
+                />
                 {createForm.formState.errors.email && (
-                  <p className="text-sm text-destructive">{createForm.formState.errors.email.message}</p>
+                  <p id="email-2-error" role="alert" className="text-sm text-destructive">
+                    {createForm.formState.errors.email.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -1276,12 +1336,12 @@ export function EmployeeListClient({
               <div className="space-y-3 border-t pt-4">
                 <p className="text-sm font-medium text-muted-foreground">登录账号（创建员工时自动创建）</p>
                 <div className="space-y-2">
-                  <Label>角色</Label>
-                  <Select
-                    value={createForm.watch("roleId")}
-                    onValueChange={(v) => createForm.setValue("roleId", v)}
-                  >
-                    <SelectTrigger className="w-full">
+                <Label htmlFor="role-2">角色</Label>
+                <Select
+                  value={createForm.watch("roleId")}
+                  onValueChange={(v) => createForm.setValue("roleId", v)}
+                >
+                  <SelectTrigger id="role-2" className="w-full">
                       <SelectValue placeholder="请选择角色" />
                     </SelectTrigger>
                     <SelectContent>

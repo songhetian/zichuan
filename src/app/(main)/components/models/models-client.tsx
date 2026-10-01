@@ -82,16 +82,18 @@ export const columns: ColumnDef<ComponentModel & { _categories: { id: number; na
     size: 100,
     meta: { align: "right" as const },
     cell: ({ row }) => (
-      <span className={row.original.stock > 0 ? "text-green-600 font-medium" : "text-muted-foreground"}>
+      <span className={row.original.stock > 0 ? "text-success font-medium" : "text-muted-foreground"}>
         {row.original.stock}
       </span>
     ),
   },
   {
-    id: "actions",
-    header: "操作",
-    size: 120,
-    cell: ({ row }) => {
+      id: "actions",
+      header: "操作",
+      size: 120,
+      minSize: 120,
+      meta: { align: "center" as const, sticky: "right" as const },
+      cell: ({ row }) => {
       const model = row.original;
       return (
         <div className="flex items-center gap-1 justify-center">
@@ -135,7 +137,7 @@ function ComponentActionButtons({
         operator: "admin",
       });
       if (result.success) {
-        toast({ title: `入库成功，当前库存: ${result.data.quantity}` });
+        toast({ variant: "success", title: `入库成功，当前库存: ${result.data.quantity}` });
         setStockInOpen(false);
         setQuantity("");
         router.refresh();
@@ -153,7 +155,7 @@ function ComponentActionButtons({
     try {
       const result = await deleteComponentModel(model.id);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         router.refresh();
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -175,7 +177,7 @@ function ComponentActionButtons({
         categoryId: Number(editCategoryId),
       });
       if (result.success) {
-        toast({ title: "更新成功" });
+        toast({ variant: "success", title: "更新成功" });
         setEditOpen(false);
         router.refresh();
       } else {
@@ -199,13 +201,13 @@ function ComponentActionButtons({
 
   return (
     <>
-      <Button type="button" variant="ghost" size="icon" title="入库" onClick={() => setStockInOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="入库" aria-label="入库" onClick={() => setStockInOpen(true)}>
         <PackagePlus className="h-4 w-4" />
       </Button>
-      <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => handleEditOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
         <Pencil className="h-4 w-4 text-primary" />
       </Button>
-      <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
         <Trash2 className="h-4 w-4 text-destructive" />
       </Button>
 
@@ -216,8 +218,9 @@ function ComponentActionButtons({
             <DialogDescription>为「{model.name}」添加库存</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>入库数量</Label>
+            <Label htmlFor="stock-qty">入库数量</Label>
             <Input
+              id="stock-qty"
               type="number"
               min="1"
               value={quantity}
@@ -242,17 +245,17 @@ function ComponentActionButtons({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>型号名称</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入型号名称" />
+              <Label htmlFor="model-name">型号名称</Label>
+              <Input id="model-name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入型号名称" />
             </div>
             <div className="space-y-2">
-              <Label>品牌</Label>
-              <Input value={editBrand} onChange={(e) => setEditBrand(e.target.value)} placeholder="可选" />
+              <Label htmlFor="brand">品牌</Label>
+              <Input id="brand" value={editBrand} onChange={(e) => setEditBrand(e.target.value)} placeholder="可选" />
             </div>
             <div className="space-y-2">
-              <Label>配件分类</Label>
+              <Label htmlFor="edit-category">配件分类</Label>
               <Select value={editCategoryId} onValueChange={setEditCategoryId}>
-                <SelectTrigger>
+                <SelectTrigger id="edit-category">
                   <SelectValue placeholder="选择分类" />
                 </SelectTrigger>
                 <SelectContent>
@@ -347,7 +350,7 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
         categoryId: Number(categoryId),
       });
       if (result.success) {
-        toast({ title: "创建成功" });
+        toast({ variant: "success", title: "创建成功" });
         setCreateOpen(false);
         setName("");
         setBrand("");
@@ -369,7 +372,7 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
       const result = await exportComponentsToExcel();
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
-        toast({ title: "导出成功" });
+        toast({ variant: "success", title: "导出成功" });
       } else {
         toast({ title: "导出失败", description: result.error, variant: "destructive" });
       }
@@ -394,7 +397,7 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
         const desc = result.data.errors.length > 0
           ? `成功 ${result.data.importedCount} 条，失败 ${result.data.errors.length} 条`
           : `成功导入 ${result.data.importedCount} 条`;
-        toast({ title: "导入完成", description: desc });
+        toast({ variant: "success", title: "导入完成", description: desc });
         router.refresh();
       } else {
         toast({ title: "导入失败", description: result.error, variant: "destructive" });
@@ -478,17 +481,17 @@ export function ModelsClient({ models, categories }: ModelsClientProps) {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>型号名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入型号名称" />
+              <Label htmlFor="create-model-name">型号名称</Label>
+              <Input id="create-model-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入型号名称" />
             </div>
             <div className="space-y-2">
-              <Label>品牌</Label>
-              <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="可选" />
+              <Label htmlFor="create-brand">品牌</Label>
+              <Input id="create-brand" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="可选" />
             </div>
             <div className="space-y-2">
-              <Label>配件分类</Label>
+              <Label htmlFor="create-category">配件分类</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
+                <SelectTrigger id="create-category">
                   <SelectValue placeholder="选择分类" />
                 </SelectTrigger>
                 <SelectContent>

@@ -61,7 +61,7 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
     try {
       const result = await deleteDeviceTemplate(template.id);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         router.refresh();
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -79,13 +79,13 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
   return (
     <>
       <div className="flex items-center gap-1 justify-center">
-        <Button type="button" variant="ghost" size="icon" title="详情" onClick={() => setDetailOpen(true)}>
+        <Button type="button" variant="ghost" size="icon" title="详情" aria-label="详情" onClick={() => setDetailOpen(true)}>
           <Eye className="h-4 w-4" />
         </Button>
-        <Button type="button" variant="ghost" size="icon" title="编辑" onClick={() => setEditOpen(true)}>
+        <Button type="button" variant="ghost" size="icon" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
           <Pencil className="h-4 w-4 text-primary" />
         </Button>
-        <Button type="button" variant="ghost" size="icon" title="删除" onClick={() => setDeleteOpen(true)}>
+        <Button type="button" variant="ghost" size="icon" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
           <Trash2 className="h-4 w-4 text-destructive" />
         </Button>
       </div>
@@ -208,6 +208,8 @@ export function createTemplateColumns(
       id: "actions",
       header: "操作",
       size: 120,
+      minSize: 120,
+      meta: { align: "center" as const, sticky: "right" as const },
       cell: ({ row }) => (
         <RowActions
           template={row.original}

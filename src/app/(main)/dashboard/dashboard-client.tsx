@@ -25,6 +25,7 @@ import { CategoryByDepartmentChart } from "@/components/features/category-by-dep
 import type { CategoryByDepartmentData } from "@/lib/category-by-department";
 import { getStatusLabel } from "@/lib/status-labels";
 import { useThemeColors } from "@/lib/use-theme-colors";
+import { TONE_DOT } from "@/lib/status-styles";
 
 interface DashboardData {
   total: number;
@@ -49,14 +50,6 @@ interface DashboardClientProps {
   data: DashboardData;
 }
 
-const STATUS_COLOR_MAP: Record<string, string> = {
-  IDLE: "#64748b",
-  IN_USE: "#2563eb",
-  IN_MAINTENANCE: "#f59e0b",
-  SCRAPPED: "#ef4444",
-  RESERVED: "#8b5cf6",
-};
-
 const ACTION_LABEL_MAP: Record<string, string> = {
   CREATED: "创建",
   ALLOCATED: "分配",
@@ -73,7 +66,7 @@ function KpiCard({
   label,
   value,
   hint,
-  accent,
+  accentClass,
   icon: Icon,
   share,
   index,
@@ -84,7 +77,7 @@ function KpiCard({
   label: string;
   value: number;
   hint?: string;
-  accent: string;
+  accentClass: string;
   icon: typeof Server;
   share?: number;
   index: number;
@@ -93,9 +86,11 @@ function KpiCard({
   onClick: () => void;
 }) {
   return (
-    <Card
-      className="group relative cursor-pointer overflow-hidden border-border/70 transition-colors hover:border-primary/45"
+    <button
+      type="button"
       onClick={onClick}
+      aria-label={`查看${label}详情`}
+      className="group relative cursor-pointer overflow-hidden rounded-lg border border-border/70 bg-card text-card-foreground shadow-sm transition-colors hover:border-primary/45"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(10px)",
@@ -103,7 +98,7 @@ function KpiCard({
       }}
     >
       {/* 顶部状态色细线，替代表头 */}
-      <span className="absolute inset-x-0 top-0 h-[3px]" style={{ backgroundColor: accent }} />
+      <span className={`absolute inset-x-0 top-0 h-[3px] ${accentClass}`} />
       <CardContent className="p-5">
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
@@ -123,14 +118,14 @@ function KpiCard({
             </div>
             <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${Math.min(share, 100)}%`, backgroundColor: accent }}
+                className={`h-full rounded-full transition-all duration-700 ${accentClass}`}
+                style={{ width: `${Math.min(share, 100)}%` }}
               />
             </div>
           </div>
         )}
       </CardContent>
-    </Card>
+    </button>
   );
 }
 
@@ -141,7 +136,7 @@ function PieChart({ data }: { data: DashboardData }) {
     .map(([key, value]) => ({
       name: getStatusLabel(key),
       value,
-      itemStyle: { color: STATUS_COLOR_MAP[key] ?? "#2455D9" },
+      itemStyle: { color: colors.status[key] ?? colors.primary },
     }));
 
   if (chartData.length === 0) {
@@ -165,16 +160,6 @@ function PieChart({ data }: { data: DashboardData }) {
       padding: [10, 14],
       borderRadius: 8,
     },
-    // 环形中心展示设备总数，形成「聚焦核心」的专业结构
-    title: {
-      text: String(total),
-      subtext: "设备总数 · 台",
-      left: "center",
-      top: "40%",
-      textAlign: "center",
-      textStyle: { fontSize: 26, fontWeight: 700, color: colors.foreground, lineHeight: 30 },
-      subtextStyle: { fontSize: 11, color: colors.muted, lineHeight: 16 },
-    },
     legend: { show: false },
     series: [
       {
@@ -193,7 +178,6 @@ function PieChart({ data }: { data: DashboardData }) {
         labelLine: { show: false },
         emphasis: {
           label: { show: false },
-          itemStyle: { shadowBlur: 16, shadowOffsetX: 0, shadowColor: "rgba(0,0,0,0.16)" },
         },
         animationType: "scale",
         data: chartData.map((s) => ({ ...s, itemStyle: { ...s.itemStyle, borderRadius: 4, borderWidth: 1 } })),
@@ -203,7 +187,15 @@ function PieChart({ data }: { data: DashboardData }) {
 
   return (
     <div className="flex flex-col">
-      <ReactECharts option={option} style={{ height: 200, width: "100%" }} />
+      <div className="relative" role="img" aria-label={`设备状态分布饼图，共 ${total} 台`}>
+        <ReactECharts option={option} style={{ height: 200, width: "100%" }} />
+        {/* 中心文字用 DOM 覆盖层而非 ECharts title：DOM 层级恒在 canvas 之上，
+            彻底避免被扇区遮挡；颜色走设计 token，自动适配亮/暗主题并保证对比度 */}
+        <div className="pointer-events-none absolute left-1/2 top-[46%] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+          <span className="text-2xl font-bold tabular-nums leading-none text-foreground">{total}</span>
+          <span className="mt-1 text-[11px] leading-none text-muted-foreground">设备总数 · 台</span>
+        </div>
+      </div>
       {/* 状态明细：网格化布局，突出数值与占比的层次关系 */}
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         {chartData.map((item) => {
@@ -244,11 +236,11 @@ export function DashboardClient({ data }: DashboardClientProps) {
   const [animatedValues, setAnimatedValues] = useState<Record<string, number>>({});
 
   const statusCards = [
-    { label: "总设备数", value: data.total, status: "all", icon: Server, accent: "#2455D9" },
-    { label: "在用", value: data.byStatus["IN_USE"] ?? 0, status: "IN_USE", icon: MonitorCheck, accent: "#2563eb" },
-    { label: "闲置", value: data.byStatus["IDLE"] ?? 0, status: "IDLE", icon: PackageOpen, accent: "#64748b" },
-    { label: "维修中", value: data.byStatus["IN_MAINTENANCE"] ?? 0, status: "IN_MAINTENANCE", icon: Wrench, accent: "#f59e0b" },
-    { label: "报废", value: data.byStatus["SCRAPPED"] ?? 0, status: "SCRAPPED", icon: Trash2, accent: "#ef4444" },
+    { label: "总设备数", value: data.total, status: "all", icon: Server, accentClass: "bg-primary" },
+    { label: "在用", value: data.byStatus["IN_USE"] ?? 0, status: "IN_USE", icon: MonitorCheck, accentClass: TONE_DOT.success },
+    { label: "闲置", value: data.byStatus["IDLE"] ?? 0, status: "IDLE", icon: PackageOpen, accentClass: TONE_DOT.neutral },
+    { label: "维修中", value: data.byStatus["IN_MAINTENANCE"] ?? 0, status: "IN_MAINTENANCE", icon: Wrench, accentClass: TONE_DOT.warning },
+    { label: "报废", value: data.byStatus["SCRAPPED"] ?? 0, status: "SCRAPPED", icon: Trash2, accentClass: TONE_DOT.danger },
   ];
 
   useEffect(() => {
@@ -309,11 +301,11 @@ export function DashboardClient({ data }: DashboardClientProps) {
     }
   };
 
-  const TASK_META: Record<string, { badge: "destructive" | "secondary" | "outline"; tint: string; label: string }> = {
-    allocate: { badge: "secondary", tint: "#2455D9", label: "待分配" },
-    maintenance: { badge: "secondary", tint: "#d97706", label: "维修中" },
-    low_stock: { badge: "destructive", tint: "#dc2626", label: "库存不足" },
-    warranty: { badge: "secondary", tint: "#0d9488", label: "保修到期" },
+  const TASK_META: Record<string, { badge: "destructive" | "secondary" | "outline"; tintClass: string; label: string }> = {
+    allocate: { badge: "secondary", tintClass: TONE_DOT.info, label: "待分配" },
+    maintenance: { badge: "secondary", tintClass: TONE_DOT.warning, label: "维修中" },
+    low_stock: { badge: "destructive", tintClass: TONE_DOT.danger, label: "库存不足" },
+    warranty: { badge: "secondary", tintClass: TONE_DOT.success, label: "保修到期" },
   };
 
   return (
@@ -349,7 +341,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
             <div className="flex min-h-[96px] flex-col justify-between rounded-lg border border-border/70 bg-muted/30 p-4">
               <p className="text-xs text-muted-foreground">在用 / 闲置</p>
               <p className="mt-2 text-2xl font-bold tabular-nums leading-none">
-                <span className="text-emerald-600">{inUse}</span>
+                <span className="text-success">{inUse}</span>
                 <span className="text-muted-foreground"> / </span>
                 <span>{idle}</span>
               </p>
@@ -377,7 +369,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
               label={card.label}
               value={card.value}
               hint={card.status === "all" ? "台" : "台"}
-              accent={card.accent}
+              accentClass={card.accentClass}
               icon={card.icon}
               share={share}
               index={idx}
@@ -395,7 +387,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
         <Card className="flex flex-col border-border/70 lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/50 pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <AlertCircle className="h-4 w-4 text-amber-500" strokeWidth={1.75} />
+              <AlertCircle className="h-4 w-4 text-warning" strokeWidth={1.75} />
               待办任务
             </CardTitle>
             {pendingCount > 0 && (
@@ -408,15 +400,16 @@ export function DashboardClient({ data }: DashboardClientProps) {
             {data.pendingTasks.length > 0 ? (
               <div className="space-y-2.5">
                 {data.pendingTasks.map((task, idx) => {
-                  const meta = TASK_META[task.type] ?? { badge: "secondary", tint: "#2455D9", label: "待办" };
+                  const meta = TASK_META[task.type] ?? { badge: "secondary", tintClass: TONE_DOT.info, label: "待办" };
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={`${task.type}-${idx}`}
-                      className="group cursor-pointer rounded-lg border border-border/60 bg-muted/20 p-3 transition-colors hover:border-primary/40 hover:bg-accent/40"
                       onClick={() => handleTaskClick(task.type)}
+                      className="group w-full cursor-pointer rounded-lg border border-border/60 bg-muted/20 p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
                     >
                       <div className="flex items-start gap-3">
-                        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: meta.tint }} />
+                        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${meta.tintClass}`} />
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Badge variant={meta.badge}>{meta.label}</Badge>
@@ -429,14 +422,14 @@ export function DashboardClient({ data }: DashboardClientProps) {
                         </div>
                         <ChevronRight className="mt-1 h-4 w-4 self-start text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             ) : (
               <div className="flex h-full min-h-[180px] flex-col items-center justify-center gap-2 text-center">
-                <span className="flex h-11 w-11 items-center justify-center rounded-full border border-emerald-500/25 bg-emerald-500/10">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" strokeWidth={1.75} />
+                <span className="flex h-11 w-11 items-center justify-center rounded-full border border-success/25 bg-success/10">
+                  <CheckCircle2 className="h-5 w-5 text-success" strokeWidth={1.75} />
                 </span>
                 <p className="text-sm text-muted-foreground">暂无待办，运行状况良好</p>
               </div>
