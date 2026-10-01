@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getStockLogs } from "@/actions/component-stock.actions";
 import { getComponentModels } from "@/actions/component-model.actions";
 import { StockLogClient } from "./stock-log-client";
+
+export const metadata: Metadata = { title: "库存流水" };
 
 export default async function StockLogPage() {
   const [logsResult, modelsResult] = await Promise.all([

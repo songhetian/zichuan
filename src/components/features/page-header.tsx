@@ -15,10 +15,10 @@ export function PageHeader({ title, description, showBack, action }: PageHeaderP
   const router = useRouter()
 
   return (
-    <div className="flex items-center justify-between pb-4">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
         {showBack && (
-          <Button type="button" variant="ghost" size="icon" onClick={() => router.back()}>
+          <Button type="button" variant="ghost" size="icon" onClick={() => router.back()} aria-label="返回">
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}
@@ -29,7 +29,9 @@ export function PageHeader({ title, description, showBack, action }: PageHeaderP
           )}
         </div>
       </div>
-      {action && <div>{action}</div>}
+      {action && (
+        <div className="flex flex-wrap gap-2 sm:justify-end">{action}</div>
+      )}
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getQrAsset } from "@/actions/qr.actions";
 import { AssetQrCode } from "@/components/features/asset-qr-code";
 import { getStatusLabel } from "@/lib/status-labels";
@@ -6,6 +7,8 @@ import { getStatusLabel } from "@/lib/status-labels";
  * 二维码手机瘦身页（扫码盘点）：`/qr?assetNo=xxx`
  * 移动端打开即得资产概要 + 二维码标签，用于扫码核对与盘点。无参数时让用户输入编号。
  */
+export const metadata: Metadata = { title: "资产盘点" };
+
 export default async function QrPage({
   searchParams,
 }: {
@@ -44,8 +47,11 @@ export default async function QrPage({
           type="text"
           name="assetNo"
           defaultValue={assetNo}
+          aria-label="资产编号"
           placeholder="输入资产编号"
-          className="w-full flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+          aria-invalid={!!error}
+          aria-describedby={error ? "qr-error" : undefined}
+          className="w-full flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/30 aria-invalid:border-destructive"
         />
         <button
           type="submit"
@@ -56,7 +62,11 @@ export default async function QrPage({
       </form>
 
       {error && (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p
+          id="qr-error"
+          role="alert"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       )}

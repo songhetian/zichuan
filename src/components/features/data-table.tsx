@@ -75,6 +75,18 @@ interface DataTableProps<TData, TValue> {
   defaultSorting?: SortingState
   /** 隐藏内置客户端分页控件（配合服务端分页，由外部 PagePagination 驱动） */
   hidePagination?: boolean
+  /**
+   * 零数据（data 为空且非筛选态）时展示的自定义空状态，通常带「新建」引导 CTA。
+   * 不传则回落内置的「暂无数据」。筛选无结果时始终走内置的「未找到匹配」样式。
+   */
+  emptyState?: React.ReactNode
+  /**
+   * 当前是否处于「搜索/筛选」状态。由调用方传入（DataTable 收到的 data 已是过滤后的，
+   * 无法自行判断空结果是「本来就没有」还是「筛掉了」）。
+   */
+  isFiltered?: boolean
+  /** 筛选无结果时的自定义空状态（可选，通常带「清除筛选」按钮）；不传则用内置样式。 */
+  filteredEmptyState?: React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -85,6 +97,9 @@ export function DataTable<TData, TValue>({
   renderExpandedRow,
   defaultSorting = [],
   hidePagination = false,
+  emptyState,
+  isFiltered = false,
+  filteredEmptyState,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSorting)
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -199,25 +214,32 @@ export function DataTable<TData, TValue>({
                 </Fragment>
               ))
             ) : (
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 <TableCell colSpan={columns.length} className="h-40 text-center">
-                  <div className="flex flex-col items-center gap-2.5">
-                    {data.length === 0 ? (
-                      <>
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
-                          <Inbox className="h-6 w-6 text-muted-foreground/60" />
-                        </span>
-                        <p className="text-sm text-muted-foreground">暂无数据</p>
-                      </>
-                    ) : (
-                      <>
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
-                          <Search className="h-6 w-6 text-muted-foreground/60" />
-                        </span>
-                        <p className="text-sm text-muted-foreground">未找到匹配的记录</p>
-                      </>
-                    )}
-                  </div>
+                  {emptyState && !isFiltered ? (
+                    <div className="flex justify-center">{emptyState}</div>
+                  ) : isFiltered && filteredEmptyState ? (
+                    <div className="flex justify-center">{filteredEmptyState}</div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2.5">
+                      {isFiltered ? (
+                        <>
+                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
+                            <Search className="h-6 w-6 text-muted-foreground/60" />
+                          </span>
+                          <p className="text-sm text-muted-foreground">未找到匹配的记录</p>
+                          <p className="text-xs text-muted-foreground/80">试试换个关键词，或清除筛选条件</p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
+                            <Inbox className="h-6 w-6 text-muted-foreground/60" />
+                          </span>
+                          <p className="text-sm text-muted-foreground">暂无数据</p>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             )}

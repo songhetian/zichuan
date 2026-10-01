@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getAssets } from "@/actions/asset.actions";
 import { getDeviceTemplates } from "@/actions/device-template.actions";
 import { AssetListClient } from "./asset-list-client";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "设备管理" };
 
 export default async function AssetsPage() {
   // 第一轮：并行获取设备数据、模板、分类、部门、员工列表（这些互不依赖）

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getComponentModels } from "@/actions/component-model.actions";
 import { getComponentCategories } from "@/actions/component-category.actions";
 import { ModelsClient } from "./models-client";
+
+export const metadata: Metadata = { title: "配件型号" };
 
 export default async function ModelsPage() {
   const [modelsResult, categoriesResult] = await Promise.all([

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 const searchSchema = z.object({
   keyword: z.string().min(1, "搜索关键词不能为空"),
-  limit: z.number().int().positive().max(50).default(10),
+  limit: z.number().int().positive().max(50).default(20),
 });
 
 type SearchResult = {
@@ -41,6 +41,10 @@ export async function globalSearch(
         OR: [
           { assetNo: { contains: keyword } },
           { name: { contains: keyword } },
+          { brand: { contains: keyword } },
+          { model: { contains: keyword } },
+          { serialNo: { contains: keyword } },
+          { employee: { name: { contains: keyword } } },
         ],
       },
       select: {
@@ -69,6 +73,7 @@ export async function globalSearch(
         OR: [
           { employeeNo: { contains: keyword } },
           { name: { contains: keyword } },
+          { department: { name: { contains: keyword } } },
         ],
       },
       select: {
@@ -93,7 +98,12 @@ export async function globalSearch(
     // 搜索设备模板
     const templates = await prisma.deviceTemplate.findMany({
       where: {
-        name: { contains: keyword },
+        OR: [
+          { name: { contains: keyword } },
+          { brand: { contains: keyword } },
+          { model: { contains: keyword } },
+          { category: { name: { contains: keyword } } },
+        ],
       },
       select: {
         id: true,
@@ -119,6 +129,7 @@ export async function globalSearch(
         OR: [
           { name: { contains: keyword } },
           { brand: { contains: keyword } },
+          { category: { name: { contains: keyword } } },
         ],
       },
       select: {

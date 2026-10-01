@@ -114,7 +114,7 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
     setSubmitting(false);
 
     if (result.success) {
-      toast({ title: "提交成功", description: result.data.requestNo });
+      toast({ variant: "success", title: "提交成功", description: result.data.requestNo });
       router.push(`/approvals/${result.data.id}`);
     } else {
       toast({ title: "提交失败", description: result.error, variant: "destructive" });
@@ -134,8 +134,9 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
             <div className="px-6 py-6 sm:px-8">
               <div className="space-y-5">
                 <div className="space-y-1.5">
-                  <Label className="req text-sm font-medium text-foreground">配件分类</Label>
+                  <Label htmlFor="pr-category" className="req text-sm font-medium text-foreground">配件分类</Label>
                   <SearchableSelect
+                    id="pr-category"
                     options={catOptions}
                     value={categoryId}
                     onValueChange={(v) => {
@@ -153,8 +154,9 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
 
                 {source === "existing" && categoryId && (
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-foreground">品牌筛选</Label>
+                    <Label htmlFor="pr-brand" className="text-sm font-medium text-foreground">品牌筛选</Label>
                     <SearchableSelect
+                      id="pr-brand"
                       options={[
                         { value: "__all__", label: "全部品牌" },
                         ...brandOptions.map((b) => ({ value: b, label: b })),
@@ -174,7 +176,7 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
                 )}
 
                 <div className="space-y-1.5">
-                  <Label className="req text-sm font-medium text-foreground">加购对象</Label>
+                  <div className="req text-sm font-medium text-foreground">加购对象</div>
                   <div className="flex items-center gap-1.5">
                     {(
                       [
@@ -201,8 +203,9 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
 
                 {source === "existing" ? (
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">配件型号</Label>
+                    <Label htmlFor="pr-model" className="req text-sm font-medium text-foreground">配件型号</Label>
                     <SearchableSelect
+                      id="pr-model"
                       options={modelOptions}
                       value={modelId}
                       onValueChange={setModelId}
@@ -216,18 +219,20 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
                 ) : (
                   <>
                     <div className="space-y-1.5">
-                      <Label className="req text-sm font-medium text-foreground">
+                      <Label htmlFor="pr-new-name" className="req text-sm font-medium text-foreground">
                         新配件型号
                       </Label>
                       <Input
+                        id="pr-new-name"
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="如：DDR5-32G（通过后登记为该型号并入库）"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-sm font-medium text-foreground">品牌</Label>
+                      <Label htmlFor="pr-brand-name" className="text-sm font-medium text-foreground">品牌</Label>
                       <Input
+                        id="pr-brand-name"
                         value={brand}
                         onChange={(e) => setBrand(e.target.value)}
                         placeholder="如：金士顿（可空缺）"
@@ -238,8 +243,9 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">加购数量</Label>
+                    <Label htmlFor="pr-qty" className="req text-sm font-medium text-foreground">加购数量</Label>
                     <Input
+                      id="pr-qty"
                       type="number"
                       min={1}
                       value={quantity}
@@ -248,8 +254,9 @@ export function PurchaseRequestClient({ categories, models }: PurchaseRequestCli
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-foreground">单价（元）</Label>
+                    <Label htmlFor="pr-price" className="text-sm font-medium text-foreground">单价（元）</Label>
                     <Input
+                      id="pr-price"
                       type="number"
                       min={0}
                       step="any"

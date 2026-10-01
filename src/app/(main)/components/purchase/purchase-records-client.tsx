@@ -7,11 +7,11 @@ import { DataTable } from "@/components/features/data-table";
 import { PageHeader } from "@/components/features/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { PagePagination } from "@/components/ui/page-pagination";
-import { formatTime } from "@/lib/utils";
+import { formatTime, cn } from "@/lib/utils";
+import { categoryDotClass } from "@/lib/status-styles";
 
 type PurchaseRecordItem = {
   id: number;
@@ -82,9 +82,15 @@ export function PurchaseRecordsClient({
       {
         accessorKey: "categoryName",
         header: "分类",
-        cell: ({ row }) => (
-          <Badge variant="outline">{row.original.categoryName}</Badge>
-        ),
+        cell: ({ row }) => {
+          const name = row.original.categoryName;
+          return (
+            <span className="inline-flex items-center gap-2">
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", categoryDotClass(name))} aria-hidden />
+              <span>{name}</span>
+            </span>
+          );
+        },
       },
       {
         accessorKey: "quantity",
@@ -208,8 +214,9 @@ export function PurchaseRecordsClient({
         }}
       >
         <div className="min-w-[200px] max-w-sm flex-1">
-          <Label className="mb-1.5 block text-xs text-muted-foreground">关键字</Label>
+          <Label htmlFor="keyword" className="mb-1.5 block text-xs text-muted-foreground">关键字</Label>
           <Input
+            id="keyword"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="配件名称 / 采购单号 / 申请单号"
@@ -217,8 +224,9 @@ export function PurchaseRecordsClient({
           />
         </div>
         <div className="w-[180px]">
-          <Label className="mb-1.5 block text-xs text-muted-foreground">分类</Label>
+          <Label htmlFor="cat" className="mb-1.5 block text-xs text-muted-foreground">分类</Label>
           <SearchableSelect
+            id="cat"
             value={category}
             onValueChange={(v) => {
               setCategory(v || ALL);

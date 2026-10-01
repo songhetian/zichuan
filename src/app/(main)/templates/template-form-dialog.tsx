@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { BomTable, type BomComponent, type ComponentModelOption, type TemplateOption, type ComponentCategoryOption } from "./bom-table";
 import { createDeviceTemplate, updateDeviceTemplate } from "@/actions/device-template.actions";
 
@@ -63,15 +65,15 @@ interface TemplateFormDialogProps {
   componentCategories: ComponentCategoryOption[];
 }
 
-/** 分区标题：细竖条强调 + 标签，右侧可挂载统计/操作 */
-function SectionTitle({ children, meta }: { children: ReactNode; meta?: ReactNode }) {
+/** 分区标题：纯文字字重分层。
+ *  刻意不用靛蓝竖条——primary 在本设计系统里是「可操作/已选中」的语义色，
+ *  拿它做纯装饰会稀释强调色的含义，且竖条在 2px 下既看不清又添噪。
+ *  分区边界交给外层 `divide-y divide-border` 的发丝线承载。 */
+function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <span className="h-3.5 w-[3px] shrink-0 rounded-full bg-primary" />
-        <span className="text-[13px] font-medium text-foreground">{children}</span>
-      </div>
-      {meta}
+    <div className="flex items-baseline gap-2">
+      <h3 className="text-[13px] font-semibold tracking-tight text-foreground">{children}</h3>
+      {hint && <span className="text-xs font-normal text-muted-foreground">{hint}</span>}
     </div>
   );
 }
@@ -90,6 +92,9 @@ export function TemplateFormDialog({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [bomComponents, setBomComponents] = useState<BomComponent[]>([]);
+  /** 打开时的 BOM 快照（JSON）：RHF 的 isDirty 只覆盖表单字段，配件清单要单独比 */
+  const initialBomRef = useRef<string>("[]");
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const form = useForm<TemplateFormValues>({
     resolver: zodResolver(templateSchema),
@@ -109,24 +114,28 @@ export function TemplateFormDialog({
       const modelInfoMap = new Map(
         componentModels.map((m) => [m.id, { categoryId: m.categoryId, categoryName: m.categoryName }])
       );
-      setBomComponents(
-        template.components.map((c) => {
-          const info = modelInfoMap.get(c.modelId);
-          return {
-            modelId: c.modelId,
-            quantity: c.quantity,
-            name: c.modelName,
-            brand: c.modelBrand,
-            categoryId: info?.categoryId,
-            categoryName: info?.categoryName,
-          };
-        })
-      );
+      const list = template.components.map((c) => {
+        const info = modelInfoMap.get(c.modelId);
+        return {
+          modelId: c.modelId,
+          quantity: c.quantity,
+          name: c.modelName,
+          brand: c.modelBrand,
+          categoryId: info?.categoryId,
+          categoryName: info?.categoryName,
+        };
+      });
+      setBomComponents(list);
+      initialBomRef.current = JSON.stringify(list);
     } else {
       form.reset({ name: "", categoryId: "", brand: "", model: "" });
       setBomComponents([]);
+      initialBomRef.current = "[]";
     }
-  }, [open, mode, template]);
+    // 打开即聚焦首字段，省掉一次鼠标点击（form 引用在渲染间稳定，无需入依赖）
+    const timer = setTimeout(() => form.setFocus("name"), 60);
+    return () => clearTimeout(timer);
+  }, [open, mode, template, componentModels]);
 
   const handleSubmit = async (values: TemplateFormValues) => {
     setLoading(true);
@@ -165,10 +174,41 @@ export function TemplateFormDialog({
   const isCreate = mode === "create";
   const totalQuantity = bomComponents.reduce((sum, c) => sum + (Number(c.quantity) || 0), 0);
 
+  // 未保存判断：表单字段走 RHF isDirty，配件清单用 JSON 快照比对
+  const bomDirty = JSON.stringify(bomComponents) !== initialBomRef.current;
+  const dirty = form.formState.isDirty || bomDirty;
+
+  /** 用户主动关闭（X / ESC / 点遮罩 / 取消）的统一出口：有未保存内容先确认，避免静默丢失 */
+  const requestClose = (next: boolean) => {
+    if (!next && dirty && !loading) {
+      setDiscardOpen(true);
+      return;
+    }
+    onOpenChange(next);
+  };
+
+  const handleDiscard = () => {
+    setDiscardOpen(false);
+    form.reset();
+    setBomComponents([]);
+    initialBomRef.current = "[]";
+    onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[88vh] flex flex-col gap-0 overflow-hidden p-0">
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="flex min-h-0 flex-1 flex-col">
+    <Dialog open={open} onOpenChange={requestClose}>
+      <DialogContent className="w-[calc(100%-2rem)] max-w-4xl max-h-[88vh] flex flex-col gap-0 overflow-hidden p-0">
+        <form
+          onSubmit={form.handleSubmit(handleSubmit)}
+          onKeyDown={(e) => {
+            // Cmd/Ctrl + Enter 提交 —— 专业后台的通用约定
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              form.handleSubmit(handleSubmit)();
+            }
+          }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <DialogHeader className="mb-0 border-b border-border px-7 pb-5 pt-6">
             <DialogTitle className="text-lg">{isCreate ? "新建设备模板" : "编辑设备模板"}</DialogTitle>
             <DialogDescription className="text-[13px]">
@@ -176,13 +216,17 @@ export function TemplateFormDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-7 py-6">
+          {/* 分区不套卡片：弹框内再套「卡片」是最典型的业余信号（dialog > card > input 三层底色
+              互相抵消，实测 bg-card / bg-muted-40 对弹框底均为 1.053:1，肉眼等价）。
+              改为纯文字标题 + divide-y 发丝线承载边界，底色层数从 3 降到 1。 */}
+          <div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto px-7">
             {/* 基本信息 */}
-            <section className="space-y-3">
-              <SectionTitle>基本信息</SectionTitle>
-              <div className="rounded-lg border border-border bg-card p-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5">
+            <section className="space-y-4 py-6">
+              <SectionTitle hint="模板的标识信息">基本信息</SectionTitle>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {/* 模板名称是唯一必填且最长（含款式后缀）的字段 —— 独占整行，
+                    「最重要的字段最宽」是表单布局的硬原则，挤在半宽里必被截断 */}
+                <div className="space-y-1.5 sm:col-span-3">
                     <Label htmlFor="template-name" className="req text-sm font-medium text-foreground">
                       模板名称
                     </Label>
@@ -190,10 +234,17 @@ export function TemplateFormDialog({
                       id="template-name"
                       {...form.register("name")}
                       placeholder="如：MacBook Pro 14 英寸"
-                      className="h-10"
+                      className="h-10 bg-card"
+                      aria-required="true"
+                      aria-invalid={!!form.formState.errors.name}
+                      aria-describedby={
+                        form.formState.errors.name ? "template-name-error" : undefined
+                      }
                     />
                     {form.formState.errors.name && (
-                      <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
+                      <p id="template-name-error" role="alert" className="text-xs text-destructive">
+                        {form.formState.errors.name.message}
+                      </p>
                     )}
                   </div>
 
@@ -203,9 +254,19 @@ export function TemplateFormDialog({
                     </Label>
                     <Select
                       value={form.watch("categoryId")}
-                      onValueChange={(v) => form.setValue("categoryId", v)}
+                      onValueChange={(v) =>
+                        form.setValue("categoryId", v, { shouldValidate: true, shouldDirty: true })
+                      }
                     >
-                      <SelectTrigger id="template-category" className="h-10">
+                      <SelectTrigger
+                        id="template-category"
+                        className="h-10 bg-card"
+                        aria-required="true"
+                        aria-invalid={!!form.formState.errors.categoryId}
+                        aria-describedby={
+                          form.formState.errors.categoryId ? "template-category-error" : undefined
+                        }
+                      >
                         <SelectValue placeholder="请选择设备分类" />
                       </SelectTrigger>
                       <SelectContent>
@@ -217,7 +278,13 @@ export function TemplateFormDialog({
                       </SelectContent>
                     </Select>
                     {form.formState.errors.categoryId && (
-                      <p className="text-xs text-destructive">{form.formState.errors.categoryId.message}</p>
+                      <p
+                        id="template-category-error"
+                        role="alert"
+                        className="text-xs text-destructive"
+                      >
+                        {form.formState.errors.categoryId.message}
+                      </p>
                     )}
                   </div>
 
@@ -229,7 +296,7 @@ export function TemplateFormDialog({
                       id="template-brand"
                       {...form.register("brand")}
                       placeholder="选填，如 戴尔"
-                      className="h-10"
+                      className="h-10 bg-card"
                     />
                   </div>
 
@@ -241,64 +308,80 @@ export function TemplateFormDialog({
                       id="template-model"
                       {...form.register("model")}
                       placeholder="选填，如 U2723QE"
-                      className="h-10"
+                      className="h-10 bg-card"
                     />
                   </div>
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  品牌 / 型号为选填，建档时自动带出到每台设备，无需逐台重复填写。
-                </p>
               </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                品牌 / 型号为选填，建档时自动带出到每台设备，无需逐台重复填写。
+              </p>
             </section>
 
             {/* 配件清单 */}
-            <section className="space-y-3">
-              <SectionTitle
-                meta={
-                  bomComponents.length > 0 ? (
-                    <span className="text-xs text-muted-foreground">
-                      已选 {bomComponents.length} 项 · 共 {totalQuantity} 件
-                    </span>
-                  ) : null
-                }
-              >
-                配件清单
-              </SectionTitle>
+            <section className="space-y-4 py-6">
+              <SectionTitle hint="选填，创建后仍可修改">配件清单</SectionTitle>
 
-              <div className="rounded-lg border border-border bg-card p-4">
-                <BomTable
-                  modelOptions={componentModels}
-                  templates={templates}
-                  categories={componentCategories}
-                  value={bomComponents}
-                  onChange={setBomComponents}
-                />
-              </div>
+              <BomTable
+                modelOptions={componentModels}
+                templates={templates}
+                categories={componentCategories}
+                value={bomComponents}
+                onChange={setBomComponents}
+              />
 
               <p className="text-xs leading-relaxed text-muted-foreground">
-                配件清单为选填项，创建后可通过「编辑」继续补充，也可直接从其他模板复制配件配置。
+                也可从其他模板一键复制整份配件配置。
               </p>
             </section>
           </div>
 
-          {/* 底部操作栏 */}
-          <div className="flex items-center justify-between gap-4 border-t border-border px-7 py-4">
-            <p className="text-xs text-muted-foreground">
-              {bomComponents.length > 0
-                ? `已配置 ${bomComponents.length} 项配件，共 ${totalQuantity} 件`
-                : "尚未配置配件（选填）"}
-            </p>
+          {/* 底部操作栏：统计只在此处出现一次（不再与分区标题重复），紧邻提交决策点 */}
+          <div className="flex flex-col gap-3 border-t border-border px-7 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <Button type="button" variant="outline" className="h-10 px-5" onClick={() => onOpenChange(false)}>
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {bomComponents.length > 0 ? (
+                  <>
+                    已配置{" "}
+                    <span className="font-medium tabular-nums text-foreground">{bomComponents.length}</span> 项配件 · 共{" "}
+                    <span className="font-medium tabular-nums text-foreground">{totalQuantity}</span> 件
+                  </>
+                ) : (
+                  "未配置配件（选填）"
+                )}
+              </p>
+              {/* 把「脏状态」显性化：上一轮加的 isDirty 检测此前只在关闭时生效，
+                  用户完全看不见，等于白做。这里让它可见，改动才「看得见」。 */}
+              {dirty && !loading && (
+                <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-warning">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden />
+                  有未保存的更改
+                </span>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <Button type="button" variant="outline" className="h-10 px-5" onClick={() => requestClose(false)}>
                 取消
               </Button>
               <Button type="submit" disabled={loading} className="h-10 px-6">
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
                 {loading ? (isCreate ? "创建中..." : "保存中...") : (isCreate ? "创建模板" : "保存更改")}
               </Button>
             </div>
           </div>
         </form>
       </DialogContent>
+
+      {/* 未保存更改确认（Radix 嵌套弹层，靠 dialog.tsx 的嵌套豁免避免两框互相误关） */}
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title="放弃未保存的更改？"
+        description="当前表单有未保存的内容，关闭后这些修改将丢失。"
+        confirmText="放弃更改"
+        cancelText="继续编辑"
+        variant="destructive"
+        onConfirm={handleDiscard}
+      />
     </Dialog>
   );
 }

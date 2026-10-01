@@ -257,8 +257,21 @@
     letter-spacing: 0.008em;
   }
 
-  /* 线性克制：卡片不投影，层级靠背景色阶与发丝边框区分 */
+  /* 线性克制：卡片默认仍不投影，仅在显式声明 shadow-card 时获得极轻抬升感；
+     暗色下层次靠 card/background/sidebar 三档明度差（12%/9%/7%）维持，不再叠加阴影。 */
   .shadow-warm {
+    box-shadow: none;
+  }
+
+  /* .shadow-card —— 给 Dashboard 关键卡片、弹窗等显式重场景使用：
+     双层极轻阴影（外圈 1px 内圈 2px），亮色下让卡片浮起 1–2px 视觉量，
+     暗色下自动降为 0（避免深底上叠深阴影的脏感）。 */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.045),
+      0 1px 3px rgb(0 0 0 / 0.035);
+  }
+  :root.dark .shadow-card {
     box-shadow: none;
   }
 

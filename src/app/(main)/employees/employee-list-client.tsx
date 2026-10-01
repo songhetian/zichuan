@@ -4,11 +4,13 @@ import { downloadExcelFile } from "@/lib/excel-download";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
+import { AssetConfigList } from "@/components/features/asset-config-list";
 import { PageHeader } from "@/components/features/page-header";
 import { FilterBar } from "@/components/features/filter-bar";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
@@ -49,7 +51,6 @@ import {
   updateEmployee,
   resetEmployeePassword,
   getEmployeeAssets,
-  getAssetComponents,
   type EmployeeAsset,
 } from "@/actions/employee.actions";
 import {
@@ -149,10 +150,17 @@ const baseColumns: ColumnDef<EmployeeRow>[] = [
     size: 100,
     cell: ({ row }) => {
       const count = row.original.assetCount ?? 0;
+      // 数量直接可点：进入该员工的「在用设备」只读预览页
       return (
-        <span className={count > 0 ? "font-medium text-primary" : "text-muted-foreground"}>
+        <Link
+          href={`/employees/${row.original.id}`}
+          aria-label={`查看 ${row.original.name} 的在用设备（${count} 台）`}
+          className={`rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            count > 0 ? "font-medium text-primary" : "text-muted-foreground"
+          }`}
+        >
           {count}
-        </span>
+        </Link>
       );
     },
   },
@@ -415,46 +423,7 @@ function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
   );
 }
 
-/** 主机配置列表：按 assetId 拉取该主机的配件清单并展示（骨架屏 + 空态 + 错误回退） */
-function AssetConfigList({ assetId }: { assetId: number }) {
-  const [rows, setRows] = useState<{ modelName: string; modelBrand: string | null; categoryName: string; quantity: number }[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setRows(null);
-    setError(null);
-    getAssetComponents(assetId).then((res) => {
-      if (cancelled) return;
-      if (res.success) setRows(res.data);
-      else setError(res.error ?? "加载失败");
-    });
-    return () => { cancelled = true; };
-  }, [assetId]);
-
-  if (rows === null) {
-    return <div className="space-y-2"><SkeletonList rows={3} /></div>;
-  }
-  if (error) return <div role="alert" className="py-4 text-center text-sm text-destructive">{error}</div>;
-  if (rows.length === 0) {
-    return <div className="py-6 text-center text-sm text-muted-foreground">该主机暂无配置详情</div>;
-  }
-  return (
-    <div className="divide-y rounded-lg border">
-      {rows.map((c, idx) => (
-        <div key={idx} className="flex items-center justify-between px-3 py-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">{c.modelName}</div>
-            <div className="text-xs text-muted-foreground">
-              {[c.modelBrand, c.categoryName].filter(Boolean).join(" · ") || "-"}
-            </div>
-          </div>
-          <span className="shrink-0 text-xs text-muted-foreground">×{c.quantity}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+/** 主机配置列表已抽为共享组件（员工在用设备预览页也复用它），见 components/features/asset-config-list.tsx */
 
 function EmployeeActionButtons({
   employee,
@@ -550,11 +519,11 @@ function EmployeeActionButtons({
       {/* 员工增删改后端统一要求「账号与权限管理」，无权限时不展示操作入口，避免点了才报错 */}
       {canManageAccounts && (
         <>
-          <Button type="button" variant="ghost" size="icon" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
-            <Pencil className="h-4 w-4 text-primary" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
+            <Pencil className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="ghost" size="icon" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="h-4 w-4 text-destructive" />
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="h-4 w-4" />
           </Button>
         </>
       )}

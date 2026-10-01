@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getEmployees } from "@/actions/employee.actions";
@@ -6,6 +7,8 @@ import { getAdmins, getRoles } from "@/actions/admin.actions";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { EmployeeListClient } from "./employee-list-client";
+
+export const metadata: Metadata = { title: "员工管理" };
 
 export default async function EmployeesPage() {
   const user = await getCurrentUser();

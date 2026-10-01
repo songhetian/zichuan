@@ -105,17 +105,21 @@ export function SimpleCrudDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      {/* 共享弹窗无副标题：显式关闭 Radix 可访问描述告警（改用时补 DialogDescription 即可） */}
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {fields.map((field) => (
+          {fields.map((field) => {
+            const fieldId = `crud-field-${field.key}`
+            return (
             <div key={field.key} className="space-y-2">
-              <Label>{field.label}{field.optional ? "（可选）" : ""}</Label>
+              <Label htmlFor={fieldId}>{field.label}{field.optional ? "（可选）" : ""}</Label>
               {field.type === "select" || field.type === "searchSelect" ? (
                 field.type === "searchSelect" ? (
                   <SearchableSelect
+                    id={fieldId}
                     options={field.options ?? []}
                     value={values[field.key] || ""}
                     onValueChange={(v) => handleChange(field.key, v)}
@@ -125,7 +129,7 @@ export function SimpleCrudDialog({
                   />
                 ) : (
                   <Select value={values[field.key] || ""} onValueChange={(v) => handleChange(field.key, v)}>
-                    <SelectTrigger>
+                    <SelectTrigger id={fieldId}>
                       <SelectValue placeholder={field.placeholder} />
                     </SelectTrigger>
                     <SelectContent>
@@ -139,6 +143,7 @@ export function SimpleCrudDialog({
                 )
               ) : (
                 <Input
+                  id={fieldId}
                   type={field.type === "password" ? "password" : "text"}
                   value={values[field.key] || ""}
                   onChange={(e) => handleChange(field.key, e.target.value)}
@@ -147,7 +152,8 @@ export function SimpleCrudDialog({
               )}
               {field.hint && <p className="text-xs text-muted-foreground">{field.hint}</p>}
             </div>
-          ))}
+            )
+          })}
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>取消</Button>

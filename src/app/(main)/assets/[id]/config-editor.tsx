@@ -277,7 +277,7 @@ export function ConfigEditor({
     });
     setLoading(false);
     if (result.success) {
-      toast({ title: "配置调整成功" });
+      toast({ variant: "success", title: "配置调整成功" });
       handleOpenChange(false);
       router.refresh();
     } else {
@@ -360,7 +360,7 @@ export function ConfigEditor({
                         // 待删除确认状态：显示确认/取消按钮
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-destructive mr-1">确认删除?</span>
-                          <Button
+                          <Button aria-label="确认删除"
                             type="button"
                             variant="destructive"
                             size="icon"
@@ -370,7 +370,7 @@ export function ConfigEditor({
                           >
                             <Check className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
+                          <Button aria-label="取消删除"
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -384,7 +384,7 @@ export function ConfigEditor({
                       ) : (
                         // 正常状态：数量调整 + 删除按钮
                         <div className="flex items-center gap-1">
-                          <Button
+                          <Button aria-label="减少数量"
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -402,7 +402,7 @@ export function ConfigEditor({
                               </span>
                             )}
                           </div>
-                          <Button
+                          <Button aria-label="增加数量"
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -411,7 +411,7 @@ export function ConfigEditor({
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
-                          <Button
+                          <Button aria-label="移除配件"
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -479,7 +479,7 @@ export function ConfigEditor({
                         {m.brand ?? "无品牌"} · 库存 {m.stock}
                       </p>
                     </div>
-                    <Button
+                    <Button aria-label="添加配件"
                       type="button"
                       variant="ghost"
                       size="icon"
@@ -511,13 +511,13 @@ export function ConfigEditor({
                 </div>
                 {addCount > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-[11px] text-emerald-600">+{addCount}</span>
+                    <span className="w-2 h-2 rounded-full bg-success" />
+                    <span className="text-[11px] text-success">+{addCount}</span>
                     {removeCount > 0 && (
                       <>
                         <span className="text-muted-foreground/30">|</span>
-                        <span className="w-2 h-2 rounded-full bg-red-500" />
-                        <span className="text-[11px] text-red-500">-{removeCount}</span>
+                        <span className="w-2 h-2 rounded-full bg-destructive" />
+                        <span className="text-[11px] text-destructive">-{removeCount}</span>
                       </>
                     )}
                   </div>
@@ -539,26 +539,26 @@ export function ConfigEditor({
                           key={item.modelId}
                           className={`flex items-center justify-between px-2 py-1.5 rounded-md text-sm ${
                             item.quantityDelta > 0
-                              ? "bg-emerald-500/10 border border-emerald-500/25"
+                              ? "bg-success/10 border border-success/25"
                               : "bg-destructive/10 border border-destructive/25"
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span
                               className={`w-1 h-4 rounded-full shrink-0 ${
-                                item.quantityDelta > 0 ? "bg-emerald-500" : "bg-red-500"
+                                item.quantityDelta > 0 ? "bg-success" : "bg-destructive"
                               }`}
                             />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs font-medium truncate">{item.name}</span>
                                 {item.isNew && (
-                                  <span className="text-[10px] px-1 py-0 rounded bg-emerald-500/20 text-emerald-600 font-medium">
+                                  <span className="text-[10px] px-1 py-0 rounded bg-success/20 text-success font-medium">
                                   新
                                 </span>
                                 )}
                                 {item.isRemoved && (
-                                  <span className="text-[10px] px-1 py-0 rounded bg-red-500/20 text-red-600 font-medium">
+                                  <span className="text-[10px] px-1 py-0 rounded bg-destructive/20 text-destructive font-medium">
                                   撤
                                 </span>
                                 )}
@@ -578,7 +578,7 @@ export function ConfigEditor({
                             )}
                             <span
                               className={`text-xs font-semibold font-mono min-w-[32px] text-right ${
-                                item.quantityDelta > 0 ? "text-emerald-600" : "text-red-500"
+                                item.quantityDelta > 0 ? "text-success" : "text-destructive"
                               }`}
                             >
                               {item.quantityDelta > 0 ? "+" : ""}
@@ -595,8 +595,9 @@ export function ConfigEditor({
           )}
           <div className="flex items-end gap-2">
             <div className="flex-1 space-y-1">
-              <Label className="text-xs">备注（可选）</Label>
+              <Label className="text-xs" htmlFor="remark">备注（可选）</Label>
               <Input
+                id="remark"
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
                 placeholder="例如：更换显示器"

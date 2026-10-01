@@ -35,7 +35,8 @@ export function CategoryByDepartmentChart({
   const option = buildCategoryByDepartmentOption(
     data,
     category === ALL ? undefined : category,
-    { label: colors.muted, axisLine: colors.border, splitLine: colors.border }
+    { label: colors.muted, axisLine: colors.border, splitLine: colors.border },
+    colors.categorical
   );
 
   const selectedTotal =
@@ -79,7 +80,12 @@ export function CategoryByDepartmentChart({
           ]}
         />
       </div>
-      <ReactECharts option={option} style={{ height: 320 }} notMerge />
+      <div
+        role="img"
+        aria-label={`分类-部门设备分布柱状图，${data.departments.length} 个部门、${data.categories.length} 个分类，共 ${selectedTotal} 台设备`}
+      >
+        <ReactECharts option={option} style={{ height: 320 }} notMerge />
+      </div>
     </div>
   );
 }

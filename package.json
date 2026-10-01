@@ -12,6 +12,7 @@
     "test": "【测试】全量测试（组件 + 服务端/DB），指向隔离测试库 asset-manage-test",
     "test:ui": "【测试】仅 UI 组件测试（jsdom，不连库，最快）",
     "db": "【开发库/测试库】子命令：status（默认）| up | migrate | reset | test:init | logs | down；只操作隔离库",
+    "check:color": "【设计闸门】校验 globals.css 的 token：WCAG 对比度(1.4.3/1.4.11) + 分类色与语义色 ΔE00。改颜色后必跑",
     "free-port": "【工具】释放端口：npm run free-port 3001（默认 3000，只终止占用该端口的进程）",
     "docker": "【生产容器】子命令：deploy | update | mysql | down | restart | logs | ps | migrate | seed | reset"
   },
@@ -23,6 +24,7 @@
     "test": "vitest run",
     "test:ui": "vitest run --config vitest.frontend.config.ts",
     "db": "node scripts/dev-db.js",
+    "check:color": "node scripts/check-color-tokens.mjs",
     "free-port": "node scripts/free-port.js",
     "docker": "node scripts/docker.js",
     "audit:workflow": "node scripts/audit-workflow-final-role.mjs"

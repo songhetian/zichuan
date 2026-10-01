@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Pencil, Wrench, RotateCcw, Trash2, ArrowRightLeft, Package, User, Building2, ShieldCheck } from "lucide-react";
+import { Pencil, Wrench, RotateCcw, Trash2, ArrowRightLeft, Copy, Package, User, Building2, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
 import {
@@ -169,7 +169,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
     });
     setEditLoading(false);
     if (result.success) {
-      toast({ title: "更新成功" });
+      toast({ variant: "success", title: "更新成功" });
       setEditOpen(false);
       router.refresh();
     } else {
@@ -183,7 +183,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
       operator: "admin",
     });
     if (result.success) {
-      toast({ title: "送修成功" });
+      toast({ variant: "success", title: "送修成功" });
       router.refresh();
     } else {
       toast({ title: "送修失败", description: result.error, variant: "destructive" });
@@ -197,7 +197,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
       operator: "admin",
     });
     if (result.success) {
-      toast({ title: "报废成功" });
+      toast({ variant: "success", title: "报废成功" });
       router.refresh();
     } else {
       toast({ title: "报废失败", description: result.error, variant: "destructive" });
@@ -211,7 +211,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
       operator: "admin",
     });
     if (result.success) {
-      toast({ title: "归还成功" });
+      toast({ variant: "success", title: "归还成功" });
       router.refresh();
     } else {
       toast({ title: "归还失败", description: result.error, variant: "destructive" });
@@ -230,7 +230,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
     });
     setTransferLoading(false);
     if (result.success) {
-      toast({ title: "调拨成功" });
+      toast({ variant: "success", title: "调拨成功" });
       setTransferOpen(false);
       setTransferEmployeeId("");
       router.refresh();
@@ -263,7 +263,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
         }
         showBack
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => handleEditOpen(true)}>
               <Pencil className="mr-2 h-4 w-4" />
               编辑
@@ -282,7 +282,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
               size="sm"
               onClick={() => setConfirmAction("maintenance")}
               disabled={isInMaintenance || isScrapped}
-              className="text-amber-600"
+              className="text-warning"
             >
               <Wrench className="mr-2 h-4 w-4" />
               送修
@@ -308,7 +308,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
               </Button>
             )}
             {!isScrapped && (
-              <Button variant="ghost" size="sm" onClick={() => setConfirmAction("scrap")} className="text-red-600">
+              <Button variant="outline" size="sm" onClick={() => setConfirmAction("scrap")} className="text-destructive">
                 <Trash2 className="mr-2 h-4 w-4" />
                 报废
               </Button>
@@ -343,9 +343,9 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
             />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {/* 主栏：配件配置 */}
-            <Card className="lg:col-span-2">
+            <Card className="md:col-span-1 lg:col-span-2">
               <CardHeader>
                 <CardTitle>配件配置</CardTitle>
               </CardHeader>
@@ -388,7 +388,7 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <InfoItem label="设备编号" value={asset.assetNo} />
+                  <InfoItem label="设备编号" value={asset.assetNo} copyValue={asset.assetNo} />
                   <InfoItem label="设备分类" value={asset.categoryName} />
                   <InfoItem label="模板" value={asset.templateName ?? "-"} />
                   <InfoItem
@@ -426,25 +426,27 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>设备名称</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入设备名称" />
+              <Label htmlFor="detail-name">设备名称</Label>
+              <Input id="detail-name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="请输入设备名称" />
             </div>
             <div className="space-y-2">
-              <Label>所在位置</Label>
-              <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="可选" />
+              <Label htmlFor="detail-location">所在位置</Label>
+              <Input id="detail-location" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="可选" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>采购日期</Label>
+                <Label htmlFor="detail-purchaseDate">采购日期</Label>
                 <Input
+                  id="detail-purchaseDate"
                   type="date"
                   value={editPurchaseDate}
                   onChange={(e) => setEditPurchaseDate(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label>保修月数</Label>
+                <Label htmlFor="detail-warranty">保修月数</Label>
                 <Input
+                  id="detail-warranty"
                   type="number"
                   min="0"
                   value={editWarrantyMonths}
@@ -454,8 +456,8 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
               </div>
             </div>
             <div className="space-y-2">
-              <Label>备注</Label>
-              <Input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="可选" />
+              <Label htmlFor="detail-notes">备注</Label>
+              <Input id="detail-notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="可选" />
             </div>
           </div>
           <DialogFooter>
@@ -535,8 +537,9 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
             <DialogDescription>将设备调拨给其他员工</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>目标员工</Label>
+            <Label htmlFor="detail-transfer-employee">目标员工</Label>
             <SearchableSelect
+              id="detail-transfer-employee"
               value={transferEmployeeId}
               onValueChange={setTransferEmployeeId}
               placeholder="请选择目标员工"
@@ -577,11 +580,35 @@ function KeyStat({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
+function InfoItem({ label, value, copyValue }: { label: string; value: React.ReactNode; copyValue?: string }) {
+  const { toast } = useToast();
+  const handleCopy = () => {
+    if (!copyValue) return;
+    const done = () => toast({ variant: "success", title: "已复制", description: copyValue });
+    const fail = () => toast({ title: "复制失败", variant: "destructive" });
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(copyValue).then(done, fail);
+    } else {
+      fail();
+    }
+  };
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-3 last:border-0 last:pb-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <div className="text-sm font-medium">{value}</div>
+    <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-3 last:border-0 last:pb-0">
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <div className="flex min-w-0 items-start gap-1.5">
+        <span className="min-w-0 break-words text-right text-sm font-medium">{value}</span>
+        {copyValue && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={`复制${label}`}
+            title="复制"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

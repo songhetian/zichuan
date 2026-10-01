@@ -38,7 +38,7 @@ const querySchema = z.object({
   keyword: z.string().optional(),
 });
 
-type EmployeeWithDept = {
+export type EmployeeWithDept = {
   id: number;
   employeeNo: string;
   name: string;

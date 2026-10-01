@@ -73,7 +73,7 @@ export const columns: ColumnDef<StockLogItem>[] = [
     cell: ({ row }) => {
       const qty = row.getValue("quantity") as number;
       return (
-        <span className={qty > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+        <span className={qty > 0 ? "text-success font-medium" : "text-destructive font-medium"}>
           {qty > 0 ? `+${qty}` : qty}
         </span>
       );
@@ -149,7 +149,7 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
         remark: remark.trim() || undefined,
       });
       if (result.success) {
-        toast({ title: "入库成功" });
+        toast({ variant: "success", title: "入库成功" });
         setPurchaseInOpen(false);
         setSelectedModelId("");
         setQuantity("");
@@ -220,8 +220,9 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>配件型号</Label>
+              <Label htmlFor="comp-model">配件型号</Label>
               <SearchableSelect
+                id="comp-model"
                 value={selectedModelId}
                 onValueChange={setSelectedModelId}
                 placeholder="选择配件型号"
@@ -230,8 +231,9 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
               />
             </div>
             <div className="space-y-2">
-              <Label>数量</Label>
+              <Label htmlFor="qty">数量</Label>
               <Input
+                id="qty"
                 type="number"
                 min="1"
                 value={quantity}
@@ -240,8 +242,9 @@ export function StockLogClient({ logs, componentModels = [] }: StockLogClientPro
               />
             </div>
             <div className="space-y-2">
-              <Label>备注（可选）</Label>
+              <Label htmlFor="remark">备注（可选）</Label>
               <Textarea
+                id="remark"
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
                 placeholder="入库备注"

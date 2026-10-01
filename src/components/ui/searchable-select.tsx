@@ -24,6 +24,12 @@ interface SearchableSelectProps {
   emptyText?: string
   searchPlaceholder?: string
   ariaLabel?: string
+  /** 透传给触发器按钮，用于 <Label htmlFor> 关联（WCAG 1.3.1 / 4.1.2） */
+  id?: string
+  /** 校验失败态：透传 aria-invalid（WCAG 3.3.1 / 4.1.3） */
+  invalid?: boolean
+  /** 错误文案 id：透传 aria-describedby */
+  describedBy?: string
   className?: string
   triggerClassName?: string
 }
@@ -36,6 +42,9 @@ export function SearchableSelect({
   emptyText = "无匹配项",
   searchPlaceholder = "搜索...",
   ariaLabel,
+  id,
+  invalid,
+  describedBy,
   className,
   triggerClassName,
 }: SearchableSelectProps) {
@@ -53,8 +62,15 @@ export function SearchableSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          id={id}
           aria-label={ariaLabel}
-          className={cn("h-auto min-h-9 justify-between gap-2 px-3 py-1.5 text-left font-normal", triggerClassName)}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
+          className={cn(
+            "h-auto min-h-9 justify-between gap-2 px-3 py-1.5 text-left font-normal",
+            invalid && "border-destructive focus-visible:ring-destructive",
+            triggerClassName
+          )}
         >
           <span className="flex min-w-0 flex-col leading-tight">
             {selected ? (

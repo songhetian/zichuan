@@ -151,8 +151,9 @@ export function CreateAssetDialog({
         </DialogHeader>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label>设备分类</Label>
+            <Label htmlFor="category">设备分类</Label>
             <SearchableSelect
+              id="category"
               value={form.watch("categoryId")?.toString() ?? ""}
               onValueChange={(v) => {
                 // SearchableSelect 点选已选项会回传空串（toggle-off），分类仅作筛选器，忽略空串保持原选中
@@ -174,8 +175,9 @@ export function CreateAssetDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>设备模板</Label>
+            <Label htmlFor="template">设备模板</Label>
             <SearchableSelect
+              id="template"
               value={form.watch("templateId")?.toString() ?? ""}
               onValueChange={(v) => {
                 // 模板为必选项，点选已选项的空串（toggle-off）忽略，避免误清空
@@ -189,10 +191,14 @@ export function CreateAssetDialog({
               placeholder="选择设备模板"
               ariaLabel="设备模板"
               triggerClassName="w-full"
+              invalid={!!form.formState.errors.templateId}
+              describedBy={form.formState.errors.templateId ? "template-error" : undefined}
               options={categoryTemplates.map((t) => ({ value: t.id.toString(), label: t.name }))}
             />
             {form.formState.errors.templateId && (
-              <p className="text-sm text-destructive">{form.formState.errors.templateId.message}</p>
+              <p id="template-error" role="alert" className="text-sm text-destructive">
+                {form.formState.errors.templateId.message}
+              </p>
             )}
             {selectedTemplate && (selectedTemplate.brand || selectedTemplate.model) && (
               <p className="text-xs text-muted-foreground">
@@ -208,7 +214,7 @@ export function CreateAssetDialog({
 
           {selectedTemplate && (
             <div className="space-y-2">
-              <Label>配置预览</Label>
+              <div className="text-sm font-medium">配置预览</div>
               {selectedTemplate.components.length > 0 ? (
                 <div className="rounded-md border border-border bg-muted/30 p-3 space-y-1.5">
                   {selectedTemplate.components.map((c) => (
@@ -228,21 +234,27 @@ export function CreateAssetDialog({
           )}
 
           <div className="space-y-2">
-            <Label>数量</Label>
+            <Label htmlFor="qty">数量</Label>
             <Input
+              id="qty"
               type="number"
               min={1}
               aria-label="数量"
+              aria-invalid={!!form.formState.errors.quantity}
+              aria-describedby={form.formState.errors.quantity ? "qty-error" : undefined}
               {...form.register("quantity", { valueAsNumber: true })}
             />
             {form.formState.errors.quantity && (
-              <p className="text-sm text-destructive">{form.formState.errors.quantity.message}</p>
+              <p id="qty-error" role="alert" className="text-sm text-destructive">
+                {form.formState.errors.quantity.message}
+              </p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label>使用人</Label>
+            <Label htmlFor="user">使用人</Label>
             <SearchableSelect
+              id="user"
               value={form.watch("employeeId")?.toString() ?? ""}
               onValueChange={(v) => {
                 // 选填项：点选已选项会回传空串（toggle-off），即取消分配
@@ -266,8 +278,9 @@ export function CreateAssetDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>序列号</Label>
+            <Label htmlFor="serial">序列号</Label>
             <Input
+              id="serial"
               aria-label="序列号"
               disabled={quantity > 1}
               {...form.register("serialNo")}
@@ -276,8 +289,8 @@ export function CreateAssetDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>备注</Label>
-            <Textarea {...form.register("notes")} placeholder="可选备注信息" rows={3} />
+            <Label htmlFor="remark">备注</Label>
+            <Textarea id="remark" {...form.register("notes")} placeholder="可选备注信息" rows={3} />
           </div>
 
           <DialogFooter>

@@ -204,6 +204,33 @@ describe("离职 ASSET_DEPART：提交 → 终审生成交接单 → 对账确�
     expect(orderAfter.collectedAt).not.toBeNull();
   });
 
+  it("终审生成交接单时，通知持有对账回收权限的账号去对账（否则没人知道有单待回收）", async () => {
+    const { initiator, deptMgr, assetMgr, emp } = await seedDepartEnv();
+
+    await login(initiator);
+    const s = await submitApprovalRequest({
+      title: "员工离职交接",
+      businessType: "ASSET_DEPART" as never,
+      payload: { targetEmployeeId: emp.id, reason: "个人原因离职" },
+    });
+    expect(s.success).toBe(true);
+    if (!s.success) return;
+    await login(deptMgr);
+    await approveNext();
+    await login(assetMgr);
+    await approveNext();
+
+    const order = await prisma.handoverOrder.findUniqueOrThrow({ where: { requestId: s.data.id } });
+    const notices = await prisma.notification.findMany({ where: { adminId: assetMgr.id } });
+
+    const handoverNotice = notices.find((n) => n.title.includes("待对账"));
+    expect(handoverNotice).toBeTruthy();
+    // 点通知能直接跳到离职单详情（那里有对账面板）
+    expect(handoverNotice?.requestId).toBe(s.data.id);
+    expect(handoverNotice?.content).toContain(order.orderNo);
+    expect(handoverNotice?.content).toContain("离职员工");
+  });
+
   it("已回收后再次确认 → 拒绝（幂等）", async () => {
     const { initiator, deptMgr, assetMgr, emp } = await seedDepartEnv();
     await login(initiator);

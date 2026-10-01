@@ -15,6 +15,9 @@ import {
   approveTask,
   rejectTask,
 } from "@/actions/approval.actions";
+import { flowDotClass } from "@/lib/status-styles";
+import { DepartureCheckPanel } from "@/components/features/departure-check-panel";
+import { DepartureHandoverPanel } from "@/components/features/departure-handover-panel";
 
 const STATUS_BADGE: Record<string, { label: string; variant: "secondary" | "default" | "destructive" | "outline" }> = {
   PENDING: { label: "审批中", variant: "default" },
@@ -35,20 +38,9 @@ const ACTION_LABEL: Record<string, string> = {
 /** 流转时间轴的节点状态 */
 type FlowTone = "start" | "ok" | "fail" | "wait" | "end";
 
-/** 时间轴上每个圆点的配色 */
+/** 时间轴上每个圆点的配色（统一取自 @/lib/status-styles） */
 function flowDot(tone: FlowTone): string {
-  switch (tone) {
-    case "start":
-      return "border-primary bg-primary-foreground ring-primary/20";
-    case "ok":
-      return "border-emerald-500 bg-emerald-50 ring-emerald-500/20";
-    case "fail":
-      return "border-red-500 bg-red-50 ring-red-500/20";
-    case "end":
-      return "border-primary bg-primary ring-primary/20";
-    default:
-      return "border-amber-400 bg-amber-50 ring-amber-400/20";
-  }
+  return flowDotClass(tone);
 }
 
 /** 流转中的一个步骤（提交 / 各节点 / 终态） */
@@ -263,7 +255,22 @@ export function ApprovalDetailClient({ requestId }: { requestId: number }) {
     modelName?: string;
     quantity?: number;
     unitPrice?: number;
+    /** 离职单（ASSET_DEPART）：员工信息由 getApprovalRequestById 按 id 补全 */
+    targetEmployeeId?: number;
+    targetEmployeeName?: string;
+    targetEmployeeNo?: string;
+    targetDepartmentName?: string;
   };
+
+  /** 离职单没有单台设备概念，改展示「谁要离职」 */
+  const isDepart = detail.businessType === "ASSET_DEPART";
+  const departEmployee = [
+    payload.targetEmployeeName ?? (payload.targetEmployeeId ? `#${payload.targetEmployeeId}` : "-"),
+    payload.targetEmployeeNo,
+    payload.targetDepartmentName ? `（${payload.targetDepartmentName}）` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="space-y-4">
@@ -275,9 +282,9 @@ export function ApprovalDetailClient({ requestId }: { requestId: number }) {
           <div className="flex min-w-0 items-center gap-3">
             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
               detail.status === "APPROVED"
-                ? "bg-emerald-500"
+                ? "bg-success"
                 : detail.status === "REJECTED"
-                  ? "bg-red-500"
+                  ? "bg-destructive"
                   : "bg-primary"
             }`} />
             <div className="min-w-0">
@@ -332,6 +339,12 @@ export function ApprovalDetailClient({ requestId }: { requestId: number }) {
                   </dd>
                 </div>
               </>
+            ) : isDepart ? (
+              /* 离职单：没有单台设备，展示离职员工 —— 审批人第一眼要知道「谁要离职」 */
+              <div className="flex gap-4 px-4 py-2">
+                <dt className="w-24 shrink-0 text-muted-foreground">离职员工</dt>
+                <dd className="font-medium">{departEmployee}</dd>
+              </div>
             ) : (
               <>
                 <div className="flex gap-4 px-4 py-2">
@@ -378,6 +391,9 @@ export function ApprovalDetailClient({ requestId }: { requestId: number }) {
             </div>
           </dl>
 
+          {/* 离职单：核对入口固定在审批操作区上方，形成「核对设备 → 再通过」的顺序 */}
+          {isDepart && <DepartureCheckPanel requestId={detail.id} />}
+
           {detail.status === "PENDING" && myTaskId !== null && (
             <div className="space-y-3 rounded-md border border-primary/20 bg-primary/[0.02] p-4">
               <div className="flex items-center gap-2">
@@ -409,6 +425,10 @@ export function ApprovalDetailClient({ requestId }: { requestId: number }) {
               </div>
             </div>
           )}
+
+          {/* 离职单：终审通过只是生成了「待对账」交接单，设备还没回收。
+              对账确认回收是这条流程的最后一公里，入口也放在同一页。 */}
+          {isDepart && <DepartureHandoverPanel requestId={detail.id} onCollected={load} />}
         </CardContent>
       </Card>
 

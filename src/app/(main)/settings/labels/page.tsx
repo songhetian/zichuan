@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { LabelsClient } from "./labels-client";
@@ -5,6 +6,8 @@ import { getAssets } from "@/actions/asset.actions";
 import { getEmployees } from "@/actions/employee.actions";
 import { getDepartments } from "@/actions/department.actions";
 import { prisma } from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "标签打印" };
 
 export default async function LabelsPage() {
   const [assetsResult, employeesResult, departmentsResult] = await Promise.all([

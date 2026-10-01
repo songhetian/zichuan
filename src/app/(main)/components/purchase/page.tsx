@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 import { listPurchaseRecords } from "@/actions/purchase.actions";
 import { getComponentCategories } from "@/actions/component-category.actions";
 import { PurchaseRecordsClient } from "./purchase-records-client";
+
+export const metadata: Metadata = { title: "采购留痕" };
 
 export default async function PurchaseRecordsPage() {
   const [recs, cats] = await Promise.all([

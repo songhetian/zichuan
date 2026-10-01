@@ -3,7 +3,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, GripVertical, Copy, Search, X, Check } from "lucide-react";
+import { categoryDotClass } from "@/lib/status-styles";
 
 export type BomComponent = {
   modelId: number;
@@ -52,25 +52,11 @@ interface BomTableProps {
 }
 
 // ============================================================
-// 分类配色：语义化颜色映射（左侧色条 + 标签）—— 避开橘色系
+// 分类配色：仅用于「一眼区分分类」的小圆点/色条（始终与分类名文字同时出现，
+// 不承载状态语义）。色值走 @/lib/status-styles 的分类调色板 token，随主题自适应。
 // ============================================================
-const CATEGORY_COLOR_MAP: Record<string, string> = {
-  CPU: "bg-indigo-500",
-  内存: "bg-violet-500",
-  硬盘: "bg-blue-500",
-  显卡: "bg-emerald-500",
-  网卡: "bg-sky-500",
-  主板: "bg-rose-500",
-  电源: "bg-cyan-500",
-  散热: "bg-teal-500",
-  显示器: "bg-purple-500",
-  键盘: "bg-pink-500",
-  鼠标: "bg-fuchsia-500",
-};
-
 function getCategoryColor(name?: string): string {
-  if (!name) return "bg-muted-foreground";
-  return CATEGORY_COLOR_MAP[name] ?? "bg-slate-400";
+  return categoryDotClass(name);
 }
 
 function getCategoryDotClass(name?: string): string {
@@ -191,19 +177,33 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
     onChange(value.map((c) => (c.modelId === modelId ? { ...c, quantity: Number(v) || 0 } : c)));
   };
 
+  /** 失焦归一到 >=1 的整数：允许输入过程中为空/0，但不允许提交 0 件 */
+  const handleQuantityBlur = (modelId: number) => {
+    onChange(
+      value.map((c) =>
+        c.modelId === modelId ? { ...c, quantity: Math.max(1, Math.floor(Number(c.quantity) || 1)) } : c
+      )
+    );
+  };
+
   const handleRemove = (modelId: number) => {
     onChange(value.filter((c) => c.modelId !== modelId));
+  };
+
+  /** 把第 from 项移到 to 位置（鼠标拖拽与键盘排序共用） */
+  const moveItem = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= value.length) return;
+    const next = [...value];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    onChange(next);
   };
 
   const handleDragStart = (index: number) => setDraggedIndex(index);
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
-    const next = [...value];
-    const item = next[draggedIndex];
-    next.splice(draggedIndex, 1);
-    next.splice(index, 0, item);
-    onChange(next);
+    moveItem(draggedIndex, index);
     setDraggedIndex(index);
   };
   const handleDragEnd = () => setDraggedIndex(null);
@@ -301,16 +301,28 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               onFocus={() => setSearchFocused(true)}
               onKeyDown={handleSearchKeyDown}
               placeholder="搜索配件名称、品牌或分类..."
-              className="w-full h-10 pl-9 pr-3 rounded-md border border-input bg-background text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+              aria-label="搜索配件（名称、品牌或分类）"
+              role="combobox"
+              aria-expanded={showSearchDropdown}
+              aria-autocomplete="list"
+              aria-controls="bom-search-results"
+              className="w-full h-10 pl-9 pr-3 rounded-md border border-input bg-card text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
             />
             {/* 搜索下拉结果 */}
             {showSearchDropdown && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-[280px] overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+              <div
+                id="bom-search-results"
+                role="listbox"
+                aria-label="配件搜索结果"
+                className="absolute z-50 top-full left-0 right-0 mt-1 max-h-[280px] overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md"
+              >
                 {filteredModels.length > 0 ? (
                   filteredModels.map((model, idx) => (
                     <button
                       key={model.id}
                       type="button"
+                      role="option"
+                      aria-selected={idx === highlightIndex}
                       onMouseEnter={() => setHighlightIndex(idx)}
                       onClick={() => handleAddById(model.id)}
                       className={cn(
@@ -338,11 +350,13 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           </div>
 
           {/* 数量输入 */}
-          <div className="flex items-center border border-input rounded-md overflow-hidden shrink-0">
+          <div className="flex items-center border border-input rounded-md overflow-hidden shrink-0 bg-card">
             <button
               type="button"
+              aria-label="减少要添加的数量"
+              disabled={Number(newQuantity) <= 1}
               onClick={() => setNewQuantity(String(Math.max(1, Number(newQuantity) - 1)))}
-              className="px-3 h-10 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              className="px-3 h-10 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             >
               −
             </button>
@@ -350,11 +364,13 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               type="number"
               min="1"
               value={newQuantity}
+              aria-label="要添加的数量"
               onChange={(e) => setNewQuantity(e.target.value)}
-              className="w-12 h-10 text-center text-sm border-x border-input bg-background outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-12 h-10 text-center text-sm border-x border-input bg-card outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <button
               type="button"
+              aria-label="增加要添加的数量"
               onClick={() => setNewQuantity(String(Number(newQuantity) + 1))}
               className="px-3 h-10 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
@@ -366,6 +382,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           <Button
             type="button"
             disabled={!searchKeyword.trim() || filteredModels.length === 0}
+            title={!searchKeyword.trim() ? "先搜索并选中要添加的配件" : undefined}
             onClick={() => {
               if (filteredModels[highlightIndex]) {
                 handleAddById(filteredModels[highlightIndex].id);
@@ -378,7 +395,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           </Button>
 
           {/* 复制配件图标按钮 */}
-          <Button
+          <Button aria-label="从其他模板复制配件"
             variant="outline"
             size="icon"
             type="button"
@@ -391,16 +408,17 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           </Button>
         </div>
 
-        {/* 分类筛选标签条 */}
+        {/* 分类筛选标签条：选中态用淡底 + 描边而非实色，避免与「添加/提交」主按钮抢视觉 */}
         {categories.length > 0 && (
           <div className="flex items-center gap-1 flex-wrap">
             <button
               type="button"
+              aria-pressed={activeCategoryId === null}
               onClick={() => setActiveCategoryId(null)}
               className={cn(
                 "px-2.5 py-1 rounded text-xs transition-colors",
                 activeCategoryId === null
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/30"
                   : "bg-secondary text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
               )}
             >
@@ -408,25 +426,24 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
             </button>
             {categories.map((cat) => {
               const count = modelOptions.filter((m) => m.categoryId === cat.id && !selectedModelIds.has(m.id)).length;
+              const active = activeCategoryId === cat.id;
               return (
                 <button
                   key={cat.id}
                   type="button"
-                  onClick={() => setActiveCategoryId(activeCategoryId === cat.id ? null : cat.id)}
+                  aria-pressed={active}
+                  onClick={() => setActiveCategoryId(active ? null : cat.id)}
                   className={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors",
-                    activeCategoryId === cat.id
-                      ? "bg-primary text-primary-foreground"
+                    active
+                      ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/30"
                       : "bg-secondary text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
                   )}
                 >
                   <span className={cn("w-1.5 h-1.5 rounded-full", getCategoryDotClass(cat.name))} />
                   {cat.name}
                   {count > 0 && (
-                    <span className={cn(
-                      "text-[10px]",
-                      activeCategoryId === cat.id ? "text-primary-foreground/70" : "text-muted-foreground/70"
-                    )}>
+                    <span className={cn("text-[10px]", active ? "text-primary/70" : "text-muted-foreground/70")}>
                       {count}
                     </span>
                   )}
@@ -436,7 +453,10 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
           </div>
         )}
 
-        {/* 智能建议标签（搜索为空时显示） */}
+        {/* 智能建议标签（搜索为空时显示）
+            —— 用「幽灵 chip」（透明底 + 发丝描边）而非实色 bg-secondary：
+            分类筛选条也用 bg-secondary，两者同底会让「筛选器」和「可添加项」
+            看起来是同一种东西，用户分不清哪排能点。靠底色轻重拉开层级。 */}
         {suggestions.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-muted-foreground shrink-0">快速添加：</span>
@@ -445,7 +465,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 key={model.id}
                 type="button"
                 onClick={() => handleQuickAdd(model.id)}
-                className="inline-flex items-center gap-1.5 h-6 px-2 rounded text-xs bg-secondary hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="inline-flex items-center gap-1.5 h-6 px-2 rounded border border-border text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/50 hover:text-foreground"
               >
                 <span className={cn("w-1 h-1 rounded-full", getCategoryDotClass(model.categoryName))} />
                 <span className="truncate max-w-[120px]">{model.name}</span>
@@ -479,7 +499,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               onDragOver={(e) => handleDragOver(e, index)}
               onDragEnd={handleDragEnd}
               className={cn(
-                "group flex items-center gap-3 rounded-md border border-border bg-background p-2.5 transition-colors duration-150",
+                "group flex items-center gap-3 rounded-md border border-border bg-card p-2.5 transition-colors duration-150",
                 "hover:border-primary/40",
                 draggedIndex === index && "opacity-50 border-primary"
               )}
@@ -487,10 +507,23 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               {/* 左侧分类色条 */}
               <div className={cn("w-0.5 h-8 rounded-full shrink-0", getCategoryDotClass(c.categoryName))} />
 
-              {/* 拖拽手柄 */}
-              <div className="cursor-move text-muted-foreground/50 transition-colors group-hover:text-muted-foreground">
+              {/* 拖拽手柄：可聚焦 + 上下方向键排序（拖拽动作的键盘替代，WCAG 2.5.7） */}
+              <button
+                type="button"
+                aria-label={`调整「${c.name}」的顺序，按上下方向键移动`}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    moveItem(index, index - 1);
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    moveItem(index, index + 1);
+                  }
+                }}
+                className="cursor-move rounded text-muted-foreground/50 transition-colors hover:text-muted-foreground group-hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <GripVertical className="h-4 w-4" />
-              </div>
+              </button>
 
               {/* 配件信息 */}
               <div className="flex-1 min-w-0">
@@ -505,20 +538,29 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 {c.brand && <div className="text-xs text-muted-foreground truncate">{c.brand}</div>}
               </div>
 
-              {/* 数量步进器 */}
-              <div className="flex items-center border border-input rounded-md overflow-hidden shrink-0">
+              {/* 数量：可直接键入，也可步进；最少 1 件（减号到底自动禁用） */}
+              <div className="flex items-center border border-input rounded-md overflow-hidden shrink-0 bg-background">
                 <button
                   type="button"
+                  aria-label={`减少「${c.name}」的数量`}
+                  disabled={c.quantity <= 1}
                   onClick={() => handleQuantityChange(c.modelId, String(Math.max(1, c.quantity - 1)))}
-                  className="px-2 h-7 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  className="px-2 h-7 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                 >
                   −
                 </button>
-                <span className="w-9 h-7 flex items-center justify-center text-sm font-normal border-x border-input">
-                  {c.quantity}
-                </span>
+                <input
+                  type="number"
+                  min={1}
+                  value={c.quantity}
+                  aria-label={`「${c.name}」的数量`}
+                  onChange={(e) => handleQuantityChange(c.modelId, e.target.value)}
+                  onBlur={() => handleQuantityBlur(c.modelId)}
+                  className="w-11 h-7 text-center text-sm border-x border-input bg-background outline-none focus:bg-card [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
                 <button
                   type="button"
+                  aria-label={`增加「${c.name}」的数量`}
                   onClick={() => handleQuantityChange(c.modelId, String(c.quantity + 1))}
                   className="px-2 h-7 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
@@ -527,7 +569,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               </div>
 
               {/* 删除按钮 */}
-              <Button
+              <Button aria-label="移除配件"
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
@@ -540,7 +582,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
             </div>
           ))
         ) : (
-          <div className="rounded-md border border-dashed border-border bg-background/60 py-8 text-center">
+          <div className="rounded-md border border-dashed border-border bg-muted/40 py-8 text-center">
             <p className="text-sm text-muted-foreground">暂无配件配置</p>
             <p className="mt-1 text-xs text-muted-foreground/70">通过上方搜索或快速添加来配置配件清单</p>
           </div>
@@ -555,7 +597,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
             <DialogDescription>选择要复制配件的源模板，配件将追加到当前清单中</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <Label className="text-sm">源模板</Label>
+            <div className="text-sm font-medium">源模板</div>
             <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
               {templates.length > 0 ? (
                 templates.map((t) => (
@@ -608,6 +650,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 value={batchSearch}
                 onChange={(e) => setBatchSearch(e.target.value)}
                 placeholder="搜索配件名称、品牌..."
+                aria-label="搜索配件（批量添加）"
                 className="w-full h-9 pl-9 pr-3 rounded-md border border-border bg-background text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -615,11 +658,12 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
               <div className="flex items-center gap-1 flex-wrap">
                 <button
                   type="button"
+                  aria-pressed={batchCategoryId === null}
                   onClick={() => setBatchCategoryId(null)}
                   className={cn(
                     "px-2 py-0.5 rounded text-xs transition-colors",
                     batchCategoryId === null
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/30"
                       : "bg-secondary text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -629,11 +673,12 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                   <button
                     key={cat.id}
                     type="button"
+                    aria-pressed={batchCategoryId === cat.id}
                     onClick={() => setBatchCategoryId(batchCategoryId === cat.id ? null : cat.id)}
                     className={cn(
                       "inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors",
                       batchCategoryId === cat.id
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/30"
                         : "bg-secondary text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -652,6 +697,8 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 <button
                   key={model.id}
                   type="button"
+                  role="checkbox"
+                  aria-checked={batchSelected.includes(model.id)}
                   onClick={() => toggleBatchSelect(model.id)}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2 rounded-md border text-left transition-colors",

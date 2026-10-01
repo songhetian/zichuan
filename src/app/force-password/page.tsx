@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { ForcePasswordForm } from "./force-password-form";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "修改密码" };
 
 export default async function ForcePasswordPage() {
   const user = await getCurrentUser();

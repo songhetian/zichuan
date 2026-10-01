@@ -1,6 +1,6 @@
 /**
  * 资产状态相关常量
- * 统一管理状态标签、颜色映射，消除 dashboard-client / stats-client / log-list-client / status-badge 中的重复定义
+ * 统一管理状态标签。适配主题的语义色在 @/lib/status-styles，canvas（ECharts）用色在 @/lib/use-theme-colors。
  */
 
 /** 资产状态 → 中文标签 */
@@ -10,14 +10,6 @@ export const ASSET_STATUS_LABEL_MAP: Record<string, string> = {
   IN_MAINTENANCE: "维修中",
   SCRAPPED: "报废",
   RESERVED: "预占",
-};
-
-/** 资产状态 → ECharts 颜色（暖纸·台账色系） */
-export const ASSET_STATUS_COLOR_MAP: Record<string, string> = {
-  IDLE: "#a8a29e",
-  IN_USE: "#4d7c4f",
-  IN_MAINTENANCE: "#b97a34",
-  SCRAPPED: "#b3452e",
 };
 
 /**
@@ -41,13 +33,8 @@ export const COMPONENT_LAYER_CATEGORIES = [
   "鼠标",
 ];
 
-/** 资产状态 → Badge className (用于 StatusBadge 组件) */
-export const ASSET_STATUS_BADGE_MAP: Record<string, { label: string; className: string }> = {
-  IDLE: { label: "闲置", className: "bg-slate-100/80 text-slate-600 border-slate-300/60" },
-  IN_USE: { label: "在用", className: "bg-emerald-100/70 text-emerald-800 border-emerald-300/60" },
-  IN_MAINTENANCE: { label: "维修中", className: "bg-amber-100/80 text-amber-800 border-amber-300/60" },
-  SCRAPPED: { label: "报废", className: "bg-red-100/80 text-red-800 border-red-300/60" },
-};
+// 资产状态样式已统一到 `@/lib/status-styles`（token 驱动）。
+// 此处曾有一份 ASSET_STATUS_BADGE_MAP 副本，长期无人引用且颜色已与 StatusBadge 漂移，故删除。
 
 /** 生命周期动作 → 中文标签 */
 export const LIFECYCLE_ACTION_LABEL_MAP: Record<string, string> = {

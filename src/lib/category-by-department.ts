@@ -71,20 +71,6 @@ export function buildCategoryByDepartmentData(
   return { departments, categories, matrix };
 }
 
-// 统一配色：与首页状态分布环状图同族（以主基调 #2455D9 打头，兼容亮/暗主题）
-const CATEGORY_PALETTE = [
-  "#2455D9", // 主基调蓝
-  "#0d9488", // teal
-  "#f59e0b", // amber
-  "#8b5cf6", // violet
-  "#ef4444", // red
-  "#0ea5e9", // sky
-  "#10b981", // emerald
-  "#f97316", // orange
-  "#64748b", // slate
-  "#ec4899", // pink
-];
-
 export interface CategoryChartColors {
   /** 图例 / 轴标签 / 轴名文字颜色 */
   label: string;
@@ -97,16 +83,19 @@ export interface CategoryChartColors {
 /**
  * 由「部门 × 分类」数据构建 ECharts 堆叠柱状图配置。
  * x 轴 = 部门；每个分类一条 series 并堆叠（stack: "total"）。
- * 传入 category 时仅生成该分类的单系列；colors 用于适配亮/暗主题。
+ * 传入 category 时仅生成该分类的单系列。
+ *
+ * `colors` 与 `palette` 用于适配亮/暗主题——**调用方应传 `useThemeColors()` 的结果**
+ * （`colors` 取轴/图例文字色，`palette` 取 `categorical`）。
+ * 刻意不提供默认色值：任何写死的色值都只会对其中一种主题成立（历史上这里
+ * 默认的就是一套仅适配亮色的灰阶、以及一套静态 #RRGGBB 调色板），
+ * 省略时交给 ECharts 自身默认。
  */
 export function buildCategoryByDepartmentOption(
   data: CategoryByDepartmentData,
   category?: string,
-  colors: CategoryChartColors = {
-    label: "#6b7280",
-    axisLine: "#e5e7eb",
-    splitLine: "#f3f4f6",
-  }
+  colors: Partial<CategoryChartColors> = {},
+  palette: readonly string[] = []
 ): Record<string, unknown> {
   const selectedIndex = category ? data.categories.indexOf(category) : -1;
 
@@ -117,7 +106,7 @@ export function buildCategoryByDepartmentOption(
     barMaxWidth: 42,
     emphasis: { focus: "series" },
     itemStyle: {
-      color: CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
+      color: palette.length ? palette[index % palette.length] : undefined,
       // 仅最上层分段做圆角，堆叠柱视觉更利落
       borderRadius: isTop ? [6, 6, 0, 0] : 0,
     },

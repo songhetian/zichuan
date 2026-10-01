@@ -3,6 +3,32 @@ import { Prisma } from "@prisma/client";
 import { hasPermission, resolveDepartmentScope } from "./permissions";
 
 /**
+ * 申请单的「可见范围」唯一口径（IDOR 防护）。
+ *
+ * 规则：拥有 `approval.detail.view` → 可见全部；否则仅可见与自己相关的申请单
+ * （发起人 / 目标员工 / 审批参与人 / 抄送人）。
+ *
+ * ⚠️ 这里是**单一来源**：`getApprovalRequestById`（单据详情）与
+ * `getDepartureCheckInfo`（离职核对设备）都从这里取。两处各写一份迟早漂移，
+ * 一旦漂移就会出现「详情能看、核对入口看不到」，或更糟——范围外的人能越权读到员工设备。
+ */
+export async function visibleRequestWhere(
+  adminId: number
+): Promise<Prisma.ApprovalRequestWhereInput> {
+  // 拥有审批详情权限者可见全部
+  if (await hasPermission({ id: adminId }, "approval.detail.view")) return {};
+  return {
+    OR: [
+      { initiatorId: adminId },
+      { targetEmployeeId: adminId },
+      { tasks: { some: { assigneeId: adminId } } },
+      // 抄送人可见（限定抄送类型，避免把待办/结果通知也放开）
+      { notifications: { some: { adminId, type: "APPROVAL_CC" } } },
+    ],
+  };
+}
+
+/**
  * 发起升级申请时用户可选的设备（数据范围，对应权限矩阵「查看本人资产」）：
  * 拥有 asset.manage 的资产管理员/超管可见全部设备；普通员工仅本人名下（employeeId 匹配）的设备。
  * 资产管理员被角色限定部门（'SPEC'）时，仅可选这些部门员工持有的设备。

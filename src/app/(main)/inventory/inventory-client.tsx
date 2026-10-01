@@ -21,6 +21,7 @@ import {
 import { getStatusLabel } from "@/lib/status-labels";
 import { formatTime } from "@/lib/utils";
 import { Clock, Scale, ListOrdered, X } from "lucide-react";
+import { TONE_DOT, assetStatusTone } from "@/lib/status-styles";
 
 // ---------- 类型（服务端 action 返回值） ----------
 
@@ -76,16 +77,6 @@ interface InventoryClientProps {
   alloc: AllocData | null;
 }
 
-// ---------- 状态配色（与首页驾驶舱一致） ----------
-
-const STATUS_DOT: Record<string, string> = {
-  IDLE: "#64748b",
-  IN_USE: "#2563eb",
-  IN_MAINTENANCE: "#f59e0b",
-  SCRAPPED: "#ef4444",
-  RESERVED: "#8b5cf6",
-};
-
 /** 每页条数 */
 const PAGE_SIZE = 10;
 
@@ -100,19 +91,19 @@ const AGE_STATUS_OPTIONS = [
 function MetricTile({
   label,
   value,
-  accent,
+  accentClass,
   hint,
 }: {
   label: string;
   value: number;
-  accent: string;
+  accentClass: string;
   hint?: string;
 }) {
   return (
     <div className="flex min-h-[76px] flex-col justify-between rounded-lg border border-border/70 bg-muted/30 p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold tabular-nums leading-none" style={{ color: accent }}>
+        <span className={`text-2xl font-bold tabular-nums leading-none ${accentClass}`}>
           {value}
         </span>
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
@@ -122,10 +113,9 @@ function MetricTile({
 }
 
 function StatusCell({ status }: { status: string }) {
-  const color = STATUS_DOT[status] ?? "#2455D9";
   return (
     <span className="inline-flex items-center gap-1.5 text-sm">
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+      <span className={`h-2 w-2 shrink-0 rounded-full ${TONE_DOT[assetStatusTone(status)]}`} />
       {getStatusLabel(status)}
     </span>
   );
@@ -152,7 +142,7 @@ function KeywordInput({
         className="pr-8"
       />
       {value && (
-        <Button
+        <Button aria-label="清除"
           type="button"
           variant="ghost"
           size="icon"
@@ -309,21 +299,21 @@ export function InventoryClient({ age, recon, alloc }: InventoryClientProps) {
 
       {/* 摘要指标条 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <MetricTile label="设备总数" value={age?.total ?? 0} accent="#2455D9" hint="台" />
+        <MetricTile label="设备总数" value={age?.total ?? 0} accentClass="text-primary" hint="台" />
         <MetricTile
           label="呆滞资产"
           value={stagnantCount}
-          accent={stagnantCount > 0 ? "#dc2626" : "#16a34a"}
+          accentClass={stagnantCount > 0 ? "text-destructive" : "text-success"}
           hint={`阈值 ${threshold} 天`}
         />
-        <MetricTile label="账实平账" value={recon?.matchedCount ?? 0} accent="#16a34a" hint="个型号" />
+        <MetricTile label="账实平账" value={recon?.matchedCount ?? 0} accentClass="text-success" hint="个型号" />
         <MetricTile
           label="账实差异"
           value={recon?.discrepantCount ?? 0}
-          accent={recon && recon.discrepantCount > 0 ? "#dc2626" : "#64748b"}
+          accentClass={recon && recon.discrepantCount > 0 ? "text-destructive" : "text-muted-foreground"}
           hint="个型号"
         />
-        <MetricTile label="可分配设备" value={alloc?.total ?? 0} accent="#2455D9" hint="台" />
+        <MetricTile label="可分配设备" value={alloc?.total ?? 0} accentClass="text-primary" hint="台" />
       </div>
 
       <Tabs defaultValue="age">
@@ -505,13 +495,13 @@ export function InventoryClient({ age, recon, alloc }: InventoryClientProps) {
                         <TableCell className="text-right tabular-nums">{r.stockQuantity}</TableCell>
                         <TableCell className="text-right tabular-nums">{r.loggedBalance}</TableCell>
                         <TableCell
-                          className={`text-right tabular-nums ${r.isBalanced ? "text-muted-foreground" : "text-red-600"}`}
+                          className={`text-right tabular-nums ${r.isBalanced ? "text-muted-foreground" : "text-destructive"}`}
                         >
                           {r.difference > 0 ? `+${r.difference}` : r.difference}
                         </TableCell>
                         <TableCell className="pr-5">
                           {r.isBalanced ? (
-                            <Badge variant="outline" className="text-emerald-600">
+                            <Badge variant="outline" className="text-success">
                               平账
                             </Badge>
                           ) : (

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 import {
@@ -5,6 +6,8 @@ import {
   getMyHandledRecords,
 } from "@/actions/approval.actions";
 import { DoneRecordsClient } from "./done-records-client";
+
+export const metadata: Metadata = { title: "我办理的记录" };
 
 export default async function DoneRecordsPage() {
   const [optionsRes, dataRes] = await Promise.all([

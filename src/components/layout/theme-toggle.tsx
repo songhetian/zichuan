@@ -7,23 +7,25 @@ import { THEME_CHANGE_EVENT } from "@/lib/use-theme-colors"
 
 const KEY = "zt-theme"
 
-function apply(light: boolean) {
+/** 亮色为默认（:root），仅在选择暗色时才挂 .dark */
+function apply(dark: boolean) {
   if (typeof document === "undefined") return
-  document.documentElement.classList.toggle("light", light)
+  document.documentElement.classList.toggle("dark", dark)
 }
 
 export function ThemeToggle() {
-  const [light, setLight] = useState(false)
+  const [isDark, setIsDark] = useState(false)
 
   useEffect(() => {
-    apply(localStorage.getItem(KEY) === "light")
-    setLight(localStorage.getItem(KEY) === "light")
+    const stored = localStorage.getItem(KEY) === "dark"
+    apply(stored)
+    setIsDark(stored)
   }, [])
 
   const toggle = () => {
-    const next = !light
-    setLight(next)
-    localStorage.setItem(KEY, next ? "light" : "dark")
+    const next = !isDark
+    setIsDark(next)
+    localStorage.setItem(KEY, next ? "dark" : "light")
     apply(next)
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT))
@@ -36,10 +38,10 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       aria-label="切换明暗模式"
-      title={light ? "切换到暗色模式" : "切换到亮色模式"}
+      title={isDark ? "切换到亮色模式" : "切换到暗色模式"}
       onClick={toggle}
     >
-      {light ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
     </Button>
   )
 }

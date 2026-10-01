@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 import { getCurrentUser } from "@/lib/auth";
 import { getUpgradeAssetOptions, getApprovalDelegationTargets } from "@/lib/approval-scope";
 import { prisma } from "@/lib/prisma";
 import { NewRequestClient } from "./new-request-client";
+
+export const metadata: Metadata = { title: "发起申请" };
 
 export default async function NewApprovalPage() {
   // 数据范围（权限矩阵 §6）：普通员工仅本人名下设备，资产管理员可见全部

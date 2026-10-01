@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getAssetById } from "@/actions/asset.actions";
@@ -9,6 +10,8 @@ import { AssetDetailClient } from "./asset-detail-client";
 interface AssetDetailPageProps {
   params: { id: string };
 }
+
+export const metadata: Metadata = { title: "资产详情" };
 
 export default async function AssetDetailPage({ params }: AssetDetailPageProps) {
   const id = Number(params.id);

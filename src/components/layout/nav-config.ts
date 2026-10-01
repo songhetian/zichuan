@@ -78,6 +78,7 @@ export const navItems: NavItem[] = [
       { href: "/approvals/done", label: "我办理的记录", perm: "approval.done.view" },
       { href: "/approvals/cc", label: "我的抄送", perm: "approval.cc.view" },
       { href: "/approvals/execute", label: "待执行变更", perm: "asset.upgrade.view" },
+      { href: "/approvals/handover", label: "交接对账", perm: "asset.depart.handover.view" },
     ],
   },
 

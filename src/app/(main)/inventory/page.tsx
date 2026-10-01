@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 import {
@@ -6,6 +7,8 @@ import {
   suggestAllocation,
 } from "@/actions/stats.actions";
 import { InventoryClient } from "./inventory-client";
+
+export const metadata: Metadata = { title: "库存分析" };
 
 export default async function InventoryPage() {
   const [ageRes, reconRes, allocRes] = await Promise.all([

@@ -202,6 +202,7 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
     try {
       const canvas = await html2canvas(labelArea, {
         scale: 2,
+        // 刻意写死纯白：打印件/二维码需要白底静区，不随应用主题变化
         backgroundColor: "#ffffff",
         useCORS: true,
       });
@@ -434,7 +435,7 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
       {previewed && labels.length > 0 && (
         <div className="space-y-4">
           <div className="print:hidden flex items-center justify-between">
-            <h3 className="text-base font-semibold">标签预览</h3>
+            <h2 className="text-base font-semibold">标签预览</h2>
             <p className="text-sm text-muted-foreground">
               共 {labels.length} 个标签 · 80 × 40 mm
             </p>

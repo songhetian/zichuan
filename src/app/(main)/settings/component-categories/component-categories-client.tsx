@@ -39,7 +39,7 @@ export function ComponentCategoriesClient({
     if (position === 'inside') {
       const result = await updateComponentCategory(draggedId, { parentId: targetId });
       if (result.success) {
-        toast({ title: "移动成功" });
+        toast({ variant: "success", title: "移动成功" });
         router.refresh();
       } else {
         toast({

@@ -5,7 +5,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-lg border border-border/80 bg-card text-card-foreground", className)}
+      className={cn("rounded-lg border border-border/80 bg-card text-card-foreground shadow-card", className)}
       {...props}
     />
   )
@@ -19,9 +19,19 @@ const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 )
 CardHeader.displayName = "CardHeader"
 
-const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
-  ({ className, ...props }, ref) => (
-    <h3 ref={ref} className={cn("font-display text-2xl leading-none tracking-tight", className)} {...props} />
+export type CardTitleProps = React.HTMLAttributes<HTMLHeadingElement> & {
+  /**
+   * 标题语义层级。默认 `h2`：
+   * 页面主标题已被 `PageHeader` 占用（渲染为 `<h1>`），Card 是页面内的分区标题。
+   * 若 CardTitle 就是整页唯一标题（如登录页、改密页），传 `as="h1"`。
+   * 此前硬编码 `<h3>` 会导致全站 h1 → h3 跳级（WCAG 1.3.1 / 最佳实践）。
+   */
+  as?: "h1" | "h2" | "h3" | "h4"
+}
+
+const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
+  ({ className, as: Tag = "h2", ...props }, ref) => (
+    <Tag ref={ref} className={cn("font-display text-2xl leading-none tracking-tight", className)} {...props} />
   )
 )
 CardTitle.displayName = "CardTitle"

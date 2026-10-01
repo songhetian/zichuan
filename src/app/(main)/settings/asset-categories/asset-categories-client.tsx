@@ -47,7 +47,7 @@ export function AssetCategoriesClient({
     if (position === 'inside') {
       const result = await moveAssetCategory(draggedId, { parentId: targetId });
       if (result.success) {
-        toast({ title: "移动成功" });
+        toast({ variant: "success", title: "移动成功" });
         router.refresh();
       } else {
         toast({

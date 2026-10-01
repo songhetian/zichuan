@@ -16,6 +16,12 @@ import {
   Clock,
 } from "lucide-react";
 import { getStatusLabel } from "@/lib/status-labels";
+import {
+  LIFECYCLE_ACTION_TONE,
+  TONE_SOFT_BORDER,
+  TONE_TEXT,
+  type Tone,
+} from "@/lib/status-styles";
 
 interface LifecycleLog {
   id: number;
@@ -31,6 +37,11 @@ interface LifecycleTimelineProps {
   logs: LifecycleLog[];
 }
 
+/** 语义角色 → 节点配色。角色一律取自 @/lib/status-styles，避免与其它页面各写一套。 */
+function nodeTone(tone: Tone) {
+  return { color: TONE_TEXT[tone], bgColor: TONE_SOFT_BORDER[tone] };
+}
+
 const actionConfig: Record<
   string,
   {
@@ -40,59 +51,34 @@ const actionConfig: Record<
     bgColor: string;
   }
 > = {
-  CREATED: {
-    label: "创建",
-    icon: Package,
-    color: "text-slate-600",
-    bgColor: "bg-slate-100/80 border-slate-300/60",
-  },
-  ALLOCATED: {
-    label: "分配",
-    icon: UserCheck,
-    color: "text-emerald-700",
-    bgColor: "bg-emerald-100/70 border-emerald-300/60",
-  },
-  RETURNED: {
-    label: "归还",
-    icon: RotateCcw,
-    color: "text-amber-700",
-    bgColor: "bg-amber-100/80 border-amber-300/60",
-  },
+  CREATED: { label: "创建", icon: Package, ...nodeTone(LIFECYCLE_ACTION_TONE.CREATED) },
+  ALLOCATED: { label: "分配", icon: UserCheck, ...nodeTone(LIFECYCLE_ACTION_TONE.ALLOCATED) },
+  RETURNED: { label: "归还", icon: RotateCcw, ...nodeTone(LIFECYCLE_ACTION_TONE.RETURNED) },
   TRANSFERRED: {
     label: "调拨",
     icon: ArrowRightLeft,
-    color: "text-purple-700",
-    bgColor: "bg-purple-100/70 border-purple-300/60",
+    ...nodeTone(LIFECYCLE_ACTION_TONE.TRANSFERRED),
   },
   UPGRADED: {
     label: "升级",
     icon: ArrowUpCircle,
-    color: "text-indigo-700",
-    bgColor: "bg-indigo-100/70 border-indigo-300/60",
+    ...nodeTone(LIFECYCLE_ACTION_TONE.UPGRADED),
   },
   DOWNGRADED: {
     label: "降级",
     icon: ArrowDownCircle,
-    color: "text-indigo-700",
-    bgColor: "bg-indigo-100/70 border-indigo-300/60",
+    ...nodeTone(LIFECYCLE_ACTION_TONE.DOWNGRADED),
   },
-  SCRAPPED: {
-    label: "报废",
-    icon: Trash2,
-    color: "text-red-700",
-    bgColor: "bg-red-100/80 border-red-300/60",
-  },
+  SCRAPPED: { label: "报废", icon: Trash2, ...nodeTone(LIFECYCLE_ACTION_TONE.SCRAPPED) },
   MAINTENANCE_START: {
     label: "送修",
     icon: Wrench,
-    color: "text-amber-700",
-    bgColor: "bg-amber-100/80 border-amber-300/60",
+    ...nodeTone(LIFECYCLE_ACTION_TONE.MAINTENANCE_START),
   },
   MAINTENANCE_DONE: {
     label: "维修完成",
     icon: CheckCircle2,
-    color: "text-emerald-700",
-    bgColor: "bg-emerald-100/70 border-emerald-300/60",
+    ...nodeTone(LIFECYCLE_ACTION_TONE.MAINTENANCE_DONE),
   },
 };
 
@@ -121,8 +107,8 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
           const config = actionConfig[log.action] || {
             label: log.action,
             icon: Clock,
-            color: "text-muted-foreground",
-            bgColor: "bg-muted/60 border-border/60",
+            color: TONE_TEXT.neutral,
+            bgColor: TONE_SOFT_BORDER.neutral,
           };
           const Icon = config.icon;
           const isFirst = index === 0;

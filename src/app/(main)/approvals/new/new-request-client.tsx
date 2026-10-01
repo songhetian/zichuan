@@ -259,7 +259,7 @@ export function NewRequestClient({
     });
     setSubmitting(false);
     if (result.success) {
-      toast({ title: "提交成功", description: result.data.requestNo });
+      toast({ variant: "success", title: "提交成功", description: result.data.requestNo });
       // 若提交后该单恰好排到当前用户审批（如自己走同一流程），主动提醒去我的待办处理
       const todo = await getMyTodoTasks();
       if (todo.success && todo.data.some((t) => t.requestId === result.data.id)) {
@@ -414,10 +414,11 @@ export function NewRequestClient({
                 {/* 业务类型 + 流程说明条（随类型联动） */}
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="biz-type">
                       业务类型
                     </Label>
                     <SearchableSelect
+                      id="biz-type"
                       options={bizOptions}
                       value={bizType}
                       onValueChange={(v) => {
@@ -440,10 +441,11 @@ export function NewRequestClient({
 
                 {showDelegation && (
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-foreground">
+                    <Label className="text-sm font-medium text-foreground" htmlFor="target">
                       为谁申请
                     </Label>
                     <SearchableSelect
+                      id="target"
                       options={whoOptions}
                       value={forWhom}
                       onValueChange={handleWhoChange}
@@ -469,10 +471,11 @@ export function NewRequestClient({
 
                 {tab.needsEmployee && (
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="person">
                       离职员工
                     </Label>
                     <SearchableSelect
+                      id="person"
                       options={employeeOptions}
                       value={employeeId}
                       onValueChange={setEmployeeId}
@@ -487,10 +490,11 @@ export function NewRequestClient({
 
                 {tab.needsAsset && (
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="asset">
                       设备
                     </Label>
                     <SearchableSelect
+                      id="asset"
                       options={assetOptions}
                       value={assetId}
                       onValueChange={(v) => {
@@ -508,10 +512,11 @@ export function NewRequestClient({
 
                 {tab.needsComponent && (
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="comp-cat">
                       配件类别
                     </Label>
                     <SearchableSelect
+                      id="comp-cat"
                       options={catOptions}
                       value={categoryId}
                       onValueChange={setCategoryId}
@@ -525,10 +530,11 @@ export function NewRequestClient({
 
                 {tab.needsComponent && (
                   <div className="space-y-1.5">
-                    <Label className="req text-sm font-medium text-foreground">
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="action">
                       动作
                     </Label>
                     <SearchableSelect
+                      id="action"
                       options={actionOptions}
                       value={action}
                       onValueChange={(v) => {
@@ -545,11 +551,12 @@ export function NewRequestClient({
                 {tab.needsPurchase && (
                   <>
                     <div className="space-y-1.5">
-                      <Label className="req text-sm font-medium text-foreground">
-                        配件分类
-                      </Label>
-                      <SearchableSelect
-                        options={ptCatOptions}
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="comp-category">
+                      配件分类
+                    </Label>
+                    <SearchableSelect
+                      id="comp-category"
+                      options={ptCatOptions}
                         value={ptCategoryId}
                         onValueChange={(v) => {
                           setPtCategoryId(v);
@@ -564,9 +571,9 @@ export function NewRequestClient({
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="req text-sm font-medium text-foreground">
+                      <div className="req text-sm font-medium text-foreground">
                         加购对象
-                      </Label>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         {(
                           [
@@ -595,11 +602,12 @@ export function NewRequestClient({
 
                     {ptSource === "existing" ? (
                       <div className="space-y-1.5">
-                        <Label className="req text-sm font-medium text-foreground">
-                          配件型号
-                        </Label>
-                        <SearchableSelect
-                          options={ptModelOptions}
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="comp-model">
+                      配件型号
+                    </Label>
+                    <SearchableSelect
+                      id="comp-model"
+                      options={ptModelOptions}
                           value={ptModelId}
                           onValueChange={setPtModelId}
                           placeholder={ptCategoryId ? "请选择配件型号" : "请先选择分类"}
@@ -612,21 +620,23 @@ export function NewRequestClient({
                     ) : (
                       <>
                         <div className="space-y-1.5">
-                          <Label className="req text-sm font-medium text-foreground">
-                            新配件型号名称
-                          </Label>
-                          <Input
-                            value={ptNewName}
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="new-comp-model">
+                      新配件型号名称
+                    </Label>
+                        <Input
+                          id="new-comp-model"
+                          value={ptNewName}
                             onChange={(e) => setPtNewName(e.target.value)}
                             placeholder="如：DDR4 32G 内存条"
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-sm font-medium text-foreground">
-                            品牌（可选）
-                          </Label>
-                          <Input
-                            value={ptBrand}
+                    <Label className="text-sm font-medium text-foreground" htmlFor="brand">
+                      品牌（可选）
+                    </Label>
+                        <Input
+                          id="brand"
+                          value={ptBrand}
                             onChange={(e) => setPtBrand(e.target.value)}
                             placeholder="如：金士顿"
                           />
@@ -636,10 +646,11 @@ export function NewRequestClient({
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="req text-sm font-medium text-foreground">
-                          数量
-                        </Label>
+                    <Label className="req text-sm font-medium text-foreground" htmlFor="add-qty">
+                      数量
+                    </Label>
                         <Input
+                          id="add-qty"
                           type="number"
                           min="1"
                           value={ptQuantity}
@@ -648,10 +659,11 @@ export function NewRequestClient({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-sm font-medium text-foreground">
+                        <Label className="text-sm font-medium text-foreground" htmlFor="price">
                           单价（元）
                         </Label>
                         <Input
+                          id="price"
                           type="number"
                           min="0"
                           step="any"

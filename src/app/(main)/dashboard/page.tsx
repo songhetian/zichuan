@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { prisma } from "@/lib/prisma";
 import { DashboardClient } from "./dashboard-client";
 import { buildCategoryByDepartmentData } from "@/lib/category-by-department";
+
+export const metadata: Metadata = { title: "首页概览" };
 
 export default async function DashboardPage() {
   // 并行执行所有独立查询，避免串行等待

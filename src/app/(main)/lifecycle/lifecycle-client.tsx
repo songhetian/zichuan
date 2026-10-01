@@ -27,6 +27,7 @@ import {
 } from "@/actions/asset-lifecycle.actions";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { TONE_CHIP, flowDotClass, lifecycleActionTone } from "@/lib/status-styles";
 
 interface AssetLifecycleClientProps {
   initial: AssetLifecycleViewData;
@@ -83,19 +84,8 @@ function actionLabel(action: string): string {
   return map[action] ?? action;
 }
 
-/** 生命周期操作 → 彩色标签（不同操作类型用不同颜色区分，弱化单调感） */
-const ACTION_BADGE_MAP: Record<string, { label: string; className: string }> = {
-  CREATED: { label: "创建", className: "bg-slate-100/80 text-slate-600 border-slate-300/60" },
-  ALLOCATED: { label: "分配", className: "bg-blue-100/80 text-blue-700 border-blue-300/60" },
-  RETURNED: { label: "归还", className: "bg-emerald-100/80 text-emerald-700 border-emerald-300/60" },
-  TRANSFERRED: { label: "调拨", className: "bg-indigo-100/80 text-indigo-700 border-indigo-300/60" },
-  UPGRADED: { label: "升级", className: "bg-violet-100/80 text-violet-700 border-violet-300/60" },
-  DOWNGRADED: { label: "降级", className: "bg-zinc-100/80 text-zinc-600 border-zinc-300/60" },
-  SCRAPPED: { label: "报废", className: "bg-red-100/80 text-red-700 border-red-300/60" },
-  REPLACED: { label: "更换回收", className: "bg-orange-100/80 text-orange-700 border-orange-300/60" },
-  MAINTENANCE_START: { label: "送修", className: "bg-amber-100/80 text-amber-700 border-amber-300/60" },
-  MAINTENANCE_DONE: { label: "维修完成", className: "bg-green-100/80 text-green-700 border-green-300/60" },
-};
+// 生命周期操作的配色统一由 @/lib/status-styles 的 LIFECYCLE_ACTION_TONE 决定，
+// 此处不再维护第二份颜色表（历史上曾与时间轴组件各写一套并已漂移）。
 
 function statusLabel(status: string | null): string {
   if (!status) return "-";
@@ -127,20 +117,9 @@ function taskStatusLabel(status: string): string {
 /** 审批流程时间轴的节点状态 */
 type FlowTone = "start" | "ok" | "fail" | "wait" | "end";
 
-/** 时间轴上每个圆点的配色 */
+/** 时间轴上每个圆点的配色（统一取自 @/lib/status-styles） */
 function flowDot(tone: FlowTone): string {
-  switch (tone) {
-    case "start":
-      return "border-primary bg-primary-foreground ring-primary/20";
-    case "ok":
-      return "border-emerald-500 bg-emerald-50 ring-emerald-500/20";
-    case "fail":
-      return "border-red-500 bg-red-50 ring-red-500/20";
-    case "end":
-      return "border-primary bg-primary ring-primary/20";
-    default:
-      return "border-amber-400 bg-amber-50 ring-amber-400/20";
-  }
+  return flowDotClass(tone);
 }
 
 /** 审批流程步骤数据 */
@@ -260,11 +239,12 @@ export const lifecycleViewColumns: ColumnDef<LifecycleViewRow>[] = [
     header: "操作",
     size: 110,
     cell: ({ row }) => {
-      const cfg = ACTION_BADGE_MAP[row.original.action] ?? {
-        label: actionLabel(row.original.action),
-        className: "bg-slate-100/80 text-slate-600 border-slate-300/60",
-      };
-      return <Badge className={`whitespace-nowrap border ${cfg.className}`}>{cfg.label}</Badge>;
+      const action = row.original.action;
+      return (
+        <Badge className={`whitespace-nowrap border ${TONE_CHIP[lifecycleActionTone(action)]}`}>
+          {actionLabel(action)}
+        </Badge>
+      );
     },
   },
   {
@@ -462,8 +442,9 @@ export function AssetLifecycleClient({ initial }: AssetLifecycleClientProps) {
       <div className="rounded-lg border border-border/80 bg-card p-4">
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">资产关键字</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="keyword">资产关键字</Label>
             <Input
+              id="keyword"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               placeholder="编号 / 名称"
@@ -471,8 +452,9 @@ export function AssetLifecycleClient({ initial }: AssetLifecycleClientProps) {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">部门</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="dept">部门</Label>
             <SearchableSelect
+              id="dept"
               options={departments}
               value={departmentId}
               onValueChange={setDepartmentId}
@@ -480,8 +462,9 @@ export function AssetLifecycleClient({ initial }: AssetLifecycleClientProps) {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">人员</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="person">人员</Label>
             <SearchableSelect
+              id="person"
               options={employees}
               value={employeeId}
               onValueChange={setEmployeeId}
@@ -489,16 +472,17 @@ export function AssetLifecycleClient({ initial }: AssetLifecycleClientProps) {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">开始时间</Label>
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9" />
+            <Label className="text-xs text-muted-foreground" htmlFor="start-time">开始时间</Label>
+            <Input id="start-time" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">结束时间</Label>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
+            <Label className="text-xs text-muted-foreground" htmlFor="end-time">结束时间</Label>
+            <Input id="end-time" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">操作类型</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="op-type">操作类型</Label>
             <SearchableSelect
+              id="op-type"
               options={actionOptions}
               value={action}
               onValueChange={setAction}

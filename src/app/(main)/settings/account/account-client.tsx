@@ -24,7 +24,7 @@ export function AccountClient() {
     try {
       const result = await changePassword({ oldPassword, newPassword });
       if (result.success) {
-        toast({ title: "密码修改成功" });
+        toast({ variant: "success", title: "密码修改成功" });
         setOldPassword("");
         setNewPassword("");
       } else {
@@ -50,8 +50,9 @@ export function AccountClient() {
         </CardHeader>
         <CardContent className="space-y-4 max-w-md">
           <div className="space-y-2">
-            <Label>旧密码</Label>
+            <Label htmlFor="old-pwd">旧密码</Label>
             <Input
+              id="old-pwd"
               type="password"
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
@@ -59,8 +60,9 @@ export function AccountClient() {
             />
           </div>
           <div className="space-y-2">
-            <Label>新密码</Label>
+            <Label htmlFor="new-pwd">新密码</Label>
             <Input
+              id="new-pwd"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}

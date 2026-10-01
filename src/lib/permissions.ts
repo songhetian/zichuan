@@ -377,6 +377,28 @@ export async function hasPermission(
 }
 
 /**
+ * 找出持有某权限点的全部账号 id。
+ *
+ * 用于「把某类待办广播给该职责的人」——例如离职交接单生成后通知能执行对账回收的人。
+ * 判据与 hasPermission 同源（expandEffective 展开，兼容角色只授予模块级父权限点的情况）。
+ */
+export async function findAdminIdsByPermission(required: string): Promise<number[]> {
+  const admins = await prisma.admin.findMany({
+    select: {
+      id: true,
+      role: { select: { permissions: { select: { permission: { select: { key: true } } } } } },
+    },
+  });
+  return admins
+    .filter(
+      (a) =>
+        !!a.role &&
+        can([...expandEffective(a.role.permissions.map((rp) => rp.permission.key))], required)
+    )
+    .map((a) => a.id);
+}
+
+/**
  * 权限守卫：认证通过但缺少权限时返回失败结果（供写操作在 requireAuth 后调用）。
  * 返回 null 表示放行。
  */

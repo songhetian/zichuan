@@ -57,7 +57,9 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!isLoading) onOpenChange(value) }}>
-      <DialogContent>
+      {/* data-nested-dialog：标记自己是「可能嵌套在别的 Dialog 里」的弹层，
+          让外层 DialogContent 忽略落在本框上的 pointer/focus-outside（见 ui/dialog.tsx） */}
+      <DialogContent data-nested-dialog="">
         <DialogHeader>
           <div className="flex items-center gap-3">
             {variant === "destructive" ? (

@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
-import { guardPermission, hasPermission, resolveDepartmentScope } from "@/lib/permissions";
+import { guardPermission, hasPermission, resolveDepartmentScope, findAdminIdsByPermission } from "@/lib/permissions";
+import { visibleRequestWhere } from "@/lib/approval-scope";
 import { createNotifications, dedupeNotifications, NotificationItem } from "@/lib/notification";
 import { parseCcRules, CcRule } from "@/lib/cc-rules";
 import { pushNotificationLive } from "@/lib/socket-pusher";
@@ -1099,23 +1100,11 @@ export async function getApprovalRequestById(
   const user = await requireAuth();
   // 数据范围过滤（IDOR 防护）：拥有审批详情权限者可见全部，
   // 否则仅可见与自己相关的申请单（发起人 / 目标员工 / 审批参与人 / 抄送人）。
-  const canViewAll = await hasPermission(user, "approval.detail.view");
+  // 与离职核对的 getDepartureCheckInfo 共用同一口径（见 @/lib/approval-scope），避免两处漂移
+  const scope = await visibleRequestWhere(user.id);
 
   const req = await prisma.approvalRequest.findFirst({
-    where: {
-      id: requestId,
-      ...(canViewAll
-        ? {}
-        : {
-            OR: [
-              { initiatorId: user.id },
-              { targetEmployeeId: user.id },
-              { tasks: { some: { assigneeId: user.id } } },
-              // 抄送人可见（限定抄送类型，避免把待办/结果通知也放开）
-              { notifications: { some: { adminId: user.id, type: "APPROVAL_CC" } } },
-            ],
-          }),
-    },
+    where: { id: requestId, ...scope },
     include: {
       definition: { select: { version: true } },
       initiator: { include: { employee: { select: { name: true } } } },
@@ -1149,6 +1138,29 @@ export async function getApprovalRequestById(
         select: { name: true },
       });
       if (model) raw.modelName = model.name;
+    }
+    payload = raw;
+  }
+
+  // 离职单 payload 只有 targetEmployeeId，不补全的话详情页连「谁要离职」都显示不出来
+  // （原先会退化成一个无意义的「设备 #-」行）
+  if (req.businessType === "ASSET_DEPART") {
+    const raw = (req.payload ?? {}) as {
+      targetEmployeeId?: number;
+      targetEmployeeName?: string;
+      targetEmployeeNo?: string;
+      targetDepartmentName?: string;
+    };
+    if (!raw.targetEmployeeName && raw.targetEmployeeId) {
+      const emp = await prisma.employee.findUnique({
+        where: { id: raw.targetEmployeeId },
+        select: { name: true, employeeNo: true, department: { select: { name: true } } },
+      });
+      if (emp) {
+        raw.targetEmployeeName = emp.name;
+        raw.targetEmployeeNo = emp.employeeNo;
+        raw.targetDepartmentName = emp.department?.name ?? "";
+      }
     }
     payload = raw;
   }
@@ -1319,6 +1331,8 @@ export async function approveTask(input: {
   // M6：通知（事务内落库，事务后推送）
   let flowNotifs: NotificationItem[] = [];
   let finalNotifs: NotificationItem[] = [];
+  // 离职交接：终审生成的待对账单要通知「能执行对账回收的人」，否则没人知道有单待处理
+  let handoverNotifs: NotificationItem[] = [];
 
   await prisma.$transaction(async (tx) => {
     const now = new Date();
@@ -1451,6 +1465,29 @@ export async function approveTask(input: {
                 toNodeKey: null,
               },
             });
+
+            // 交接单已生成但设备尚未回收：点名通知持有「对账确认回收」权限的人。
+            // 通知带上 requestId，点进去即离职单详情（对账面板就在那里）。
+            const order = await tx.handoverOrder.findUnique({
+              where: { requestId: request.id },
+              include: { employee: { select: { name: true } } },
+            });
+            if (order) {
+              const auditors = await findAdminIdsByPermission("asset.depart.execute");
+              const snapshot = Array.isArray(order.assetSnapshot)
+                ? (order.assetSnapshot as unknown[])
+                : [];
+              handoverNotifs = dedupeNotifications(
+                auditors.map((adminId) => ({
+                  adminId,
+                  requestId: request.id,
+                  type: "APPROVAL_TODO" as const,
+                  title: "离职交接待对账",
+                  content: `【${order.orderNo}】${order.employee.name} 名下 ${snapshot.length} 台设备待核对回收`,
+                }))
+              );
+              await createNotifications(tx, handoverNotifs);
+            }
           } catch (e) {
             await tx.approvalLog.create({
               data: {
@@ -1495,6 +1532,7 @@ export async function approveTask(input: {
   // M6：事务提交后实时推送（无在线连接时静默跳过）
   pushItems(flowNotifs, request.id);
   pushItems(finalNotifs, request.id);
+  pushItems(handoverNotifs, request.id);
 
   return { success: true, data: { ok: true } };
 }

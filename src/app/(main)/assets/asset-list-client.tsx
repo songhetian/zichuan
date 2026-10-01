@@ -46,6 +46,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { categoryDotClass } from "@/lib/status-styles";
+import { cn } from "@/lib/utils";
 import {
   Popover,
   PopoverContent,
@@ -505,11 +507,11 @@ function ActionButtons({
     <>
       <div className="flex items-center gap-0.5 justify-center">
         {/* 最高频：查看配置始终可见，不再藏进「更多」 */}
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-info hover:bg-info/10" title="查看配置" aria-label="查看配置" onClick={() => router.push(`/assets/${asset.id}`)}>
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="查看配置" aria-label="查看配置" onClick={() => router.push(`/assets/${asset.id}`)}>
           <Eye className="h-4 w-4" />
         </Button>
         {canEdit && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-info hover:bg-info/10" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4" />
           </Button>
         )}
@@ -763,6 +765,16 @@ function getColumns(
     {
       accessorKey: "categoryName",
       header: "分类",
+      cell: ({ row }) => {
+        const name = row.original.categoryName;
+        if (!name) return <span className="text-muted-foreground text-xs">-</span>;
+        return (
+          <span className="inline-flex items-center gap-2">
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", categoryDotClass(name))} aria-hidden />
+            <span>{name}</span>
+          </span>
+        );
+      },
     },
     {
       accessorKey: "brand",

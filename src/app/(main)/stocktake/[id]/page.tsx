@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { notFound } from "next/navigation";
@@ -7,6 +8,8 @@ import { StocktakeDetailClient } from "./stocktake-detail-client";
 interface PageProps {
   params: { id: string };
 }
+
+export const metadata: Metadata = { title: "盘点详情" };
 
 export default async function StocktakeDetailPage({ params }: PageProps) {
   const id = Number(params.id);

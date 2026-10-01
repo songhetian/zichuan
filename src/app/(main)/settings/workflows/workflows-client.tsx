@@ -36,6 +36,7 @@ import {
   activateWorkflowVersion,
   type WorkflowNodeInput,
 } from "@/actions/workflow.actions";
+import { TONE_CHIP } from "@/lib/status-styles";
 
 type DefinitionRow = {
   id: number;
@@ -143,22 +144,22 @@ const BIZ_TABS: {
 ];
 
 const EXEC_META: Record<"auto" | "manual" | "handover", { label: string; cls: string }> = {
-  auto: { label: "自动落地", cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30" },
-  manual: { label: "手动执行", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30" },
-  handover: { label: "交接对账", cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/30" },
+  auto: { label: "自动落地", cls: TONE_CHIP.success },
+  manual: { label: "手动执行", cls: TONE_CHIP.warning },
+  handover: { label: "交接对账", cls: TONE_CHIP.info },
 };
 
 /** 每种执行方式的强调色（图标底座 / 左侧竖条 / 标题高亮） */
 const EXEC_ACCENT: Record<"auto" | "manual" | "handover", string> = {
-  auto: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500/15",
-  manual: "bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500/15",
-  handover: "bg-sky-500/10 text-sky-600 dark:text-sky-400 group-hover:bg-sky-500/15",
+  auto: "bg-success/10 text-success group-hover:bg-success/15",
+  manual: "bg-warning/10 text-warning group-hover:bg-warning/15",
+  handover: "bg-info/10 text-info group-hover:bg-info/15",
 };
 /** 每种执行方式的左侧竖条颜色 */
 const EXEC_BAR: Record<"auto" | "manual" | "handover", string> = {
-  auto: "bg-emerald-500",
-  manual: "bg-amber-500",
-  handover: "bg-sky-500",
+  auto: "bg-success",
+  manual: "bg-warning",
+  handover: "bg-info",
 };
 
 type NodeFormState = {
@@ -351,7 +352,7 @@ export function WorkflowsClient({
         ],
       });
       if (result.success) {
-        toast({ title: "创建成功" });
+        toast({ variant: "success", title: "创建成功" });
         setShowCreate(false);
         setCreateName("");
         await refreshList();
@@ -479,7 +480,7 @@ export function WorkflowsClient({
     try {
       const result = await removeWorkflowNode(nodeId);
       if (result.success) {
-        toast({ title: "节点已删除" });
+        toast({ variant: "success", title: "节点已删除" });
         await openDetail(selectedId);
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -636,7 +637,7 @@ export function WorkflowsClient({
     try {
       const result = await removeWorkflowDraft(id);
       if (result.success) {
-        toast({ title: "流程版本已删除" });
+        toast({ variant: "success", title: "流程版本已删除" });
         if (selectedId === id) {
           setSelectedId(null);
           setDetail(null);
@@ -685,7 +686,7 @@ export function WorkflowsClient({
               ? ""
               : published > 0
                 ? "bg-card border-border hover:border-primary/40"
-                : "border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-500/5";
+                : "border-warning/30 bg-warning/5";
             return (
               <button
                 key={tab.key}
@@ -693,7 +694,7 @@ export function WorkflowsClient({
                 onClick={() => switchBizType(tab.key)}
                 className={`group relative flex flex-col items-stretch gap-3 overflow-hidden rounded-xl border p-4 pl-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
                   missing
-                    ? "border-red-200 bg-red-50/50 dark:border-red-500/30 dark:bg-red-500/5"
+                    ? "border-destructive/30 bg-destructive/5"
                     : tone
                 }`}
               >
@@ -709,7 +710,7 @@ export function WorkflowsClient({
                     <span
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
                         missing
-                          ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                          ? "bg-destructive/10 text-destructive"
                           : EXEC_ACCENT[tab.exec]
                       }`}
                     >
@@ -734,10 +735,10 @@ export function WorkflowsClient({
                     </div>
                   ) : missing ? (
                     <div>
-                      <p className="flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400">
+                      <p className="flex items-center gap-1.5 text-sm font-medium text-destructive">
                         <span className="text-lg leading-none">!</span> 未配置流程
                       </p>
-                      <p className="mt-0.5 text-xs text-red-600/70 dark:text-red-400/70">
+                      <p className="mt-0.5 text-xs text-destructive/70">
                         发起该类型申请会失败
                       </p>
                     </div>
@@ -808,8 +809,7 @@ export function WorkflowsClient({
               return (
                 <div
                   key={d.id}
-                  onClick={() => openDetail(d.id)}
-                  className={`flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded-lg border p-3 transition-colors hover:bg-muted/40 ${
+                  className={`relative flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 transition-colors hover:bg-muted/40 ${
                     d.status === "PUBLISHED" ? "border-primary/40 bg-primary/[0.04]" : ""
                   } ${isSelected ? "ring-1 ring-primary/40" : ""}`}
                 >
@@ -827,7 +827,20 @@ export function WorkflowsClient({
                     </span>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium">{d.name}</p>
+                        {/*
+                          原实现是整张卡片 <div onClick>：无 role / tabIndex / onKeyDown，
+                          键盘用户完全无法打开流程详情（WCAG 2.1.1 Keyboard，Level A）。
+                          改为「标题是真按钮 + ::after 铺满卡片」：
+                          既保留鼠标「点卡片任意位置」的便利，又让键盘可以 Tab 聚焦 + Enter 打开。
+                          卡片内的操作按钮须加 relative z-10 才不会被这层覆盖。
+                        */}
+                        <button
+                          type="button"
+                          onClick={() => openDetail(d.id)}
+                          className="truncate rounded-sm text-left text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        >
+                          {d.name}
+                        </button>
                         <Badge variant={STATUS_BADGE[d.status]?.variant ?? "secondary"}>
                           {STATUS_BADGE[d.status]?.label ?? d.status}
                         </Badge>
@@ -840,13 +853,13 @@ export function WorkflowsClient({
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="relative z-10 flex shrink-0 items-center gap-1">
                     {d.status === "ARCHIVED" && (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
+                        className="border-success/40 text-success hover:bg-success/10"
                         title="设为当前生效"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -906,7 +919,10 @@ export function WorkflowsClient({
           if (!v && !saving) closeDetail();
         }}
       >
-        <DialogContent className="flex h-[88vh] w-full max-w-4xl flex-col overflow-hidden">
+        {/* Radix 需要可访问描述；此弹窗无副标题，显式置 undefined 关闭告警 */}
+        <DialogContent
+          className="flex h-[88vh] w-full max-w-4xl flex-col overflow-hidden"
+ aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2 pr-8">
               <span className="font-display text-sm font-semibold text-primary">
@@ -1115,7 +1131,7 @@ export function WorkflowsClient({
 
       {/* 删除确认 */}
       <Dialog open={confirmDel !== null} onOpenChange={(v) => !v && setConfirmDel(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>确认删除</DialogTitle>
           </DialogHeader>
@@ -1136,7 +1152,7 @@ export function WorkflowsClient({
 
       {/* 新建版本 */}
       <Dialog open={showCreate} onOpenChange={(v) => !v && !saving && setShowCreate(false)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>新建流程版本</DialogTitle>
           </DialogHeader>
@@ -1144,6 +1160,7 @@ export function WorkflowsClient({
             <div className="space-y-1">
               <Label htmlFor="wf-type">流程类型</Label>
               <SearchableSelect
+                id="wf-type"
                 options={BIZ_TABS.map((t) => ({ value: t.key, label: t.label }))}
                 value={createType}
                 onValueChange={(v) => v && setCreateType(v as WorkflowBusinessType)}
@@ -1164,7 +1181,7 @@ export function WorkflowsClient({
               创建后自动带一个「部门主管审批」节点，可在节点配置中增删改。
             </p>
             {configSummary && configSummary[createType]?.total > 0 && (
-              <div className="rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
                 提示：该流程类型已有 {configSummary[createType].total} 个版本（其中{" "}
                 {configSummary[createType].published} 个生效）。新建后将以新版本并存，切换生效需发布。
               </div>
@@ -1193,7 +1210,7 @@ export function WorkflowsClient({
           if (!v && !saving) setNodeForm(null);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{nodeForm?.mode === "edit" ? "编辑节点" : "添加节点"}</DialogTitle>
           </DialogHeader>
@@ -1214,8 +1231,9 @@ export function WorkflowsClient({
                   审批人
                 </p>
                 <div className="space-y-1">
-                  <Label>审批人类型</Label>
+                  <Label htmlFor="approver-type">审批人类型</Label>
                   <SearchableSelect
+                    id="approver-type"
                     options={[
                       { value: "DEPT_MANAGER", label: "部门主管" },
                       { value: "EMP_MANAGER", label: "直属主管" },
@@ -1230,8 +1248,9 @@ export function WorkflowsClient({
                 </div>
                 {nodeForm.assigneeType === "ROLE" && (
                   <div className="space-y-1">
-                    <Label>角色</Label>
+                    <Label htmlFor="node-role">角色</Label>
                     <SearchableSelect
+                      id="node-role"
                       options={ROLE_OPTIONS}
                       value={nodeForm.assigneeRole}
                       onValueChange={(v) => v && setNodeForm({ ...nodeForm, assigneeRole: v })}
@@ -1241,8 +1260,9 @@ export function WorkflowsClient({
                   </div>
                 )}
                 <div className="space-y-1">
-                  <Label>多人模式</Label>
+                  <Label htmlFor="multi-mode">多人模式</Label>
                   <SearchableSelect
+                    id="multi-mode"
                     options={[
                       { value: "ANY", label: "或签（任一通过）" },
                       { value: "ALL", label: "会签（全部通过）" },
@@ -1259,7 +1279,7 @@ export function WorkflowsClient({
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>抄送规则（可选）</Label>
+                  <div className="text-sm font-medium">抄送规则（可选）</div>
                   <Button
                     type="button"
                     variant="outline"

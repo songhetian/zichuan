@@ -24,7 +24,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -126,7 +125,7 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
     try {
       const result = await createDepartment({ name: name.trim() });
       if (result.success) {
-        toast({ title: "创建成功" });
+        toast({ variant: "success", title: "创建成功" });
         setDepartments([...departments, result.data]);
         setCreateOpen(false);
         setName("");
@@ -146,7 +145,7 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
     try {
       const result = await updateDepartment(currentId, { name: name.trim() });
       if (result.success) {
-        toast({ title: "更新成功" });
+        toast({ variant: "success", title: "更新成功" });
         setDepartments(departments.map((d) => (d.id === currentId ? { ...d, name: result.data.name } : d)));
         setEditOpen(false);
         setName("");
@@ -166,7 +165,7 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
     try {
       const result = await deleteDepartment(currentId);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         setDepartments(departments.filter((d) => d.id !== currentId));
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -212,10 +211,10 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
                 <TableCell>{dept.name}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    <Button type="button" variant="ghost" size="icon" onClick={() => openEdit(dept)}>
+                    <Button aria-label="编辑" type="button" variant="ghost" size="icon" onClick={() => openEdit(dept)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => openDelete(dept.id)}>
+                    <Button aria-label="删除" type="button" variant="ghost" size="icon" onClick={() => openDelete(dept.id)}>
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
@@ -226,13 +225,14 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
         </Table>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-w-sm">
+          {/* Radix 需要可访问描述；此弹窗无副标题，显式置 undefined 关闭告警 */}
+          <DialogContent className="max-w-sm" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>新建部门</DialogTitle>
             </DialogHeader>
             <div className="space-y-2">
-              <Label>部门名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入部门名称" />
+              <Label htmlFor="dept-name">部门名称</Label>
+              <Input id="dept-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入部门名称" />
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
@@ -244,13 +244,13 @@ function DepartmentManager({ initialDepartments }: { initialDepartments: { id: n
         </Dialog>
 
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>编辑部门</DialogTitle>
             </DialogHeader>
             <div className="space-y-2">
-              <Label>部门名称</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="dept-name-2">部门名称</Label>
+              <Input id="dept-name-2" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
@@ -299,7 +299,7 @@ function AssetCategoryManager({
     try {
       const result = await createAssetCategory({ name: catName.trim(), code: catCode.trim() });
       if (result.success) {
-        toast({ title: "创建成功" });
+        toast({ variant: "success", title: "创建成功" });
         setCategories([...categories, result.data]);
         setCreateOpen(false);
         setCatName("");
@@ -319,7 +319,7 @@ function AssetCategoryManager({
     try {
       const result = await deleteAssetCategory(currentId);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         setCategories(categories.filter((c) => c.id !== currentId));
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -355,7 +355,7 @@ function AssetCategoryManager({
                 <TableCell>{cat.name}</TableCell>
                 <TableCell className="font-mono">{cat.code}</TableCell>
                 <TableCell>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
+                  <Button aria-label="删除" type="button" variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>
@@ -365,18 +365,18 @@ function AssetCategoryManager({
         </Table>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>新建设备分类</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>分类名称</Label>
-                <Input value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="如：笔记本电脑" />
+                <Label htmlFor="cat-name">分类名称</Label>
+                <Input id="cat-name" value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="如：笔记本电脑" />
               </div>
               <div className="space-y-2">
-                <Label>分类编码</Label>
-                <Input value={catCode} onChange={(e) => setCatCode(e.target.value)} placeholder="如：LAPTOP" />
+                <Label htmlFor="cat-code">分类编码</Label>
+                <Input id="cat-code" value={catCode} onChange={(e) => setCatCode(e.target.value)} placeholder="如：LAPTOP" />
               </div>
             </div>
             <DialogFooter>
@@ -425,7 +425,7 @@ function ComponentCategoryManager({
     try {
       const result = await createComponentCategory({ name: catName.trim() });
       if (result.success) {
-        toast({ title: "创建成功" });
+        toast({ variant: "success", title: "创建成功" });
         setCategories([...categories, result.data]);
         setCreateOpen(false);
         setCatName("");
@@ -444,7 +444,7 @@ function ComponentCategoryManager({
     try {
       const result = await deleteComponentCategory(currentId);
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         setCategories(categories.filter((c) => c.id !== currentId));
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -478,7 +478,7 @@ function ComponentCategoryManager({
               <TableRow key={cat.id}>
                 <TableCell>{cat.name}</TableCell>
                 <TableCell>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
+                  <Button aria-label="删除" type="button" variant="ghost" size="icon" onClick={() => { setCurrentId(cat.id); setDeleteOpen(true); }}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </TableCell>
@@ -488,13 +488,13 @@ function ComponentCategoryManager({
         </Table>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="max-w-sm" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>新建配件分类</DialogTitle>
             </DialogHeader>
             <div className="space-y-2">
-              <Label>分类名称</Label>
-              <Input value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="如：内存" />
+              <Label htmlFor="cat-name-2">分类名称</Label>
+              <Input id="cat-name-2" value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="如：内存" />
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
@@ -539,7 +539,7 @@ function DataIOSection() {
 
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
-        toast({ title: "导出成功" });
+        toast({ variant: "success", title: "导出成功" });
       } else {
         toast({ title: "导出失败", description: result.error, variant: "destructive" });
       }
@@ -570,7 +570,7 @@ function DataIOSection() {
           const desc = result.data.errors.length > 0
             ? `成功 ${result.data.importedCount} 条，失败 ${result.data.errors.length} 条`
             : `成功导入 ${result.data.importedCount} 条`;
-          toast({ title: "导入完成", description: desc });
+          toast({ variant: "success", title: "导入完成", description: desc });
         } else {
           toast({ title: "导入失败", description: result.error, variant: "destructive" });
         }
@@ -589,7 +589,7 @@ function DataIOSection() {
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <h4 className="text-sm font-medium mb-3">数据导出</h4>
+          <h3 className="text-sm font-medium mb-3">数据导出</h3>
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => handleExport("assets")} disabled={!!loading}>
               <Download className="mr-2 h-4 w-4" />
@@ -609,7 +609,7 @@ function DataIOSection() {
         <Separator />
 
         <div>
-          <h4 className="text-sm font-medium mb-3">数据导入</h4>
+          <h3 className="text-sm font-medium mb-3">数据导入</h3>
           <div className="flex gap-3">
             {canImportEmployees && (
               <Button variant="outline" onClick={() => handleImport("employees")} disabled={!!loading}>
@@ -629,7 +629,7 @@ function DataIOSection() {
         <Separator />
 
         <div>
-          <h4 className="text-sm font-medium mb-3">标签打印</h4>
+          <h3 className="text-sm font-medium mb-3">标签打印</h3>
           <p className="text-sm text-muted-foreground">标签打印功能可在设备详情页或设备列表页进行操作。</p>
         </div>
       </CardContent>
@@ -656,7 +656,7 @@ function PasswordSection() {
     try {
       const result = await changePassword({ oldPassword, newPassword });
       if (result.success) {
-        toast({ title: "密码修改成功" });
+        toast({ variant: "success", title: "密码修改成功" });
         setOldPassword("");
         setNewPassword("");
       } else {
@@ -676,8 +676,9 @@ function PasswordSection() {
       </CardHeader>
       <CardContent className="space-y-4 max-w-md">
         <div className="space-y-2">
-          <Label>旧密码</Label>
+          <Label htmlFor="old-pwd">旧密码</Label>
           <Input
+            id="old-pwd"
             type="password"
             value={oldPassword}
             onChange={(e) => setOldPassword(e.target.value)}
@@ -685,8 +686,9 @@ function PasswordSection() {
           />
         </div>
         <div className="space-y-2">
-          <Label>新密码</Label>
+          <Label htmlFor="new-pwd">新密码</Label>
           <Input
+            id="new-pwd"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}

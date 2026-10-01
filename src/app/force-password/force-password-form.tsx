@@ -35,7 +35,7 @@ export function ForcePasswordForm({ displayName }: { displayName: string }) {
     try {
       const result = await forceChangePassword({ newPassword: password });
       if (result.success) {
-        toast({ title: "密码修改成功" });
+        toast({ variant: "success", title: "密码修改成功" });
         router.replace("/dashboard");
       } else {
         setError(result.error ?? "修改失败");
@@ -51,7 +51,7 @@ export function ForcePasswordForm({ displayName }: { displayName: string }) {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -bottom-28 -left-24 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
+        <div className="absolute -bottom-28 -left-24 h-96 w-96 rounded-full bg-info/10 blur-3xl" />
       </div>
       <Card className="w-[400px]">
         <CardHeader className="text-center">
@@ -60,7 +60,7 @@ export function ForcePasswordForm({ displayName }: { displayName: string }) {
               <KeyRound className="h-8 w-8" />
             </div>
           </div>
-          <CardTitle className="font-display text-2xl">首次登录需修改密码</CardTitle>
+          <CardTitle as="h1" className="font-display text-2xl">首次登录需修改密码</CardTitle>
           <CardDescription>
             您好，{displayName}。当前使用的是初始密码，请设置一个新密码后继续。
           </CardDescription>
@@ -75,6 +75,8 @@ export function ForcePasswordForm({ displayName }: { displayName: string }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="至少 6 位，不能与默认密码相同"
+                aria-invalid={!!error}
+                aria-describedby={error ? "password-form-error" : undefined}
               />
             </div>
             <div className="space-y-2">
@@ -85,9 +87,15 @@ export function ForcePasswordForm({ displayName }: { displayName: string }) {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="再次输入新密码"
+                aria-invalid={!!error}
+                aria-describedby={error ? "password-form-error" : undefined}
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && (
+              <p id="password-form-error" role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "保存中..." : "保存并进入系统"}
             </Button>

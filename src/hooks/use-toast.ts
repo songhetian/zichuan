@@ -3,7 +3,8 @@ import * as React from "react"
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast"
 import { cleanErrorMessage } from "@/lib/sanitize-error"
 
-const TOAST_LIMIT = 1
+// 同屏最多 3 条：批量操作（如批量分配 20 台设备）时不会只剩最后一条
+const TOAST_LIMIT = 3
 const TOAST_REMOVE_DELAY = 1000000
 
 type ToasterToast = ToastProps & {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,14 +75,32 @@ function Row({
   onToggle: (on: boolean) => void;
   leaf?: boolean;
 }) {
+  const checkboxId = useId();
+
   return (
     <div
-      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-secondary/50"
+      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-secondary/50"
       style={{ paddingLeft: 8 + indent * 22 }}
-      onClick={() => onToggle(!checked)}
     >
-      <Checkbox aria-label={ariaLabel} checked={checked} onCheckedChange={(v) => onToggle(v === true)} />
-      <span className={cn("text-sm", leaf ? "text-foreground" : "font-medium")}>{label}</span>
+      {/*
+        改法：用 <label htmlFor> 关联，而不是原先的 <div onClick>。
+        原 div 无 role / tabIndex / onKeyDown，键盘用户完全无法切换勾选（WCAG 2.1.1，Level A）。
+        这里刻意不让 label 包裹 Checkbox —— 嵌套时点击控件本身可能被 label 二次转发；
+        用 htmlFor 显式关联则由浏览器按规范保证「点文字切换、点控件只切换一次」。
+        键盘操作本来就由 Checkbox 自身原生支持，无需给行加 tabIndex。
+      */}
+      <Checkbox
+        id={checkboxId}
+        aria-label={ariaLabel}
+        checked={checked}
+        onCheckedChange={(v) => onToggle(v === true)}
+      />
+      <label
+        htmlFor={checkboxId}
+        className={cn("flex-1 cursor-pointer text-sm", leaf ? "text-foreground" : "font-medium")}
+      >
+        {label}
+      </label>
     </div>
   );
 }
@@ -189,7 +207,7 @@ export function RolesClient({ initialRoles, modules }: Props) {
     try {
       const permRes = await updateRolePermissions(editing.id, checked);
       if (permRes.success) {
-        toast({ title: "保存成功" });
+        toast({ variant: "success", title: "保存成功" });
         await refresh();
         setEditing(null);
       } else {
@@ -273,7 +291,8 @@ export function RolesClient({ initialRoles, modules }: Props) {
       </Card>
 
       <Dialog open={editing !== null} onOpenChange={(v) => { if (!v) closeEdit(); }}>
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        {/* Radix 需要可访问描述；此弹窗无副标题，显式置 undefined 关闭告警 */}
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>编辑权限：{editing?.name}</DialogTitle>
           </DialogHeader>

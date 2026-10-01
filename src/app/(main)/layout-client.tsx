@@ -48,10 +48,25 @@ export default function MainLayoutClient({
 
   return (
     <div className="flex h-screen">
-      <Sidebar mobileOpen={mobileMenuOpen} />
+      {/*
+        跳到主内容：键盘 / 读屏用户无需 Tab 过整条侧栏（约 50 个导航项）才能到达正文。
+        WCAG 2.4.1 Bypass Blocks（Level A）。tabIndex={-1} 让 <main> 可被程序化聚焦，
+        否则 Safari 等浏览器不会移动焦点，跳转后再次 Tab 仍会回到侧栏。
+      */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+      >
+        跳到主内容
+      </a>
+      <Sidebar mobileOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
       <div className="flex flex-1 flex-col">
         <Header mobileMenuOpen={mobileMenuOpen} onMobileMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto p-4 lg:p-6 focus-visible:outline-none"
+        >
           <div className="mx-auto w-full max-w-[1440px]">
             {denied ? <NoAccess /> : children}
           </div>

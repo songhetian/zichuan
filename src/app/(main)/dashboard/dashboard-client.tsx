@@ -67,6 +67,7 @@ function KpiCard({
   value,
   hint,
   accentClass,
+  valueClass = "text-foreground",
   icon: Icon,
   share,
   index,
@@ -78,6 +79,7 @@ function KpiCard({
   value: number;
   hint?: string;
   accentClass: string;
+  valueClass?: string;
   icon: typeof Server;
   share?: number;
   index: number;
@@ -105,7 +107,7 @@ function KpiCard({
           <span className="text-xs font-medium tracking-wide text-muted-foreground">{label}</span>
         </div>
         <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-[34px] font-bold leading-none tracking-tight tabular-nums">
+          <span className={`text-[34px] font-bold leading-none tracking-tight tabular-nums ${valueClass}`}>
             {animated}
           </span>
           <span className="text-xs text-muted-foreground">{hint}</span>
@@ -235,12 +237,12 @@ export function DashboardClient({ data }: DashboardClientProps) {
   const [visible, setVisible] = useState(false);
   const [animatedValues, setAnimatedValues] = useState<Record<string, number>>({});
 
-  const statusCards = [
-    { label: "总设备数", value: data.total, status: "all", icon: Server, accentClass: "bg-primary" },
-    { label: "在用", value: data.byStatus["IN_USE"] ?? 0, status: "IN_USE", icon: MonitorCheck, accentClass: TONE_DOT.success },
-    { label: "闲置", value: data.byStatus["IDLE"] ?? 0, status: "IDLE", icon: PackageOpen, accentClass: TONE_DOT.neutral },
-    { label: "维修中", value: data.byStatus["IN_MAINTENANCE"] ?? 0, status: "IN_MAINTENANCE", icon: Wrench, accentClass: TONE_DOT.warning },
-    { label: "报废", value: data.byStatus["SCRAPPED"] ?? 0, status: "SCRAPPED", icon: Trash2, accentClass: TONE_DOT.danger },
+  const statusCards: { label: string; value: number; status: string; icon: typeof Server; accentClass: string; valueClass: string }[] = [
+    { label: "总设备数", value: data.total, status: "all", icon: Server, accentClass: "bg-primary", valueClass: "text-primary" },
+    { label: "在用", value: data.byStatus["IN_USE"] ?? 0, status: "IN_USE", icon: MonitorCheck, accentClass: TONE_DOT.success, valueClass: "text-success" },
+    { label: "闲置", value: data.byStatus["IDLE"] ?? 0, status: "IDLE", icon: PackageOpen, accentClass: TONE_DOT.neutral, valueClass: "text-foreground" },
+    { label: "维修中", value: data.byStatus["IN_MAINTENANCE"] ?? 0, status: "IN_MAINTENANCE", icon: Wrench, accentClass: TONE_DOT.warning, valueClass: "text-warning" },
+    { label: "报废", value: data.byStatus["SCRAPPED"] ?? 0, status: "SCRAPPED", icon: Trash2, accentClass: TONE_DOT.danger, valueClass: "text-destructive" },
   ];
 
   useEffect(() => {
@@ -370,6 +372,7 @@ export function DashboardClient({ data }: DashboardClientProps) {
               value={card.value}
               hint={card.status === "all" ? "台" : "台"}
               accentClass={card.accentClass}
+              valueClass={card.valueClass}
               icon={card.icon}
               share={share}
               index={idx}

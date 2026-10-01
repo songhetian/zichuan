@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 .next/
+.next.*/
 out/
 tsconfig.tsbuildinfo
 .env
@@ -22,9 +23,16 @@ scripts/_*
 tests/_*
 
 # 工具产物
-vitest.config.ts.timestamp-*.mjs
+# vitest 用 esbuild 加载 TS 配置时会留下 timestamp 临时文件；
+# 注意要带 `vitest*` 通配，否则 vitest.frontend.config.ts / vitest.node.config.ts 的产物匹配不到。
+vitest*.config.ts.timestamp-*.mjs
 
 # ⚠️ 不要把 scripts/ 或 tests/ 整目录忽略。
 # 它们是项目源码：package.json 的 scripts 与 vitest 配置都依赖其中的文件。
 # 整目录忽略会让新增的脚本/测试静默不进版本控制，
 # 换机器或 clone 后直接报 "Cannot find module '.../scripts/xxx.js'"。
+
+
+docs/**
+**.md
+tests/**

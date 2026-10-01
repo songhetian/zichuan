@@ -42,6 +42,8 @@ import {
 import { exportComponentsToExcel, importComponentModelsFromExcel } from "@/actions/excel.actions";
 import { usePermission } from "@/hooks/use-permission";
 import { useRef } from "react";
+import { categoryDotClass } from "@/lib/status-styles";
+import { cn } from "@/lib/utils";
 
 interface ComponentModel {
   id: number;
@@ -67,7 +69,15 @@ export const columns: ColumnDef<ComponentModel & { _categories: { id: number; na
     accessorFn: (row) => row.categoryId,
     header: "分类",
     size: 100,
-    cell: ({ row }) => getCategoryName(row.original.categoryId, row.original._categories),
+    cell: ({ row }) => {
+      const name = getCategoryName(row.original.categoryId, row.original._categories);
+      return (
+        <span className="inline-flex items-center gap-2">
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", categoryDotClass(name))} aria-hidden />
+          <span>{name}</span>
+        </span>
+      );
+    },
   },
   { accessorKey: "name", header: "型号名称", size: 320 },
   {
@@ -201,14 +211,14 @@ function ComponentActionButtons({
 
   return (
     <>
-      <Button type="button" variant="ghost" size="icon" title="入库" aria-label="入库" onClick={() => setStockInOpen(true)}>
+      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="入库" aria-label="入库" onClick={() => setStockInOpen(true)}>
         <PackagePlus className="h-4 w-4" />
       </Button>
-      <Button type="button" variant="ghost" size="icon" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
-        <Pencil className="h-4 w-4 text-primary" />
+      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="编辑" aria-label="编辑" onClick={() => handleEditOpen(true)}>
+        <Pencil className="h-4 w-4" />
       </Button>
-      <Button type="button" variant="ghost" size="icon" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
-        <Trash2 className="h-4 w-4 text-destructive" />
+      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="删除" aria-label="删除" onClick={() => setDeleteOpen(true)}>
+        <Trash2 className="h-4 w-4" />
       </Button>
 
       <Dialog open={stockInOpen} onOpenChange={(v) => { if (!v) setQuantity(""); setStockInOpen(v); }}>

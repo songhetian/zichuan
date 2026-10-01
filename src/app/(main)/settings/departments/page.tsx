@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getDepartments } from "@/actions/department.actions";
 import { prisma } from "@/lib/prisma";
 import { DepartmentsClient } from "./departments-client";
+
+export const metadata: Metadata = { title: "部门管理" };
 
 export default async function DepartmentsPage() {
   const deptResult = await getDepartments();

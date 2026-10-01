@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -25,7 +25,14 @@ import {
 import { navItems, NavItem, SECTION_ORDER } from "@/components/layout/nav-config"
 import { useAuthStore } from "@/store/auth-store"
 
-export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
+export function Sidebar({
+  mobileOpen,
+  onClose,
+}: {
+  mobileOpen?: boolean
+  /** 移动端抽屉关闭（Esc 触发），由布局层提供 */
+  onClose?: () => void
+}) {
   const pathname = usePathname()
   const permissions = useAuthStore((s) => s.permissions)
 
@@ -96,6 +103,16 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
     pathname === item.href ||
     (item.href !== "/assets" && pathname.startsWith(item.href))
 
+  // 移动端抽屉打开时，Esc 关闭（键盘可达性，WCAG 2.1.1）
+  useEffect(() => {
+    if (!mobileOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose?.()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [mobileOpen, onClose])
+
   return (
     <>
       {/* 逐项浮现动画 */}
@@ -135,7 +152,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
             collapsed ? "justify-center px-2" : "px-4"
           )}
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-[inset_0_1px_0_hsl(var(--primary-foreground)/0.08)]">
             <Package className="h-5 w-5" />
           </div>
           {!collapsed && (
@@ -163,6 +180,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                     <Popover key={item.href}>
                       <PopoverTrigger asChild>
                         <button
+                          aria-label={item.label}
                           className={cn(
                             "flex w-full items-center justify-center rounded-lg p-2 transition-all duration-200",
                             isParentActive
@@ -181,16 +199,17 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                           {item.children.map((child) => {
                             const isChildActive = pathname === child.href
                             return (
-                              <Link
-                                key={child.href}
-                                href={child.href}
-                                className={cn(
-                                  "relative flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors duration-150",
-                                  isChildActive
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-foreground/80 hover:bg-secondary hover:text-foreground"
-                                )}
-                              >
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            aria-current={isChildActive ? "page" : undefined}
+                            className={cn(
+                              "relative flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors duration-150",
+                              isChildActive
+                                ? "bg-primary/10 text-primary"
+                                : "text-foreground/80 hover:bg-secondary hover:text-foreground"
+                            )}
+                          >
                                 {isChildActive && (
                                   <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-primary" />
                                 )}
@@ -209,6 +228,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                     <TooltipTrigger asChild>
                       <Link
                         href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        aria-label={item.label}
                         className={cn(
                           "flex w-full items-center justify-center rounded-lg p-2 transition-all duration-200",
                           active
@@ -230,9 +251,8 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
             <nav className="sidebar-nav flex flex-col gap-0.5">
               {groups.map(({ section, items }) => (
                 <div key={section} className="flex flex-col">
-                  {/* 分区小标题 */}
-                  <button
-                    type="button"
+                  {/* 分区小标题（非交互，去掉 button 语义，WCAG 4.1.2） */}
+                  <div
                     className="mt-1 first:mt-0 flex items-center gap-2 px-2.5 py-1.5"
                     title={section}
                   >
@@ -241,7 +261,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                       {section}
                     </span>
                     <span className="pointer-events-none h-px flex-1 bg-gradient-to-r from-border/80 to-transparent" />
-                  </button>
+                  </div>
 
                   <div className="flex flex-col gap-0.5">
                     {items.map((item, index) => {
@@ -254,6 +274,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                           <div className="nav-enter" style={{ animationDelay: `${index * 0.03}s` }} key={item.href}>
                             <button
                               onClick={() => toggleExpand(item.href)}
+                              aria-expanded={isExpanded}
                               className={cn(
                                 "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                                 isParentActive
@@ -281,6 +302,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                                     <Link
                                       key={child.href}
                                       href={child.href}
+                                      aria-current={isChildActive ? "page" : undefined}
                                       className={cn(
                                         "relative rounded-md px-3 py-[7px] text-[13.5px] transition-colors duration-150",
                                         isChildActive
@@ -305,6 +327,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                         <Link
                           key={item.href}
                           href={item.href}
+                          aria-current={active ? "page" : undefined}
                           className={cn(
                             "nav-enter group relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                             active
@@ -362,8 +385,9 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
       <div
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-64 bg-sidebar text-card-foreground shadow-xl transition-transform duration-300 md:hidden",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
+          mobileOpen ? "translate-x-0" : "-translate-x-full hidden"
         )}
+        aria-hidden={!mobileOpen}
       >
         {/* Header */}
         <div className="flex h-16 items-center border-b border-border/70 px-4">
@@ -396,6 +420,7 @@ export function Sidebar({ mobileOpen }: { mobileOpen?: boolean }) {
                         <div key={item.href}>
                           <button
                             onClick={() => toggleExpand(item.href)}
+                            aria-expanded={isExpanded}
                             className={cn(
                               "relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
                               isParentActive

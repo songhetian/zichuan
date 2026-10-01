@@ -98,7 +98,7 @@ export function Header({ mobileMenuOpen, onMobileMenuToggle }: { mobileMenuOpen?
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card/70 px-4 md:px-6 backdrop-blur-sm">
       <div className="flex items-center gap-4">
-        <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={onMobileMenuToggle}>
+        <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={onMobileMenuToggle} aria-label="打开菜单">
           <Menu className="h-5 w-5" />
         </Button>
         <div className="text-sm text-muted-foreground">
@@ -113,7 +113,7 @@ export function Header({ mobileMenuOpen, onMobileMenuToggle }: { mobileMenuOpen?
             <Button type="button" variant="ghost" size="icon" className="relative" aria-label="通知中心">
               <Bell className="h-5 w-5" />
               {unread > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium leading-none text-white">
                   {unread > 99 ? "99+" : unread}
                 </span>
               )}

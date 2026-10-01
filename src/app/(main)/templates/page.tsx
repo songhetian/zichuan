@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = 'force-dynamic';
 
 import { getDeviceTemplates } from "@/actions/device-template.actions";
@@ -5,6 +6,8 @@ import { getAssetCategories } from "@/actions/asset-category.actions";
 import { getComponentModels } from "@/actions/component-model.actions";
 import { getComponentCategories } from "@/actions/component-category.actions";
 import { TemplateListClient } from "./template-list-client";
+
+export const metadata: Metadata = { title: "设备模板" };
 
 export default async function TemplatesPage() {
   const [templatesResult, categoriesResult, componentModelsResult, componentCategoriesResult] =

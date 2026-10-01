@@ -17,7 +17,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-foreground/25 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-overlay/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -38,19 +38,31 @@ const DialogContent = React.forwardRef<
         className
       )}
       onPointerDownOutside={(e) => {
-        // 内部下拉（Select/Popover/Combobox 等 Radix 弹层）是独立 portal，点/聚焦在它
-        // 上面会被 Dialog 判为「外部」而误关。凡命中弹层外层的，一律不关闭对话框。
-        if ((e.target as HTMLElement)?.closest?.("[data-radix-popper-content-wrapper]")) return;
+        const t = e.target as HTMLElement | null;
+        // 1) 内部下拉（Select/Popover/Combobox 等 Radix 弹层）是独立 portal，点/聚焦在它
+        //    上面会被 Dialog 判为「外部」而误关，一律忽略。
+        if (t?.closest?.("[data-radix-popper-content-wrapper]")) return;
+        // 2) 嵌套的另一个 Radix Dialog（如弹窗内再弹的 ConfirmDialog）同样是独立 portal，
+        //    点它的按钮不能把外层弹窗关掉——否则「放弃更改/取消」一按，外层先关、内容已丢。
+        if (t?.closest?.("[data-nested-dialog]")) {
+          e.preventDefault();
+          return;
+        }
         onPointerDownOutside?.(e);
       }}
       onFocusOutside={(e) => {
-        if ((e.target as HTMLElement)?.closest?.("[data-radix-popper-content-wrapper]")) return;
+        const t = e.target as HTMLElement | null;
+        if (t?.closest?.("[data-radix-popper-content-wrapper]")) return;
+        if (t?.closest?.("[data-nested-dialog]")) {
+          e.preventDefault();
+          return;
+        }
         onFocusOutside?.(e);
       }}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md text-muted-foreground opacity-70 ring-offset-background transition-all hover:bg-accent/60 hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+      <DialogPrimitive.Close className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-70 ring-offset-background transition-all hover:bg-accent/60 hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none">
         <X className="h-4 w-4" />
         <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>

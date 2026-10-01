@@ -151,7 +151,7 @@ export function ExecuteClient() {
     try {
       const result = await run();
       if (result.success) {
-        toast({ title: "执行成功", description: okHint });
+        toast({ variant: "success", title: "执行成功", description: okHint });
         closeDetail();
         await load();
       } else {
@@ -343,8 +343,9 @@ export function ExecuteClient() {
               {detail.businessType === "ASSET_REPLACE" || detail.businessType === "ASSET_REPAIR" ? (
                 /* 更换/维修：选择替换机 */
                 <div>
-                  <Label className="mb-1.5 block text-xs text-muted-foreground">选择替换机</Label>
+                  <Label htmlFor="replace-machine" className="mb-1.5 block text-xs text-muted-foreground">选择替换机</Label>
                   <SearchableSelect
+                    id="replace-machine"
                     options={(detail.availableAssets ?? []).map((a) => ({
                       value: String(a.assetId),
                       label: a.assetNo,
@@ -367,7 +368,7 @@ export function ExecuteClient() {
                 /* 升级/降级：配件调整 */
                 <div className="space-y-4">
                   <div>
-                    <Label className="mb-1.5 block text-xs text-muted-foreground">设备当前配件</Label>
+                    <div className="mb-1.5 block text-xs font-medium text-muted-foreground">设备当前配件</div>
                     {!detail.currentComponents || detail.currentComponents.length === 0 ? (
                       <p className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
                         该设备暂无配件
@@ -388,10 +389,10 @@ export function ExecuteClient() {
                   </div>
 
                   <div>
-                    <Label className="mb-1.5 block text-xs text-muted-foreground">
+                    <div className="mb-1.5 block text-xs font-medium text-muted-foreground">
                       变更明细{" "}
                       <span className="font-normal">（增加=从库存出库，减少=退回库存）</span>
-                    </Label>
+                    </div>
                     <div className="overflow-hidden rounded-lg border border-border/80">
                       <div className="grid grid-cols-[1fr_7rem_5rem_2.25rem] items-center gap-2 border-b border-border/80 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
                         <span>配件型号</span>
@@ -448,7 +449,7 @@ export function ExecuteClient() {
                                 )
                               }
                             />
-                            <Button
+                            <Button aria-label="移除该行"
                               type="button"
                               variant="ghost"
                               size="icon"

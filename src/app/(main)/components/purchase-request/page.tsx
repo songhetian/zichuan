@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
@@ -5,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { PurchaseRequestClient } from "./purchase-request-client";
+
+export const metadata: Metadata = { title: "加购配件" };
 
 export default async function PurchaseRequestPage() {
   const user = await getCurrentUser();

@@ -29,6 +29,7 @@ import {
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { ExportPreview } from "@/components/features/export-preview";
 import { usePermission } from "@/hooks/use-permission";
+import { TONE_SOFT_BORDER, TONE_TEXT } from "@/lib/status-styles";
 
 interface StocktakeRecord {
   id: number;
@@ -78,20 +79,20 @@ const resultConfig: Record<
   NORMAL: {
     label: "正常",
     icon: CheckCircle2,
-    color: "text-green-600",
-    bgColor: "bg-green-50 border-green-200 hover:bg-green-100",
+    color: TONE_TEXT.success,
+    bgColor: `${TONE_SOFT_BORDER.success} hover:bg-success/15`,
   },
   MISSING: {
     label: "盘亏",
     icon: XCircle,
-    color: "text-red-600",
-    bgColor: "bg-red-50 border-red-200 hover:bg-red-100",
+    color: TONE_TEXT.danger,
+    bgColor: `${TONE_SOFT_BORDER.danger} hover:bg-destructive/15`,
   },
   EXTRA: {
     label: "盘盈",
     icon: AlertCircle,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50 border-blue-200 hover:bg-blue-100",
+    color: TONE_TEXT.info,
+    bgColor: `${TONE_SOFT_BORDER.info} hover:bg-info/15`,
   },
 };
 
@@ -132,6 +133,7 @@ export function StocktakeDetailClient({
         if (res.success) {
           setImportResult({ updated: res.data.updated, unknown: res.data.unknown });
           toast({
+            variant: "success",
             title: "对账完成",
             description: `共更新 ${res.data.updated} 条`,
           });
@@ -212,7 +214,7 @@ export function StocktakeDetailClient({
           r.id === selectedRecord.id ? { ...r, actualStatus } : r
         )
       );
-      toast({ title: "更新成功" });
+      toast({ variant: "success", title: "更新成功" });
       setEditOpen(false);
       setSelectedRecord(null);
     } else {
@@ -231,6 +233,7 @@ export function StocktakeDetailClient({
 
     if (result.success) {
       toast({
+        variant: "success",
         title: "盘点完成",
         description: `正常: ${result.data.normal}, 盘亏: ${result.data.missing}, 盘盈: ${result.data.extra}`,
       });
@@ -276,7 +279,7 @@ export function StocktakeDetailClient({
       <PageHeader
         title={
           <div className="flex items-center gap-3">
-            <Button
+            <Button aria-label="返回盘点列表"
               variant="ghost"
               size="icon"
               onClick={() => router.push("/stocktake")}
@@ -302,17 +305,17 @@ export function StocktakeDetailClient({
           <div className="text-sm text-muted-foreground mb-1">总设备数</div>
           <div className="text-2xl font-bold">{total}</div>
         </div>
-        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
-          <div className="text-sm text-emerald-500 mb-1">正常</div>
-          <div className="text-2xl font-bold text-emerald-500">{normalCount}</div>
+        <div className="rounded-lg border border-success/25 bg-success/10 p-4">
+          <div className="text-sm text-success mb-1">正常</div>
+          <div className="text-2xl font-bold text-success">{normalCount}</div>
         </div>
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
-          <div className="text-sm text-red-500 mb-1">盘亏</div>
-          <div className="text-2xl font-bold text-red-500">{missingCount}</div>
+        <div className="rounded-lg border border-destructive/25 bg-destructive/10 p-4">
+          <div className="text-sm text-destructive mb-1">盘亏</div>
+          <div className="text-2xl font-bold text-destructive">{missingCount}</div>
         </div>
-        <div className="rounded-lg border border-primary/20 bg-primary/10 p-4">
-          <div className="text-sm text-primary mb-1">盘盈</div>
-          <div className="text-2xl font-bold text-primary">{extraCount}</div>
+        <div className="rounded-lg border border-info/25 bg-info/10 p-4">
+          <div className="text-sm text-info mb-1">盘盈</div>
+          <div className="text-2xl font-bold text-info">{extraCount}</div>
         </div>
       </div>
 
@@ -322,7 +325,7 @@ export function StocktakeDetailClient({
           <span className="text-muted-foreground">盘点进度</span>
           <span className="font-medium">{Math.round(progress)}%</span>
         </div>
-        <Progress value={progress} className="h-2" />
+        <Progress value={progress} className="h-2" aria-label={`盘点进度 ${progress}%`} />
       </div>
 
       {/* 上传 Excel 对账 */}
@@ -358,10 +361,10 @@ export function StocktakeDetailClient({
               <div>已更新 <span className="font-semibold text-primary">{importResult.updated}</span> 条记录</div>
               {importResult.unknown.length > 0 && (
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                  <AlertCircle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
                   <div>
                     表中存在但系统内没有的编号（盘盈待核查）：
-                    <span className="font-mono text-amber-500">
+                    <span className="font-mono text-warning">
                       {importResult.unknown.join("、")}
                     </span>
                   </div>
@@ -385,16 +388,26 @@ export function StocktakeDetailClient({
           return (
             <div
               key={record.id}
-              className={`bg-card rounded-lg border-2 p-4 cursor-pointer transition-all hover:border-primary/40 ${
+              className={`relative bg-card rounded-lg border-2 p-4 transition-all hover:border-primary/40 ${
                 session.status === "OPEN" ? "hover:border-primary" : ""
               }`}
-              onClick={() => session.status === "OPEN" && handleEditRecord(record)}
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <div className="font-mono text-sm text-muted-foreground">
+                  {/*
+                    原实现是整张卡片 <div onClick>：无 role / tabIndex / onKeyDown，
+                    键盘用户无法修改盘点结果（WCAG 2.1.1 Keyboard，Level A）。
+                    改为「资产编号是真按钮 + ::after 铺满卡片」，保留鼠标点卡片任意位置的便利。
+                    盘点已结束时禁用（不再可点），同时用 disabled:after:hidden 撤掉覆盖层。
+                  */}
+                  <button
+                    type="button"
+                    disabled={session.status !== "OPEN"}
+                    onClick={() => handleEditRecord(record)}
+                    className="rounded-sm font-mono text-sm text-muted-foreground after:absolute after:inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-default disabled:after:hidden"
+                  >
                     {record.assetNo}
-                  </div>
+                  </button>
                   <div className="text-xs text-muted-foreground mt-1">
                     预期状态: {expectedLabel}
                   </div>
@@ -441,36 +454,37 @@ export function StocktakeDetailClient({
             <div className="grid grid-cols-3 gap-2">
               <Button
                 variant="outline"
-                className="h-20 flex-col gap-2 bg-green-50 border-green-200 hover:bg-green-100"
+                className="h-20 flex-col gap-2 bg-success-soft border-success-soft-border hover:bg-success/15"
                 onClick={() => handleUpdateRecord("NORMAL")}
                 disabled={loading}
               >
-                <CheckCircle2 className="h-6 w-6 text-green-600" />
+                <CheckCircle2 className="h-6 w-6 text-success" />
                 <span className="text-sm">正常 (N)</span>
               </Button>
               <Button
                 variant="outline"
-                className="h-20 flex-col gap-2 bg-red-50 border-red-200 hover:bg-red-100"
+                className="h-20 flex-col gap-2 bg-destructive-soft border-destructive-soft-border hover:bg-destructive/15"
                 onClick={() => handleUpdateRecord("MISSING")}
                 disabled={loading}
               >
-                <XCircle className="h-6 w-6 text-red-600" />
+                <XCircle className="h-6 w-6 text-destructive" />
                 <span className="text-sm">盘亏 (M)</span>
               </Button>
               <Button
                 variant="outline"
-                className="h-20 flex-col gap-2 bg-blue-50 border-blue-200 hover:bg-blue-100"
+                className="h-20 flex-col gap-2 bg-info-soft border-info-soft-border hover:bg-info/15"
                 onClick={() => handleUpdateRecord("EXTRA")}
                 disabled={loading}
               >
-                <AlertCircle className="h-6 w-6 text-blue-600" />
+                <AlertCircle className="h-6 w-6 text-info" />
                 <span className="text-sm">盘盈 (E)</span>
               </Button>
             </div>
 
             <div className="space-y-2">
-              <Label>备注（可选）</Label>
+              <Label htmlFor="remark">备注（可选）</Label>
               <Textarea
+                id="remark"
                 value={selectedRecord?.remark ?? ""}
                 onChange={(e) => {
                   if (selectedRecord) {

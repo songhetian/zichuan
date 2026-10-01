@@ -69,7 +69,7 @@ export function PagePagination({
           className="h-7 w-7 p-0"
           onClick={() => onPageChange(1)}
           disabled={current === 1}
-          title="首页"
+          aria-label="首页"
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
         </Button>
@@ -91,13 +91,15 @@ export function PagePagination({
             ...
           </span>
         ) : (
-          <Button
-            key={page}
-            variant={page === current ? "default" : "outline"}
-            size="sm"
-            className={`h-7 min-w-[28px] px-1 p-0 text-xs ${page === current ? "pointer-events-none" : ""}`}
-            onClick={() => onPageChange(page)}
-          >
+        <Button
+          key={page}
+          variant={page === current ? "default" : "outline"}
+          size="sm"
+          className={`h-7 min-w-[28px] px-1 p-0 text-xs ${page === current ? "pointer-events-none" : ""}`}
+          onClick={() => onPageChange(page)}
+          aria-current={page === current ? "page" : undefined}
+          aria-label={`第 ${page} 页`}
+        >
             {page}
           </Button>
         )
@@ -120,7 +122,7 @@ export function PagePagination({
           className="h-7 w-7 p-0"
           onClick={() => onPageChange(total)}
           disabled={current === total}
-          title="末页"
+          aria-label="末页"
         >
           <ChevronsRight className="h-3.5 w-3.5" />
         </Button>
@@ -139,6 +141,7 @@ export function PagePagination({
             onBlur={handleJump}
             className="h-7 w-12 text-xs text-center px-1"
             placeholder=""
+            aria-label="跳转到指定页码"
           />
           <span className="text-xs text-muted-foreground">页</span>
         </div>

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/features/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Monitor, Package, Wrench, Trash2, Users } from "lucide-react";
 import { getStatusLabel } from "@/lib/status-labels";
+import { useThemeColors } from "@/lib/use-theme-colors";
 
 interface AssetStats {
   total: number;
@@ -34,14 +35,6 @@ interface StatsClientProps {
   trendData: TrendData[];
 }
 
-const STATUS_COLOR_MAP: Record<string, string> = {
-  IDLE: "#94a3b8",
-  IN_USE: "#22c55e",
-  IN_MAINTENANCE: "#eab308",
-  SCRAPPED: "#ef4444",
-  RESERVED: "#8b5cf6",
-};
-
 function NoData() {
   return (
     <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
@@ -51,6 +44,7 @@ function NoData() {
 }
 
 function PieChart({ assetStats }: { assetStats: AssetStats | null }) {
+  const colors = useThemeColors();
   if (!assetStats) return <NoData />;
 
   const data = Object.entries(assetStats.byStatus)
@@ -58,7 +52,7 @@ function PieChart({ assetStats }: { assetStats: AssetStats | null }) {
     .map(([key, value]) => ({
       name: getStatusLabel(key),
       value,
-      itemStyle: { color: STATUS_COLOR_MAP[key] ?? "#3b82f6" },
+      itemStyle: { color: colors.status[key] ?? colors.info },
     }));
 
   if (data.length === 0) return <NoData />;
@@ -98,10 +92,17 @@ function PieChart({ assetStats }: { assetStats: AssetStats | null }) {
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 300 }} />;
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
+  return (
+    <div role="img" aria-label={`设备状态分布饼图，共 ${total} 台`}>
+      <ReactECharts option={option} style={{ height: 300 }} />
+    </div>
+  );
 }
 
 function LineChart({ trendData }: { trendData: TrendData[] }) {
+  const colors = useThemeColors();
   if (trendData.length === 0) return <NoData />;
 
   const months = trendData.map((d) => d.month);
@@ -134,36 +135,41 @@ function LineChart({ trendData }: { trendData: TrendData[] }) {
         type: "line",
         smooth: true,
         data: trendData.map((d) => d.allocated),
-        itemStyle: { color: "#3b82f6" },
+        itemStyle: { color: colors.info },
       },
       {
         name: "归还",
         type: "line",
         smooth: true,
         data: trendData.map((d) => d.returned),
-        itemStyle: { color: "#22c55e" },
+        itemStyle: { color: colors.success },
       },
       {
         name: "调拨",
         type: "line",
         smooth: true,
         data: trendData.map((d) => d.transferred),
-        itemStyle: { color: "#f59e0b" },
+        itemStyle: { color: colors.warning },
       },
       {
         name: "报废",
         type: "line",
         smooth: true,
         data: trendData.map((d) => d.scrapped),
-        itemStyle: { color: "#ef4444" },
+        itemStyle: { color: colors.destructive },
       },
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 300 }} />;
+  return (
+    <div role="img" aria-label={`设备流转趋势折线图，${months.length} 个月，含分配、归还、调拨、报废`}>
+      <ReactECharts option={option} style={{ height: 300 }} />
+    </div>
+  );
 }
 
 function BarChart({ assetStats }: { assetStats: AssetStats | null }) {
+  const colors = useThemeColors();
   const categories = assetStats?.byCategory ?? [];
   if (categories.length === 0) return <NoData />;
 
@@ -193,15 +199,20 @@ function BarChart({ assetStats }: { assetStats: AssetStats | null }) {
       {
         type: "bar",
         data: categories.map((c) => c.count),
-        itemStyle: { color: "#3b82f6", borderRadius: [4, 4, 0, 0] },
+        itemStyle: { color: colors.primary, borderRadius: [4, 4, 0, 0] },
       },
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 300 }} />;
+  return (
+    <div role="img" aria-label={`各设备分类数量柱状图，共 ${categories.length} 个分类`}>
+      <ReactECharts option={option} style={{ height: 300 }} />
+    </div>
+  );
 }
 
 function StockBarChart({ stockStats }: { stockStats: StockStat[] }) {
+  const colors = useThemeColors();
   if (stockStats.length === 0) return <NoData />;
 
   const sorted = [...stockStats]
@@ -233,21 +244,25 @@ function StockBarChart({ stockStats }: { stockStats: StockStat[] }) {
       {
         type: "bar",
         data: sorted.map((s) => s.quantity).reverse(),
-        itemStyle: { color: "#3b82f6", borderRadius: [0, 4, 4, 0] },
+        itemStyle: { color: colors.primary, borderRadius: [0, 4, 4, 0] },
       },
     ],
   };
 
-  return <ReactECharts option={option} style={{ height: 300 }} />;
+  return (
+    <div role="img" aria-label={`库存配件数量条形图，展示数量最多的 ${sorted.length} 个型号`}>
+      <ReactECharts option={option} style={{ height: 300 }} />
+    </div>
+  );
 }
 
 export function StatsClient({ assetStats, stockStats, trendData }: StatsClientProps) {
   const statusCards = [
-    { label: "总设备数", value: assetStats?.total ?? 0, icon: Monitor, color: "text-blue-600 bg-blue-100" },
-    { label: "闲置", value: assetStats?.byStatus["IDLE"] ?? 0, icon: Package, color: "text-slate-600 bg-slate-100" },
-    { label: "在用", value: assetStats?.byStatus["IN_USE"] ?? 0, icon: Users, color: "text-green-600 bg-green-100" },
-    { label: "维修中", value: assetStats?.byStatus["IN_MAINTENANCE"] ?? 0, icon: Wrench, color: "text-yellow-600 bg-yellow-100" },
-    { label: "报废", value: assetStats?.byStatus["SCRAPPED"] ?? 0, icon: Trash2, color: "text-red-600 bg-red-100" },
+    { label: "总设备数", value: assetStats?.total ?? 0, icon: Monitor, color: "text-info bg-info-soft" },
+    { label: "闲置", value: assetStats?.byStatus["IDLE"] ?? 0, icon: Package, color: "text-muted-foreground bg-muted" },
+    { label: "在用", value: assetStats?.byStatus["IN_USE"] ?? 0, icon: Users, color: "text-success bg-success-soft" },
+    { label: "维修中", value: assetStats?.byStatus["IN_MAINTENANCE"] ?? 0, icon: Wrench, color: "text-warning bg-warning-soft" },
+    { label: "报废", value: assetStats?.byStatus["SCRAPPED"] ?? 0, icon: Trash2, color: "text-destructive bg-destructive-soft" },
   ];
 
   return (

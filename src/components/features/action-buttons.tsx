@@ -36,7 +36,7 @@ export function ActionButtons({
     try {
       const result = await onDelete();
       if (result.success) {
-        toast({ title: "删除成功" });
+        toast({ variant: "success", title: "删除成功" });
         onSuccess?.();
       } else {
         toast({ title: "删除失败", description: result.error, variant: "destructive" });
@@ -59,7 +59,7 @@ export function ActionButtons({
   return (
     <>
       <div className="flex items-center gap-1 justify-center">
-        <Button
+        <Button aria-label="编辑"
           type="button"
           variant="ghost"
           size="icon"
@@ -68,7 +68,7 @@ export function ActionButtons({
         >
           <Pencil className="h-4 w-4 text-primary" />
         </Button>
-        <Button
+        <Button aria-label="删除"
           type="button"
           variant="ghost"
           size="icon"
