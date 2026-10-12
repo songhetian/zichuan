@@ -18,9 +18,7 @@ function renderActions(overrides: Partial<React.ComponentProps<typeof AssetHeade
   return render(
     <AssetHeaderActions
       hasSelection={overrides.hasSelection ?? false}
-      exportLoading={false}
-      importLoading={false}
-      autoImportLoading={false}
+      pending={overrides.pending ?? null}
       onCreate={noop}
       onExportAll={noop}
       onExportSelected={noop}
@@ -97,5 +95,18 @@ describe("设备顶部操作栏 — 细粒度按钮权限门控（f5）", () => 
     renderActions({ hasSelection: true });
 
     expect(screen.queryByRole("button", { name: /导出选中/ })).not.toBeInTheDocument();
+  });
+
+  it("pending 为 import 时锁定全部动作按钮并显示对应进行中文案", () => {
+    authPerms.granted = new Set(["asset.device.create", "asset.device.export", "asset.import.execute"]);
+    renderActions({ pending: "import" });
+
+    // 进行中的按钮文案切换为「导入中...」
+    expect(screen.getByRole("button", { name: "导入中..." })).toBeDisabled();
+    // 其余动作按钮一并锁定，避免并发触发覆盖单一 pending 状态
+    expect(screen.getByRole("button", { name: "导出 Excel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "硬件扫描导入" })).toBeDisabled();
+    // 新建设备为同步动作，不随 pending 锁定
+    expect(screen.getByRole("button", { name: "新建设备" })).toBeEnabled();
   });
 });

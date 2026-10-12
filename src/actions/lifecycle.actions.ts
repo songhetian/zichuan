@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { guardPermission } from "@/lib/permissions";
 import { applyComponentAdjustments } from "@/lib/component-adjust";
+import type { AllocationConflict } from "@/lib/allocation-pairing";
 
 // ============================================================
 // Schema 校验
@@ -206,6 +207,229 @@ export async function allocateAssets(
       }
     }
     return { success: false, error: "分配失败" };
+  }
+}
+
+// ============================================================
+// 批量分配（严格 1:1：每台设备对一位员工，整批单事务）
+// ============================================================
+
+const batchAllocateSchema = z.object({
+  pairs: z
+    .array(z.object({ assetId: z.number(), employeeId: z.number() }))
+    .min(1, "设备列表不能为空"),
+  operator: z.string().min(1, "操作员不能为空"),
+  remark: z.string().optional(),
+});
+
+export type BatchAllocateResult =
+  | { success: true; data: { allocatedCount: number } }
+  | { success: false; error: string; conflicts: AllocationConflict[] };
+
+/**
+ * 批量分配：一次提交 N 对「设备 → 员工」。
+ *
+ * 与 allocateAssets（单员工）的区别：
+ *   1. 每台设备可以指定不同的使用人；
+ *   2. **整批单事务，全成或全败** —— 任何一对不可分配即整批不生效；
+ *   3. 失败时返回 `conflicts` 结构化清单（哪台、哪人、为什么），
+ *      前端按 assetId 把原因标回配对表对应行，而不是只丢一句笼统错误。
+ *
+ * 严格的 1:1 前置约束（同一设备 / 同一员工都不允许重复出现）在服务端再次强制，
+ * 因为「同一批次内同唯一分类多台给同一人」这类冲突在 1:1 下不可能发生。
+ */
+export async function allocateAssetsBatch(
+  input: z.infer<typeof batchAllocateSchema>
+): Promise<BatchAllocateResult> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有资产管理权限");
+  if (denied) return { success: false, error: "没有资产管理权限", conflicts: [] };
+
+  const validated = batchAllocateSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.errors[0]?.message ?? "参数错误", conflicts: [] };
+  }
+
+  const { pairs, operator, remark } = validated.data;
+
+  // 严格 1:1：同一台设备 / 同一位员工都不允许出现两次
+  const assetIds = pairs.map((p) => p.assetId);
+  const employeeIds = pairs.map((p) => p.employeeId);
+  if (new Set(assetIds).size !== assetIds.length) {
+    return { success: false, error: "同一台设备被指定给了多位员工，请检查配对", conflicts: [] };
+  }
+  if (new Set(employeeIds).size !== employeeIds.length) {
+    return { success: false, error: "同一位员工被指定了多台设备，请检查配对", conflicts: [] };
+  }
+
+  const employees = await prisma.employee.findMany({ where: { id: { in: employeeIds } } });
+  if (employees.length !== employeeIds.length) {
+    return { success: false, error: "部分员工不存在", conflicts: [] };
+  }
+  const employeeById = new Map(employees.map((e) => [e.id, e]));
+
+  const assets = await prisma.asset.findMany({ where: { id: { in: assetIds } } });
+  if (assets.length !== assetIds.length) {
+    return { success: false, error: "部分设备不存在", conflicts: [] };
+  }
+  const assetById = new Map(assets.map((a) => [a.id, a]));
+
+  // 设备所属分类（含唯一性标记）
+  const templates = await prisma.deviceTemplate.findMany({
+    where: { id: { in: [...new Set(assets.map((a) => a.templateId))] } },
+    select: { id: true, categoryId: true },
+  });
+  const templateToCategory = new Map(templates.map((t) => [t.id, t.categoryId]));
+  const categories = await prisma.assetCategory.findMany({
+    where: { id: { in: [...new Set(templates.map((t) => t.categoryId))] } },
+    select: { id: true, name: true, unique: true },
+  });
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+
+  // 目标员工当前仍占用的设备（「持有」= IDLE / IN_USE / IN_MAINTENANCE），用于 R4 唯一性预校验
+  const heldAssets = await prisma.asset.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
+      id: { notIn: assetIds },
+    },
+    select: {
+      id: true,
+      assetNo: true,
+      employeeId: true,
+      template: { select: { categoryId: true } },
+    },
+  });
+
+  // 逐对预校验，把问题落在「具体哪一台 → 哪个人」上
+  const conflicts: AllocationConflict[] = [];
+  for (const pair of pairs) {
+    const asset = assetById.get(pair.assetId)!;
+    const employee = employeeById.get(pair.employeeId)!;
+    const categoryId = templateToCategory.get(asset.templateId)!;
+    const category = categoryById.get(categoryId);
+
+    const push = (reason: string) =>
+      conflicts.push({
+        assetId: asset.id,
+        assetNo: asset.assetNo,
+        employeeId: employee.id,
+        employeeName: employee.name,
+        reason,
+      });
+
+    if (employee.status === "LEFT") {
+      push(`${employee.name} 已离职，不可分配设备`);
+      continue;
+    }
+    if (asset.status !== "IDLE") {
+      push(`设备 ${asset.assetNo} 当前非闲置状态，不可分配`);
+      continue;
+    }
+    if (category?.unique) {
+      const held = heldAssets.find(
+        (h) => h.employeeId === employee.id && h.template.categoryId === categoryId
+      );
+      if (held) {
+        push(`${employee.name} 已持有「${category.name}」${held.assetNo}，该分类每人限 1 台`);
+      }
+    }
+  }
+
+  if (conflicts.length > 0) {
+    return {
+      success: false,
+      error: `有 ${conflicts.length} 对无法分配，本次分配未生效`,
+      conflicts,
+    };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // R4 兜底：事务内再确认一次目标员工没有同唯一分类的其他设备（防并发写入）
+      const uniqueCategoryIds = categories.filter((c) => c.unique).map((c) => c.id);
+      if (uniqueCategoryIds.length > 0) {
+        const offenders = await tx.asset.findMany({
+          where: {
+            employeeId: { in: employeeIds },
+            template: { categoryId: { in: uniqueCategoryIds } },
+            status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
+            id: { notIn: assetIds },
+          },
+          select: { id: true },
+        });
+        if (offenders.length > 0) {
+          throw new Error(`UNIQUE_VIOLATION:${categories.filter((c) => c.unique).map((c) => c.name).join("、")}`);
+        }
+      }
+
+      // 原子性更新：只有「闲置」的设备才会被更新，且每台带着自己那位使用人的名字
+      let updatedCount = 0;
+      for (const pair of pairs) {
+        const asset = assetById.get(pair.assetId)!;
+        const employee = employeeById.get(pair.employeeId)!;
+        const categoryId = templateToCategory.get(asset.templateId)!;
+        const updateResult = await tx.asset.updateMany({
+          where: { id: asset.id, status: "IDLE" },
+          data: {
+            status: "IN_USE",
+            employeeId: employee.id,
+            name: `${employee.name}的${categoryById.get(categoryId)?.name ?? ""}`,
+          },
+        });
+        updatedCount += updateResult.count;
+      }
+
+      // 有任何一台没被更新（并发抢走 / 状态已变）→ 整批回滚
+      if (updatedCount !== pairs.length) {
+        throw new Error("STATUS_CONFLICT");
+      }
+
+      const assetStatusMap = new Map(assets.map((a) => [a.id, a.status]));
+      await tx.lifecycleLog.createMany({
+        data: pairs.map((p) => ({
+          assetId: p.assetId,
+          action: "ALLOCATED",
+          fromStatus: assetStatusMap.get(p.assetId) ?? "IDLE",
+          toStatus: "IN_USE",
+          employeeId: p.employeeId,
+          operator,
+          remark: remark ?? null,
+        })),
+      });
+
+      return { allocatedCount: pairs.length };
+    });
+
+    const assetNos = assets.map((a) => a.assetNo).join("、");
+    const employeeNames = employees.map((e) => e.name).join("、");
+    await prisma.systemLog.create({
+      data: {
+        module: "分配",
+        action: "批量分配设备",
+        detail: `将 ${assetNos} 分别分配给 ${employeeNames}`,
+        operator,
+      },
+    });
+
+    return { success: true, data: result };
+  } catch (e) {
+    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
+      return {
+        success: false,
+        error: "部分设备已被他人分配或状态已变更，本次分配未生效",
+        conflicts: [],
+      };
+    }
+    if (e instanceof Error && e.message.startsWith("UNIQUE_VIOLATION")) {
+      const names = e.message.split(":")[1] ?? "";
+      return {
+        success: false,
+        error: `唯一性约束：目标员工已持有该分类（${names}）下的设备，本次分配未生效`,
+        conflicts: [],
+      };
+    }
+    return { success: false, error: "批量分配失败", conflicts: [] };
   }
 }
 

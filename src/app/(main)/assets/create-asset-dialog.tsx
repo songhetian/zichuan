@@ -212,6 +212,24 @@ export function CreateAssetDialog({
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="qty">数量</Label>
+            <Input
+              id="qty"
+              type="number"
+              min={1}
+              aria-label="数量"
+              aria-invalid={!!form.formState.errors.quantity}
+              aria-describedby={form.formState.errors.quantity ? "qty-error" : undefined}
+              {...form.register("quantity", { valueAsNumber: true })}
+            />
+            {form.formState.errors.quantity && (
+              <p id="qty-error" role="alert" className="text-sm text-destructive">
+                {form.formState.errors.quantity.message}
+              </p>
+            )}
+          </div>
+
           {selectedTemplate && (
             <div className="space-y-2">
               <div className="text-sm font-medium">配置预览</div>
@@ -232,24 +250,6 @@ export function CreateAssetDialog({
               )}
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label htmlFor="qty">数量</Label>
-            <Input
-              id="qty"
-              type="number"
-              min={1}
-              aria-label="数量"
-              aria-invalid={!!form.formState.errors.quantity}
-              aria-describedby={form.formState.errors.quantity ? "qty-error" : undefined}
-              {...form.register("quantity", { valueAsNumber: true })}
-            />
-            {form.formState.errors.quantity && (
-              <p id="qty-error" role="alert" className="text-sm text-destructive">
-                {form.formState.errors.quantity.message}
-              </p>
-            )}
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="user">使用人</Label>

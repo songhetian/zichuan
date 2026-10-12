@@ -34,17 +34,21 @@ type BizType =
   | "ASSET_PURCHASE";
 type ActionType = "UPGRADE" | "DOWNGRADE";
 
+/**
+ * 表单形态：一个业务类型对应一种字段组合与校验口径。
+ * 以单一判别字段取代原先 4 个并列布尔位（needsAsset/needsEmployee/needsComponent/needsPurchase），
+ * 消除「多个布尔同时为真」这类不可能状态。
+ */
+type BizForm = "upgrade" | "asset" | "depart" | "purchase";
+
+/** 需要选择设备（升级配件 / 普通资产单：报废、退回、更换、维修） */
+const requiresAsset = (form: BizForm) => form === "upgrade" || form === "asset";
+
 interface BizTab {
   value: BizType;
   label: string;
-  /** 是否需要选择设备 */
-  needsAsset: boolean;
-  /** 需要选择离职员工（DEPART 专用，不选设备） */
-  needsEmployee: boolean;
-  /** 只有升级/降级需要配件类别+动作 */
-  needsComponent: boolean;
-  /** 加购配件专用（PURCHASE）：选分类/型号/数量/单价，不选设备 */
-  needsPurchase: boolean;
+  /** 表单形态：决定渲染哪些字段、如何校验 */
+  form: BizForm;
   titlePlaceholder: string;
   reasonLabel: string;
   reasonPlaceholder: string;
@@ -56,10 +60,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_UPGRADE",
     label: "升级配件",
-    needsAsset: true,
-    needsEmployee: false,
-    needsComponent: true,
-    needsPurchase: false,
+    form: "upgrade",
     titlePlaceholder: "如：申请升级内存",
     reasonLabel: "申请原因",
     reasonPlaceholder: "说明升级/降级原因，便于审批人了解情况",
@@ -68,10 +69,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_SCRAP",
     label: "资产报废",
-    needsAsset: true,
-    needsEmployee: false,
-    needsComponent: false,
-    needsPurchase: false,
+    form: "asset",
     titlePlaceholder: "如：申请报废损坏的电脑主机",
     reasonLabel: "报废原因",
     reasonPlaceholder: "说明报废原因，便于审批人核验",
@@ -80,10 +78,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_RETURN",
     label: "设备退回",
-    needsAsset: true,
-    needsEmployee: false,
-    needsComponent: false,
-    needsPurchase: false,
+    form: "asset",
     titlePlaceholder: "如：申请退回不再使用的显示器",
     reasonLabel: "退回原因",
     reasonPlaceholder: "说明退回原因，便于审批人核验",
@@ -92,10 +87,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_REPLACE",
     label: "更换设备",
-    needsAsset: true,
-    needsEmployee: false,
-    needsComponent: false,
-    needsPurchase: false,
+    form: "asset",
     titlePlaceholder: "如：申请更换故障笔记本",
     reasonLabel: "更换原因",
     reasonPlaceholder: "说明更换原因，新设备由资产管理员执行时分配",
@@ -104,10 +96,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_REPAIR",
     label: "设备维修",
-    needsAsset: true,
-    needsEmployee: false,
-    needsComponent: false,
-    needsPurchase: false,
+    form: "asset",
     titlePlaceholder: "如：申请送修无法开机的电脑",
     reasonLabel: "维修原因",
     reasonPlaceholder: "说明维修原因，备用机由资产管理员执行时分配",
@@ -116,10 +105,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_DEPART",
     label: "员工离职",
-    needsAsset: false,
-    needsEmployee: true,
-    needsComponent: false,
-    needsPurchase: false,
+    form: "depart",
     titlePlaceholder: "如：申请办理员工离职交接",
     reasonLabel: "离职原因",
     reasonPlaceholder: "说明离职原因，审批通过后生成交接单回收名下设备",
@@ -128,10 +114,7 @@ const BIZ_TABS: BizTab[] = [
   {
     value: "ASSET_PURCHASE",
     label: "加购配件",
-    needsAsset: false,
-    needsEmployee: false,
-    needsComponent: false,
-    needsPurchase: true,
+    form: "purchase",
     titlePlaceholder: "如：加购 64G 内存",
     reasonLabel: "申请原由",
     reasonPlaceholder: "说明加购原因，便于审批人核验",
@@ -196,7 +179,7 @@ export function NewRequestClient({
   const ActiveIcon = BIZ_ICON[bizType];
 
   // 是否显示「为谁申请」：有可代申的下属且当前业务类型需选设备（离职单不适用）
-  const showDelegation = delegation.length > 0 && !tab.needsEmployee;
+  const showDelegation = delegation.length > 0 && tab.form !== "depart";
   const delegateTarget = delegation.find((d) => d.id === Number(forWhom));
 
   // 代申模式下切换到下属的设备/配件范围
@@ -279,11 +262,11 @@ export function NewRequestClient({
       toast({ title: "请输入申请标题", variant: "destructive" });
       return;
     }
-    if (tab.needsEmployee && !employeeId) {
+    if (tab.form === "depart" && !employeeId) {
       toast({ title: "请选择离职员工", variant: "destructive" });
       return;
     }
-    if (tab.needsAsset && !assetId) {
+    if (requiresAsset(tab.form) && !assetId) {
       toast({ title: "请选择设备", variant: "destructive" });
       return;
     }
@@ -469,7 +452,7 @@ export function NewRequestClient({
                   />
                 </div>
 
-                {tab.needsEmployee && (
+                {tab.form === "depart" && (
                   <div className="space-y-1.5">
                     <Label className="req text-sm font-medium text-foreground" htmlFor="person">
                       离职员工
@@ -488,7 +471,7 @@ export function NewRequestClient({
                   </div>
                 )}
 
-                {tab.needsAsset && (
+                {requiresAsset(tab.form) && (
                   <div className="space-y-1.5">
                     <Label className="req text-sm font-medium text-foreground" htmlFor="asset">
                       设备
@@ -510,7 +493,7 @@ export function NewRequestClient({
                   </div>
                 )}
 
-                {tab.needsComponent && (
+                {tab.form === "upgrade" && (
                   <div className="space-y-1.5">
                     <Label className="req text-sm font-medium text-foreground" htmlFor="comp-cat">
                       配件类别
@@ -528,7 +511,7 @@ export function NewRequestClient({
                   </div>
                 )}
 
-                {tab.needsComponent && (
+                {tab.form === "upgrade" && (
                   <div className="space-y-1.5">
                     <Label className="req text-sm font-medium text-foreground" htmlFor="action">
                       动作
@@ -548,7 +531,7 @@ export function NewRequestClient({
                   </div>
                 )}
 
-                {tab.needsPurchase && (
+                {tab.form === "purchase" && (
                   <>
                     <div className="space-y-1.5">
                     <Label className="req text-sm font-medium text-foreground" htmlFor="comp-category">

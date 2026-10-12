@@ -21,8 +21,6 @@ interface ConfirmDialogProps {
   confirmText?: string
   cancelText?: string
   variant?: "default" | "destructive"
-  /** 是否显示加载状态；不传则由组件内部管理 */
-  loading?: boolean
   /** 确认回调，支持同步或异步函数 */
   onConfirm: () => void | Promise<void>
 }
@@ -35,23 +33,22 @@ export function ConfirmDialog({
   confirmText = "确认",
   cancelText = "取消",
   variant = "default",
-  loading: loadingProp,
   onConfirm,
 }: ConfirmDialogProps) {
-  const [internalLoading, setInternalLoading] = useState(false)
-  const isLoading = loadingProp ?? internalLoading
+  // 加载态由组件内部自管（唯一事实来源），不再支持外部受控传入
+  const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
 
   const handleConfirm = useCallback(async () => {
     if (isLoading) return
 
     try {
-      setInternalLoading(true)
+      setIsLoading(true)
       await onConfirm()
     } catch {
       toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" })
     } finally {
-      setInternalLoading(false)
+      setIsLoading(false)
     }
   }, [isLoading, onConfirm, toast])
 

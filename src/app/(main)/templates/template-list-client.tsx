@@ -399,45 +399,45 @@ export function TemplateListClient({ templates, categories, componentModels, com
         columns={createTemplateColumns(categories, componentModels, templateOptions, componentCategories)}
         data={filteredTemplates}
         defaultSorting={[{ id: "createdAt", desc: true }]}
-        isFiltered={!!(search.trim() || categoryFilter)}
-        filteredEmptyState={
-          <div className="flex flex-col items-center gap-3 py-2">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
-              <SearchX className="h-6 w-6 text-muted-foreground/60" />
-            </span>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">未找到匹配的模板</p>
-              <p className="mt-1 text-xs text-muted-foreground/80">试试换个关键词，或清除筛选条件</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSearch("");
-                setCategoryFilter("");
-              }}
-            >
-              清除筛选
-            </Button>
-          </div>
-        }
         emptyState={
-          <div className="flex flex-col items-center gap-3 py-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Layers className="h-7 w-7 text-primary" />
-            </span>
-            <div className="max-w-xs text-center">
-              <p className="text-sm font-medium text-foreground">还没有设备模板</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                用一个模板把同类设备的配件清单标准化，建档时一键带出，无需逐台重复填写。
-              </p>
+          search.trim() || categoryFilter ? (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/30">
+                <SearchX className="h-6 w-6 text-muted-foreground/60" />
+              </span>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">未找到匹配的模板</p>
+                <p className="mt-1 text-xs text-muted-foreground/80">试试换个关键词，或清除筛选条件</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setCategoryFilter("");
+                }}
+              >
+                清除筛选
+              </Button>
             </div>
-            <Button type="button" size="sm" className="mt-1" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              新建第一个模板
-            </Button>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                <Layers className="h-7 w-7 text-primary" />
+              </span>
+              <div className="max-w-xs text-center">
+                <p className="text-sm font-medium text-foreground">还没有设备模板</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  用一个模板把同类设备的配件清单标准化，建档时一键带出，无需逐台重复填写。
+                </p>
+              </div>
+              <Button type="button" size="sm" className="mt-1" onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                新建第一个模板
+              </Button>
+            </div>
+          )
         }
       />
 

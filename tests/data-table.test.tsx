@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from "vitest"
-import { render, screen, cleanup } from "@testing-library/react"
+import { describe, it, expect, afterEach, vi } from "vitest"
+import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { DataTable } from "@/components/features/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 
@@ -53,5 +53,69 @@ describe("DataTable 列对齐", () => {
     const statusCells = screen.getAllByText("IDLE")
     const firstStatusCell = statusCells[0].closest("td")
     expect(firstStatusCell?.className).toContain("text-center")
+  })
+})
+
+describe("DataTable 选中态上抛", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  const selectableColumns: ColumnDef<TestRow>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          aria-label="全选"
+          checked={table.getIsAllRowsSelected()}
+          onChange={table.getToggleAllRowsSelectedHandler()}
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          aria-label={`选择 ${row.original.name}`}
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+        />
+      ),
+    },
+    ...columns,
+  ]
+
+  it("勾选单行后，回调收到该行的原始数据", () => {
+    const spy = vi.fn()
+    render(
+      <DataTable
+        columns={selectableColumns}
+        data={data}
+        enableRowSelection
+        onRowSelectionChange={spy}
+      />
+    )
+
+    fireEvent.click(screen.getByLabelText("选择 测试设备"))
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0]).toEqual([data[0]])
+  })
+
+  it("全选后，回调收到全部原始数据；取消全选后回调收到空数组", () => {
+    const spy = vi.fn()
+    render(
+      <DataTable
+        columns={selectableColumns}
+        data={data}
+        enableRowSelection
+        onRowSelectionChange={spy}
+      />
+    )
+
+    fireEvent.click(screen.getByLabelText("全选"))
+    expect(spy.mock.calls.at(-1)?.[0]).toEqual(data)
+
+    fireEvent.click(screen.getByLabelText("全选"))
+    expect(spy.mock.calls.at(-1)?.[0]).toEqual([])
   })
 })

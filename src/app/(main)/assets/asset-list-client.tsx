@@ -2,7 +2,17 @@
 
 import { downloadExcelFile } from "@/lib/excel-download";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  useId,
+  createContext,
+  useContext,
+  type ReactNode,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/features/data-table";
@@ -25,7 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CreateAssetDialog } from "./create-asset-dialog";
-import { AssetHeaderActions } from "./asset-header-actions";
+import { AssetHeaderActions, type AssetHeaderAction } from "./asset-header-actions";
 import {
   Eye,
   Pencil,
@@ -60,14 +70,22 @@ import {
   returnAssets,
   scrapAssets,
   allocateAssets,
+  allocateAssetsBatch,
   transferAssets,
   maintenanceStart,
   maintenanceComplete,
 } from "@/actions/lifecycle.actions";
+import {
+  EmployeePicker,
+  type PickerEmployee,
+} from "@/components/features/employee-pick-list";
+import { BatchAllocateDialog } from "@/components/features/batch-allocate-dialog";
+import type { PairingCategory } from "@/lib/allocation-pairing";
 import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.actions";
 import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
 import { getMemoryGB, getDiskGB } from "@/lib/asset-filter";
 import { filterByImportDate } from "@/lib/filter-by-import-date";
+import type { ActionResult } from "@/lib/types";
 
 // ============================================================
 // Helpers
@@ -227,7 +245,7 @@ interface AssetListClientProps {
   assets: AssetItem[];
   templates: { id: number; name: string; categoryId: number; brand?: string | null; model?: string | null; components: { modelId: number; modelName: string; modelBrand: string | null; quantity: number }[] }[];
   categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
-  employees: { id: number; name: string; departmentName: string }[];
+  employees: PickerEmployee[];
   departments: { id: number; name: string }[];
 }
 
@@ -244,34 +262,27 @@ interface EditAssetDialogProps {
 function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [serialNo, setSerialNo] = useState("");
   const [notes, setNotes] = useState("");
   const { toast } = useToast();
 
-  const handleOpen = (v: boolean) => {
-    if (v && asset) {
-      setName(asset.name);
-      setBrand(asset.brand ?? "");
-      setModel(asset.model ?? "");
-      setSerialNo(asset.serialNo ?? "");
-      setNotes(asset.notes ?? "");
-    }
-    onOpenChange(v);
-  };
+  // 打开时回填。open 由外部（设备操作上下文）驱动，Radix 在受控打开时
+  // 不会回调 onOpenChange，因此不能在 onOpenChange 里做回填，必须监听 open。
+  useEffect(() => {
+    if (!open || !asset) return;
+    setBrand(asset.brand ?? "");
+    setModel(asset.model ?? "");
+    setSerialNo(asset.serialNo ?? "");
+    setNotes(asset.notes ?? "");
+  }, [open, asset]);
 
   const handleSubmit = async () => {
     if (!asset) return;
-    if (!name.trim()) {
-      toast({ title: "设备名称不能为空", variant: "destructive" });
-      return;
-    }
     setLoading(true);
     try {
       const result = await updateAsset(asset.id, {
-        name: name.trim(),
         brand: brand.trim() || null,
         model: model.trim() || null,
         serialNo: serialNo.trim() || null,
@@ -292,16 +303,21 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>编辑设备</DialogTitle>
-          <DialogDescription>修改设备基本信息。</DialogDescription>
+          <DialogDescription>修改设备登记信息（品牌 / 型号 / 序列号 / 备注）。</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-name">设备名称</Label>
-            <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入设备名称" />
+            <Label>设备名称</Label>
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+              {asset?.name ?? "-"}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              名称随归属由系统维护：分配 / 调拨后为「使用人的设备分类」，归还后恢复模板名，不支持手工修改。
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -336,340 +352,691 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
 }
 
 // ============================================================
-// Action Buttons - 图标化
+// 员工选择弹窗
+// 结构由 AssignFrame 统一渲染；分配 / 调拨各自是一个显式变体组件，
+// 只负责填本变体固定的话术（员工标签 / 按钮文案）与排除规则，调用方不再传这些模式参数
 // ============================================================
 
-function ActionButtons({
-  asset,
+interface AssignFrameProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: ReactNode;
+  employeeLabel: string;
+  employeePlaceholder: string;
+  confirmText: string;
+  loadingText: string;
+  employees: EmployeeOption[];
+  departments: { id: number; name: string }[];
+  /** 需要排除的员工（调拨时排除设备当前使用人） */
+  excludeEmployeeId?: number | null;
+  loading: boolean;
+  onConfirm: (employeeId: number) => void;
+}
+
+function AssignFrame({
+  open,
+  onOpenChange,
+  title,
+  description,
+  employeeLabel,
+  employeePlaceholder,
+  confirmText,
+  loadingText,
   employees,
+  departments,
+  excludeEmployeeId,
+  loading,
+  onConfirm,
+}: AssignFrameProps) {
+  const fieldId = useId();
+  const [employeeId, setEmployeeId] = useState<number | null>(null);
+
+  // 关闭时清空选择（无论由按钮还是遮罩 / ESC 关闭），下次打开从空白开始
+  useEffect(() => {
+    if (!open) setEmployeeId(null);
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor={fieldId}>{employeeLabel}</Label>
+          {/* 与批量场景共用同一个选择器：部门筛选、按部门分组、离职禁选保持一致 */}
+          <EmployeePicker
+            id={fieldId}
+            employees={employees}
+            departments={departments}
+            value={employeeId}
+            onValueChange={setEmployeeId}
+            placeholder={employeePlaceholder}
+            excludeIds={excludeEmployeeId != null ? [excludeEmployeeId] : undefined}
+          />
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button
+            type="button"
+            onClick={() => employeeId != null && onConfirm(employeeId)}
+            disabled={loading || employeeId == null}
+          >
+            {loading ? loadingText : confirmText}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface AssignVariantProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: ReactNode;
+  employees: EmployeeOption[];
+  departments: { id: number; name: string }[];
+  loading: boolean;
+  onConfirm: (employeeId: number) => void;
+}
+
+/** 分配设备：把闲置设备交给某员工 */
+function AllocateDialog(props: AssignVariantProps) {
+  return (
+    <AssignFrame
+      {...props}
+      employeeLabel="选择员工"
+      employeePlaceholder="请选择员工"
+      confirmText="确认分配"
+      loadingText="分配中..."
+    />
+  );
+}
+
+/** 调拨设备：把在用设备转给其他员工，排除当前使用人 */
+function TransferDialog({
+  excludeEmployeeId,
+  ...props
+}: AssignVariantProps & { excludeEmployeeId?: number | null }) {
+  return (
+    <AssignFrame
+      {...props}
+      employeeLabel="目标员工"
+      employeePlaceholder="请选择目标员工"
+      confirmText="确认调拨"
+      loadingText="调拨中..."
+      excludeEmployeeId={excludeEmployeeId}
+    />
+  );
+}
+
+// ============================================================
+// 设备操作上下文（state / actions / meta）
+// 行级与批量弹窗共用同一份状态与同一套业务动作，弹窗全局只渲染一份
+// ============================================================
+
+/** 行级动作：作用于单台设备 */
+type RowAction =
+  | "edit"
+  | "return"
+  | "scrap"
+  | "delete"
+  | "allocate"
+  | "transfer"
+  | "maintenance"
+  | "maintenanceComplete";
+
+/** 批量动作：作用于当前选中集合 */
+type BatchAction =
+  | "allocate"
+  | "transfer"
+  | "return"
+  | "maintenance"
+  | "maintenanceComplete"
+  | "scrap"
+  | "delete";
+
+/** 显式变体：同一时刻至多一个弹窗可见，从状态层面消除「多个弹窗同时打开」这类不可能状态 */
+type ActiveDialog =
+  | { scope: "row"; kind: RowAction; asset: AssetItem }
+  | { scope: "batch"; kind: BatchAction }
+  | null;
+
+/** 员工选择器用的最小员工信息：与批量配对引擎共用同一个结构，避免两套类型互转 */
+type EmployeeOption = PickerEmployee;
+
+interface AssetActionsState {
+  dialog: ActiveDialog;
+  loading: boolean;
+  selection: AssetItem[];
+  /** 按状态机 R2 预筛后的可执行集合：只对符合条件的设备生效 */
+  eligible: Record<BatchAction, AssetItem[]>;
+}
+
+interface AssetActionsActions {
+  setSelection: (rows: AssetItem[]) => void;
+  openRow: (kind: RowAction, asset: AssetItem) => void;
+  openBatch: (kind: BatchAction) => void;
+  close: () => void;
+}
+
+interface AssetActionsMeta {
+  employees: EmployeeOption[];
+}
+
+interface AssetActionsContextValue {
+  state: AssetActionsState;
+  actions: AssetActionsActions;
+  meta: AssetActionsMeta;
+}
+
+const AssetActionsContext = createContext<AssetActionsContextValue | null>(null);
+
+function useAssetActions() {
+  const ctx = useContext(AssetActionsContext);
+  if (!ctx) throw new Error("useAssetActions 必须在 AssetActionsProvider 内使用");
+  return ctx;
+}
+
+function AssetActionsProvider({
+  employees,
+  departments,
+  categories,
+  assets,
+  children,
 }: {
-  asset: AssetItem;
-  employees: { id: number; name: string; departmentName: string }[];
+  employees: EmployeeOption[];
+  departments: { id: number; name: string }[];
+  categories: PairingCategory[];
+  /** 全量资产：批量分配要拿它做「目标员工是否已持有同唯一分类设备」的预校验 */
+  assets: AssetItem[];
+  children: ReactNode;
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const [dialog, setDialog] = useState<ActiveDialog>(null);
+  const [selection, setSelection] = useState<AssetItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const close = useCallback(() => setDialog(null), []);
+  const openRow = useCallback(
+    (kind: RowAction, asset: AssetItem) => setDialog({ scope: "row", kind, asset }),
+    []
+  );
+  const openBatch = useCallback((kind: BatchAction) => setDialog({ scope: "batch", kind }), []);
+
+  // 批量动作按状态机 R2 预筛：只对符合条件的设备生效；预占（RESERVED）不参与任何人工流转
+  const eligible = useMemo(() => {
+    const pick = (pred: (s: string) => boolean) => selection.filter((a) => pred(a.status));
+    return {
+      allocate: pick((s) => s === "IDLE"),
+      return: pick((s) => s === "IN_USE"),
+      transfer: pick((s) => s === "IN_USE"),
+      maintenance: pick((s) => s === "IDLE" || s === "IN_USE"),
+      maintenanceComplete: pick((s) => s === "IN_MAINTENANCE"),
+      scrap: pick((s) => s !== "SCRAPPED" && s !== "RESERVED"),
+      delete: pick((s) => s !== "RESERVED"),
+    };
+  }, [selection]);
+
+  // 成功后统一收口：关弹窗 → 批量再清空选择 → 刷新服务端数据
+  const finish = useCallback(
+    (batch: boolean) => {
+      setDialog(null);
+      if (batch) setSelection([]);
+      router.refresh();
+    },
+    [router]
+  );
+
+  /**
+   * 业务动作的执行壳：单条与批量只在 remark / 文案 / 关闭时机上不同，逻辑只写一次。
+   * closeOn 保留原有交互差异：确认类弹窗无论成败都关，员工选择弹窗仅成功才关。
+   */
+  const run = useCallback(
+    async (
+      perform: () => Promise<ActionResult<unknown>>,
+      options: { batch: boolean; ok: string; fail: string; closeOn: "always" | "success" }
+    ) => {
+      setLoading(true);
+      try {
+        const result = await perform();
+        if (result.success) {
+          toast({ variant: "success", title: options.ok });
+          finish(options.batch);
+        } else {
+          toast({ title: options.fail, description: result.error, variant: "destructive" });
+          if (options.closeOn === "always") setDialog(null);
+        }
+      } catch {
+        toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+        if (options.closeOn === "always") setDialog(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [toast, finish]
+  );
+
+  const ids = (assets: AssetItem[]) => assets.map((a) => a.id);
+  // 确认类操作：单条无论成败都关闭、批量仅成功才关闭（均为原有交互）
+  const confirmClose = (batch: boolean): "always" | "success" => (batch ? "success" : "always");
+
+  const handleReturn = (assets: AssetItem[], batch: boolean) =>
+    run(
+      () =>
+        returnAssets({
+          assetIds: ids(assets),
+          operator: "admin",
+          remark: batch ? "批量归还" : "列表快捷归还",
+        }),
+      {
+        batch,
+        ok: batch ? "批量归还成功" : "归还成功",
+        fail: batch ? "批量归还失败" : "归还失败",
+        closeOn: confirmClose(batch),
+      }
+    );
+
+  const handleScrap = (assets: AssetItem[], batch: boolean) =>
+    run(
+      () =>
+        scrapAssets({
+          assetIds: ids(assets),
+          operator: "admin",
+          remark: batch ? "批量报废" : "手动报废",
+        }),
+      {
+        batch,
+        ok: batch ? "批量报废成功" : "报废成功",
+        fail: batch ? "批量报废失败" : "报废失败",
+        closeOn: confirmClose(batch),
+      }
+    );
+
+  const handleMaintenance = (assets: AssetItem[], batch: boolean) =>
+    run(
+      () =>
+        maintenanceStart({
+          assetIds: ids(assets),
+          operator: "admin",
+          remark: batch ? "批量送修" : undefined,
+        }),
+      {
+        batch,
+        ok: batch ? "批量送修成功" : "送修成功",
+        fail: batch ? "批量送修失败" : "送修失败",
+        closeOn: confirmClose(batch),
+      }
+    );
+
+  const handleMaintenanceComplete = (assets: AssetItem[], batch: boolean) =>
+    run(() => maintenanceComplete({ assetIds: ids(assets), operator: "admin" }), {
+      batch,
+      ok: batch ? "批量维修完成成功" : "维修完成",
+      fail: batch ? "批量维修完成失败" : "操作失败",
+      closeOn: confirmClose(batch),
+    });
+
+  const handleDelete = (asset: AssetItem) =>
+    run(() => deleteAsset(asset.id), {
+      batch: false,
+      ok: "删除成功",
+      fail: "删除失败",
+      closeOn: "always",
+    });
+
+  // 单台分配走这里；批量分配改由 BatchAllocateDialog 调 allocateAssetsBatch（整批单事务）
+  const handleAllocate = (assets: AssetItem[], employeeId: number) => {
+    if (assets.length === 0) return;
+    return run(
+      () =>
+        allocateAssets({
+          assetIds: ids(assets),
+          employeeId,
+          operator: "admin",
+          remark: "列表快捷分配",
+        }),
+      {
+        batch: false,
+        ok: "分配成功",
+        fail: "分配失败",
+        closeOn: "success",
+      }
+    );
+  };
+
+  const handleTransfer = (assets: AssetItem[], employeeId: number, batch: boolean) => {
+    if (assets.length === 0) return;
+    return run(
+      () =>
+        transferAssets({
+          assetIds: ids(assets),
+          toEmployeeId: employeeId,
+          operator: "admin",
+          remark: batch ? "批量调拨" : "列表快捷调拨",
+        }),
+      {
+        batch,
+        ok: batch ? "批量调拨成功" : "调拨成功",
+        fail: batch ? "批量调拨失败" : "调拨失败",
+        closeOn: "success",
+      }
+    );
+  };
+
+  // 批量删除逐台真删并按成败计数，不走 run 的统一文案
+  const handleBatchDelete = async (assets: AssetItem[]) => {
+    if (assets.length === 0) return;
+    setLoading(true);
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const a of assets) {
+        const r = await deleteAsset(a.id);
+        if (r.success) ok++;
+        else fail++;
+      }
+    } catch {
+      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+      finish(true);
+      return;
+    } finally {
+      setLoading(false);
+    }
+    if (fail === 0) {
+      toast({ variant: "success", title: `批量删除成功，共 ${ok} 台` });
+    } else {
+      toast({ title: `删除完成：${ok} 成功，${fail} 失败`, variant: "destructive" });
+    }
+    finish(true);
+  };
+
+  const rowAsset = dialog?.scope === "row" ? dialog.asset : null;
+  const rowKind = dialog?.scope === "row" ? dialog.kind : null;
+  const batchKind = dialog?.scope === "batch" ? dialog.kind : null;
+  const rowNo = rowAsset?.assetNo ?? "";
+
+  const actions = useMemo(
+    () => ({ setSelection, openRow, openBatch, close }),
+    [openRow, openBatch, close]
+  );
+  const value: AssetActionsContextValue = {
+    state: { dialog, loading, selection, eligible },
+    actions,
+    meta: { employees },
+  };
+
+  return (
+    <AssetActionsContext.Provider value={value}>
+      {children}
+      {/* 弹窗全局只渲染一份（行级 8 + 批量 7），取代原先「每行各挂 8 个」的 N 倍开销 */}
+      <EditAssetDialog
+        open={rowKind === "edit"}
+        onOpenChange={(v) => !v && close()}
+        asset={rowAsset}
+      />
+      <ConfirmDialog
+        open={rowKind === "return"}
+        onOpenChange={(v) => !v && close()}
+        title="确认归还"
+        description={`确定要归还设备「${rowNo}」吗？`}
+        confirmText="归还"
+        onConfirm={() => {
+          if (rowAsset) return handleReturn([rowAsset], false);
+        }}
+      />
+      <ConfirmDialog
+        open={rowKind === "scrap"}
+        onOpenChange={(v) => !v && close()}
+        title="确认报废"
+        description={`确定要报废设备「${rowNo}」吗？`}
+        confirmText="报废"
+        variant="destructive"
+        onConfirm={() => {
+          if (rowAsset) return handleScrap([rowAsset], false);
+        }}
+      />
+      <ConfirmDialog
+        open={rowKind === "delete"}
+        onOpenChange={(v) => !v && close()}
+        title="确认删除"
+        description={`确定要永久删除设备「${rowNo}」吗？该操作将同时删除其全部配件与生命周期记录，不可恢复！`}
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={() => {
+          if (rowAsset) return handleDelete(rowAsset);
+        }}
+      />
+      <ConfirmDialog
+        open={rowKind === "maintenance"}
+        onOpenChange={(v) => !v && close()}
+        title="确认送修"
+        description={`确定要将设备「${rowNo}」送修吗？`}
+        confirmText="送修"
+        onConfirm={() => {
+          if (rowAsset) return handleMaintenance([rowAsset], false);
+        }}
+      />
+      <ConfirmDialog
+        open={rowKind === "maintenanceComplete"}
+        onOpenChange={(v) => !v && close()}
+        title="确认维修完成"
+        description={`设备「${rowNo}」维修完成了吗？`}
+        confirmText="完成维修"
+        onConfirm={() => {
+          if (rowAsset) return handleMaintenanceComplete([rowAsset], false);
+        }}
+      />
+      {/* 单台分配 / 单台调拨；批量分配另走 BatchAllocateDialog（多员工严格 1:1） */}
+      <AllocateDialog
+        open={rowKind === "allocate"}
+        onOpenChange={(v) => !v && close()}
+        title="分配设备"
+        description="选择要分配的员工"
+        employees={employees}
+        departments={departments}
+        loading={loading}
+        onConfirm={(employeeId) => {
+          if (rowAsset) handleAllocate([rowAsset], employeeId);
+        }}
+      />
+      <TransferDialog
+        open={rowKind === "transfer"}
+        onOpenChange={(v) => !v && close()}
+        title="调拨设备"
+        description="将设备调拨给其他员工"
+        employees={employees}
+        departments={departments}
+        excludeEmployeeId={rowAsset?.employeeId}
+        loading={loading}
+        onConfirm={(employeeId) => {
+          if (rowAsset) handleTransfer([rowAsset], employeeId, false);
+        }}
+      />
+
+      {/* 批量确认类弹窗 */}
+      <ConfirmDialog
+        open={batchKind === "return"}
+        onOpenChange={(v) => !v && close()}
+        title="确认批量归还"
+        description={`确定要归还选中的 ${eligible.return.length} 台设备吗？`}
+        confirmText="批量归还"
+        onConfirm={() => handleReturn(eligible.return, true)}
+      />
+      <ConfirmDialog
+        open={batchKind === "maintenance"}
+        onOpenChange={(v) => !v && close()}
+        title="确认批量送修"
+        description={`确定要将选中的 ${eligible.maintenance.length} 台设备送修吗？`}
+        confirmText="批量送修"
+        onConfirm={() => handleMaintenance(eligible.maintenance, true)}
+      />
+      <ConfirmDialog
+        open={batchKind === "maintenanceComplete"}
+        onOpenChange={(v) => !v && close()}
+        title="确认批量维修完成"
+        description={`确定选中的 ${eligible.maintenanceComplete.length} 台设备已维修完成吗？完成后回到「闲置」，名称恢复为模板名。`}
+        confirmText="批量维修完成"
+        onConfirm={() => handleMaintenanceComplete(eligible.maintenanceComplete, true)}
+      />
+      <ConfirmDialog
+        open={batchKind === "scrap"}
+        onOpenChange={(v) => !v && close()}
+        title="确认批量报废"
+        description={`确定要报废选中的 ${eligible.scrap.length} 台设备吗？此操作不可撤销。`}
+        confirmText="批量报废"
+        variant="destructive"
+        onConfirm={() => handleScrap(eligible.scrap, true)}
+      />
+      <ConfirmDialog
+        open={batchKind === "delete"}
+        onOpenChange={(v) => !v && close()}
+        title="确认批量删除"
+        description={`确定要永久删除选中的 ${eligible.delete.length} 台设备吗？将同时删除其全部配件与生命周期记录，不可恢复！`}
+        confirmText="批量删除"
+        variant="destructive"
+        onConfirm={() => handleBatchDelete(eligible.delete)}
+      />
+      {/* 批量分配：多员工严格 1:1，整批单事务，冲突就地标出 */}
+      <BatchAllocateDialog
+        open={batchKind === "allocate"}
+        onOpenChange={(v) => !v && close()}
+        assets={eligible.allocate}
+        excludedCount={selection.length - eligible.allocate.length}
+        allAssets={assets}
+        categories={categories}
+        employees={employees}
+        departments={departments}
+        loading={loading}
+        onConfirm={async (pairs) => {
+          setLoading(true);
+          try {
+            const result = await allocateAssetsBatch({
+              pairs,
+              operator: "admin",
+              remark: "批量分配",
+            });
+            if (result.success) {
+              toast({
+                variant: "success",
+                title: `批量分配成功，共 ${result.data.allocatedCount} 台`,
+              });
+              finish(true);
+              return [];
+            }
+            toast({ title: "批量分配失败", description: result.error, variant: "destructive" });
+            return result.conflicts;
+          } catch {
+            toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
+            return [];
+          } finally {
+            setLoading(false);
+          }
+        }}
+      />
+      <TransferDialog
+        open={batchKind === "transfer"}
+        onOpenChange={(v) => !v && close()}
+        title="批量调拨设备"
+        description={
+          selection.length > eligible.transfer.length
+            ? `将选中的 ${eligible.transfer.length} 台在用设备调拨给指定员工（另有 ${selection.length - eligible.transfer.length} 台不是「在用」状态，未纳入）`
+            : `将选中的 ${eligible.transfer.length} 台设备调拨给指定员工`
+        }
+        employees={employees}
+        departments={departments}
+        loading={loading}
+        onConfirm={(employeeId) => handleTransfer(eligible.transfer, employeeId, true)}
+      />
+    </AssetActionsContext.Provider>
+  );
+}
+
+// ============================================================
+// Action Buttons - 图标化（只负责触发，弹窗统一由 Provider 渲染）
+// ============================================================
+
+function ActionButtons({ asset }: { asset: AssetItem }) {
+  const router = useRouter();
+  const { actions } = useAssetActions();
   const canEdit = usePermission("asset.device.update");
   const canDelete = usePermission("asset.device.delete");
   // 分配/归还/调拨/送修/维修完成/报废在后端均要求 asset.manage
   const canManage = usePermission("asset.manage");
-  const [scrapOpen, setScrapOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [returnOpen, setReturnOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [allocateOpen, setAllocateOpen] = useState(false);
-  const [allocateEmployeeId, setAllocateEmployeeId] = useState("");
-  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
-  const [maintenanceCompleteOpen, setMaintenanceCompleteOpen] = useState(false);
-  const [transferOpen, setTransferOpen] = useState(false);
-  const [transferEmployeeId, setTransferEmployeeId] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleScrap = async () => {
-    try {
-      const result = await scrapAssets({
-        assetIds: [asset.id],
-        operator: "admin",
-        remark: "手动报废",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "报废成功" });
-        router.refresh();
-      } else {
-        toast({ title: "报废失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    }
-    setScrapOpen(false);
-  };
-
-  const handleDelete = async () => {
-    try {
-      const result = await deleteAsset(asset.id);
-      if (result.success) {
-        toast({ variant: "success", title: "删除成功" });
-        router.refresh();
-      } else {
-        toast({ title: "删除失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    }
-    setDeleteOpen(false);
-  };
-
-  const handleReturn = async () => {
-    try {
-      const result = await returnAssets({
-        assetIds: [asset.id],
-        operator: "admin",
-        remark: "列表快捷归还",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "归还成功" });
-        router.refresh();
-      } else {
-        toast({ title: "归还失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    }
-    setReturnOpen(false);
-  };
-
-  const handleAllocate = async () => {
-    if (!allocateEmployeeId) return;
-    setLoading(true);
-    try {
-      const result = await allocateAssets({
-        assetIds: [asset.id],
-        employeeId: Number(allocateEmployeeId),
-        operator: "admin",
-        remark: "列表快捷分配",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "分配成功" });
-        setAllocateOpen(false);
-        setAllocateEmployeeId("");
-        router.refresh();
-      } else {
-        toast({ title: "分配失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMaintenance = async () => {
-    try {
-      const result = await maintenanceStart({
-        assetIds: [asset.id],
-        operator: "admin",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "送修成功" });
-        router.refresh();
-      } else {
-        toast({ title: "送修失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    }
-    setMaintenanceOpen(false);
-  };
-
-  const handleMaintenanceDone = async () => {
-    try {
-      const result = await maintenanceComplete({
-        assetIds: [asset.id],
-        operator: "admin",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "维修完成" });
-        router.refresh();
-      } else {
-        toast({ title: "操作失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    }
-    setMaintenanceCompleteOpen(false);
-  };
-
-  const handleTransfer = async () => {
-    if (!transferEmployeeId) return;
-    setLoading(true);
-    try {
-      const result = await transferAssets({
-        assetIds: [asset.id],
-        toEmployeeId: Number(transferEmployeeId),
-        operator: "admin",
-        remark: "列表快捷调拨",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "调拨成功" });
-        setTransferOpen(false);
-        setTransferEmployeeId("");
-        router.refresh();
-      } else {
-        toast({ title: "调拨失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const open = (kind: RowAction) => actions.openRow(kind, asset);
 
   return (
-    <>
-      <div className="flex items-center gap-0.5 justify-center">
-        {/* 最高频：查看配置始终可见，不再藏进「更多」 */}
-        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="查看配置" aria-label="查看配置" onClick={() => router.push(`/assets/${asset.id}`)}>
-          <Eye className="h-4 w-4" />
+    <div className="flex items-center gap-0.5 justify-center">
+      {/* 高频：查看配置始终可见，不藏进「更多」 */}
+      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="查看配置" aria-label="查看配置" onClick={() => router.push(`/assets/${asset.id}`)}>
+        <Eye className="h-4 w-4" />
+      </Button>
+      {/* 编辑收进「更多」：行内只留 查看配置 + 状态流转按钮（≤4），控制在 176px 操作列预算内 */}
+      {/* 状态流转按钮：按状态机 R2 的生命周期顺序排列（分配 → 归还 → 调拨 → 维修完成 → 送修），
+          同一状态只会命中其中一项，行内最多 4 个图标 + 「更多」 */}
+      {canManage && asset.status === "IDLE" && (
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="分配" aria-label="分配" onClick={() => open("allocate")}>
+          <UserPlus className="h-4 w-4" />
         </Button>
-        {canEdit && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="编辑" aria-label="编辑" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-        )}
-        {/* 状态相关生命周期操作 */}
-        {canManage && asset.status === "IDLE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="分配" aria-label="分配" onClick={() => setAllocateOpen(true)}>
-            <UserPlus className="h-4 w-4" />
-          </Button>
-        )}
-        {canManage && asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="归还" aria-label="归还" onClick={() => setReturnOpen(true)}>
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        )}
-        {canManage && asset.status === "IN_MAINTENANCE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="维修完成" aria-label="维修完成" onClick={() => setMaintenanceCompleteOpen(true)}>
-            <CheckCircle2 className="h-4 w-4" />
-          </Button>
-        )}
-        {canManage && asset.status === "IN_USE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-violet hover:bg-violet/10" title="调拨" aria-label="调拨" onClick={() => setTransferOpen(true)}>
-            <ArrowRightLeft className="h-4 w-4" />
-          </Button>
-        )}
-        {canManage && asset.status !== "SCRAPPED" && asset.status !== "IN_MAINTENANCE" && (
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-warning hover:bg-warning/10" title="送修" aria-label="送修" onClick={() => setMaintenanceOpen(true)}>
-            <Wrench className="h-4 w-4" />
-          </Button>
-        )}
-        {/* 低频 / 破坏性操作收进「更多」，避免遮挡高频操作；无溢出项时隐藏「更多」 */}
-        {(canManage && asset.status !== "SCRAPPED") || canDelete ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="更多操作" aria-label="更多操作">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
-              {canManage && asset.status !== "SCRAPPED" && (
-                <DropdownMenuItem onSelect={() => setScrapOpen(true)} className="text-warning focus:text-warning">
-                  <Ban className="mr-2 h-4 w-4" />报废
-                </DropdownMenuItem>
-              )}
-              {canDelete && (
-                <DropdownMenuItem
-                  onSelect={() => setDeleteOpen(true)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />删除
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </div>
-      <EditAssetDialog open={editOpen} onOpenChange={setEditOpen} asset={asset} />
-      <ConfirmDialog
-        open={returnOpen}
-        onOpenChange={setReturnOpen}
-        title="确认归还"
-        description={`确定要归还设备「${asset.assetNo}」吗？`}
-        confirmText="归还"
-        onConfirm={handleReturn}
-      />
-      <ConfirmDialog
-        open={scrapOpen}
-        onOpenChange={setScrapOpen}
-        title="确认报废"
-        description={`确定要报废设备「${asset.assetNo}」吗？`}
-        confirmText="报废"
-        variant="destructive"
-        onConfirm={handleScrap}
-      />
-      <ConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="确认删除"
-        description={`确定要永久删除设备「${asset.assetNo}」吗？该操作将同时删除其全部配件与生命周期记录，不可恢复！`}
-        confirmText="删除"
-        variant="destructive"
-        onConfirm={handleDelete}
-      />
-      <ConfirmDialog
-        open={maintenanceOpen}
-        onOpenChange={setMaintenanceOpen}
-        title="确认送修"
-        description={`确定要将设备「${asset.assetNo}」送修吗？`}
-        confirmText="送修"
-        onConfirm={handleMaintenance}
-      />
-      <ConfirmDialog
-        open={maintenanceCompleteOpen}
-        onOpenChange={setMaintenanceCompleteOpen}
-        title="确认维修完成"
-        description={`设备「${asset.assetNo}」维修完成了吗？`}
-        confirmText="完成维修"
-        onConfirm={handleMaintenanceDone}
-      />
-      <Dialog open={allocateOpen} onOpenChange={(v) => { if (!v) setAllocateEmployeeId(""); setAllocateOpen(v); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>分配设备</DialogTitle>
-            <DialogDescription>选择要分配的员工</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="allocate-employee">选择员工</Label>
-            <SearchableSelect
-              id="allocate-employee"
-              value={allocateEmployeeId}
-              onValueChange={setAllocateEmployeeId}
-              placeholder="请选择员工"
-              triggerClassName="w-full"
-              options={employees.map((e) => ({
-                value: e.id.toString(),
-                label: `${e.name}（${e.departmentName}）`,
-              }))}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setAllocateEmployeeId(""); setAllocateOpen(false); }}>取消</Button>
-            <Button onClick={handleAllocate} disabled={loading || !allocateEmployeeId}>
-              {loading ? "分配中..." : "确认分配"}
+      )}
+      {canManage && asset.status === "IN_USE" && (
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="归还" aria-label="归还" onClick={() => open("return")}>
+          <RotateCcw className="h-4 w-4" />
+        </Button>
+      )}
+      {canManage && asset.status === "IN_USE" && (
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-violet hover:bg-violet/10" title="调拨" aria-label="调拨" onClick={() => open("transfer")}>
+          <ArrowRightLeft className="h-4 w-4" />
+        </Button>
+      )}
+      {canManage && asset.status === "IN_MAINTENANCE" && (
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-success hover:bg-success/10" title="维修完成" aria-label="维修完成" onClick={() => open("maintenanceComplete")}>
+          <CheckCircle2 className="h-4 w-4" />
+        </Button>
+      )}
+      {canManage && asset.status !== "SCRAPPED" && asset.status !== "IN_MAINTENANCE" && asset.status !== "RESERVED" && (
+        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-warning hover:bg-warning/10" title="送修" aria-label="送修" onClick={() => open("maintenance")}>
+          <Wrench className="h-4 w-4" />
+        </Button>
+      )}
+      {/* 低频 / 破坏性操作收进「更多」，避免遮挡高频操作；无溢出项时隐藏「更多」 */}
+      {canEdit || (canManage && asset.status !== "SCRAPPED") || canDelete ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="更多操作" aria-label="更多操作">
+              <MoreVertical className="h-4 w-4" />
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={transferOpen} onOpenChange={(v) => { if (!v) setTransferEmployeeId(""); setTransferOpen(v); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>调拨设备</DialogTitle>
-            <DialogDescription>将设备调拨给其他员工</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="transfer-employee">目标员工</Label>
-            <SearchableSelect
-              id="transfer-employee"
-              value={transferEmployeeId}
-              onValueChange={setTransferEmployeeId}
-              placeholder="请选择目标员工"
-              triggerClassName="w-full"
-              options={employees
-                .filter((e) => e.id !== asset.employeeId)
-                .map((e) => ({
-                  value: e.id.toString(),
-                  label: `${e.name}（${e.departmentName}）`,
-                }))}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setTransferEmployeeId(""); setTransferOpen(false); }}>取消</Button>
-            <Button onClick={handleTransfer} disabled={loading || !transferEmployeeId}>
-              {loading ? "调拨中..." : "确认调拨"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            {/* 顺序：编辑（中性）→ 报废（警示）→ 删除（破坏），破坏性操作始终在最后 */}
+            {canEdit && (
+              <DropdownMenuItem onSelect={() => open("edit")}>
+                <Pencil className="mr-2 h-4 w-4" />编辑
+              </DropdownMenuItem>
+            )}
+            {canManage && asset.status !== "SCRAPPED" && asset.status !== "RESERVED" && (
+              <DropdownMenuItem onSelect={() => open("scrap")} className="text-warning focus:text-warning">
+                <Ban className="mr-2 h-4 w-4" />报废
+              </DropdownMenuItem>
+            )}
+            {canDelete && (
+              <DropdownMenuItem
+                onSelect={() => open("delete")}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />删除
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </div>
   );
 }
 
@@ -725,9 +1092,7 @@ function AssetNoCell({ asset }: { asset: AssetItem }) {
   );
 }
 
-function getColumns(
-  employees: { id: number; name: string; departmentName: string }[]
-): ColumnDef<AssetItem>[] {
+function getColumns(): ColumnDef<AssetItem>[] {
   return [
     {
       id: "select",
@@ -816,12 +1181,6 @@ function getColumns(
       },
     },
     {
-      accessorKey: "status",
-      meta: { align: "center" as const },
-      header: "状态",
-      cell: ({ row }) => <StatusCell asset={row.original} />,
-    },
-    {
       accessorKey: "employeeName",
       meta: { align: "center" as const },
       header: "使用人",
@@ -838,6 +1197,12 @@ function getColumns(
       },
     },
     {
+      accessorKey: "status",
+      meta: { align: "center" as const },
+      header: "状态",
+      cell: ({ row }) => <StatusCell asset={row.original} />,
+    },
+    {
       accessorKey: "createdAt",
       header: "创建时间",
       size: 170,
@@ -852,7 +1217,7 @@ function getColumns(
       minSize: 168,
       cell: ({ row }) => {
         const asset = row.original;
-        return <ActionButtons asset={asset} employees={employees} />;
+        return <ActionButtons asset={asset} />;
       },
     },
   ];
@@ -935,13 +1300,27 @@ export function AdvancedFilterBar({
 // Main Component
 // ============================================================
 
-export function AssetListClient({
+/** 列表页外壳：注入设备操作上下文，页面内容统一通过 state/actions/meta 消费 */
+export function AssetListClient(props: AssetListClientProps) {
+  return (
+    <AssetActionsProvider
+      employees={props.employees}
+      departments={props.departments}
+      categories={props.categories}
+      assets={props.assets}
+    >
+      <AssetListContent {...props} />
+    </AssetActionsProvider>
+  );
+}
+
+function AssetListContent({
   assets,
   templates,
   categories,
-  employees,
   departments,
 }: AssetListClientProps) {
+  const { state, actions, meta } = useAssetActions();
   const [createOpen, setCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -954,21 +1333,9 @@ export function AssetListClient({
   const [diskMinGB, setDiskMinGB] = useState<string>("");
   const [importFrom, setImportFrom] = useState<string>("");
   const [importTo, setImportTo] = useState<string>("");
-  const [exportLoading, setExportLoading] = useState(false);
+  const [pending, setPending] = useState<AssetHeaderAction | null>(null);
   const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
   const [exportMode, setExportMode] = useState<"all" | "selected">("all");
-  const [importLoading, setImportLoading] = useState(false);
-  const [selectedAssets, setSelectedAssets] = useState<AssetItem[]>([]);
-  const [batchAllocateOpen, setBatchAllocateOpen] = useState(false);
-  const [batchReturnOpen, setBatchReturnOpen] = useState(false);
-  const [batchScrapOpen, setBatchScrapOpen] = useState(false);
-  const [batchTransferOpen, setBatchTransferOpen] = useState(false);
-  const [batchMaintenanceOpen, setBatchMaintenanceOpen] = useState(false);
-  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
-  const [batchAllocateEmployeeId, setBatchAllocateEmployeeId] = useState("");
-  const [batchTransferEmployeeId, setBatchTransferEmployeeId] = useState("");
-  const [batchLoading, setBatchLoading] = useState(false);
-  const [autoImportLoading, setAutoImportLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoImportFileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -986,7 +1353,7 @@ export function AssetListClient({
     }
   }, [searchParams]);
 
-  const columns = getColumns(employees).filter((c) => {
+  const columns = getColumns().filter((c) => {
     const id = c.id ?? (c as { accessorKey?: string }).accessorKey ?? "";
     return !hiddenColumns.includes(id);
   });
@@ -1062,10 +1429,10 @@ export function AssetListClient({
   });
 
   const handleExport = async (selectedFields: string[]) => {
-    setExportLoading(true);
+    setPending("export");
     try {
       const assetIds =
-        exportMode === "selected" ? selectedAssets.map((a) => a.id) : undefined;
+        exportMode === "selected" ? state.selection.map((a) => a.id) : undefined;
       const result = await exportAssetsToExcel(selectedFields, assetIds);
       if (result.success) {
         downloadExcelFile(result.data.fileName, result.data.buffer);
@@ -1077,11 +1444,11 @@ export function AssetListClient({
     } catch {
       toast({ title: "导出失败", variant: "destructive" });
     }
-    setExportLoading(false);
+    setPending(null);
   };
 
   // 准备导出数据（按导出模式决定范围：全部筛选结果 or 仅选中）
-  const exportSource = exportMode === "selected" ? selectedAssets : filteredAssets;
+  const exportSource = exportMode === "selected" ? state.selection : filteredAssets;
   const exportData = exportSource.map((asset) => ({
     assetNo: asset.assetNo,
     name: asset.name,
@@ -1114,7 +1481,7 @@ export function AssetListClient({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setImportLoading(true);
+    setPending("import");
     try {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Array.from(new Uint8Array(arrayBuffer));
@@ -1137,7 +1504,7 @@ export function AssetListClient({
     } catch {
       toast({ title: "导入失败", variant: "destructive" });
     }
-    setImportLoading(false);
+    setPending(null);
     // 重置 file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -1149,7 +1516,7 @@ export function AssetListClient({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setAutoImportLoading(true);
+    setPending("autoImport");
     try {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Array.from(new Uint8Array(arrayBuffer));
@@ -1173,170 +1540,10 @@ export function AssetListClient({
     } catch {
       toast({ title: "自动导入失败", description: "Excel文件解析失败", variant: "destructive" });
     }
-    setAutoImportLoading(false);
+    setPending(null);
     if (autoImportFileRef.current) {
       autoImportFileRef.current.value = "";
     }
-  };
-
-  // 批量分配
-  const handleBatchAllocate = async () => {
-    if (!batchAllocateEmployeeId || selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    try {
-      const result = await allocateAssets({
-        assetIds: selectedAssets.map((a) => a.id),
-        employeeId: Number(batchAllocateEmployeeId),
-        operator: "admin",
-        remark: "批量分配",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "批量分配成功" });
-        setBatchAllocateOpen(false);
-        setBatchAllocateEmployeeId("");
-        setSelectedAssets([]);
-        router.refresh();
-      } else {
-        toast({ title: "批量分配失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  // 批量归还
-  const handleBatchReturn = async () => {
-    if (selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    try {
-      const result = await returnAssets({
-        assetIds: selectedAssets.map((a) => a.id),
-        operator: "admin",
-        remark: "批量归还",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "批量归还成功" });
-        setBatchReturnOpen(false);
-        setSelectedAssets([]);
-        router.refresh();
-      } else {
-        toast({ title: "批量归还失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  // 批量报废
-  const handleBatchScrap = async () => {
-    if (selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    try {
-      const result = await scrapAssets({
-        assetIds: selectedAssets.map((a) => a.id),
-        operator: "admin",
-        remark: "批量报废",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "批量报废成功" });
-        setBatchScrapOpen(false);
-        setSelectedAssets([]);
-        router.refresh();
-      } else {
-        toast({ title: "批量报废失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  // 批量调拨
-  const handleBatchTransfer = async () => {
-    if (!batchTransferEmployeeId || selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    try {
-      const result = await transferAssets({
-        assetIds: selectedAssets.map((a) => a.id),
-        toEmployeeId: Number(batchTransferEmployeeId),
-        operator: "admin",
-        remark: "批量调拨",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "批量调拨成功" });
-        setBatchTransferOpen(false);
-        setBatchTransferEmployeeId("");
-        setSelectedAssets([]);
-        router.refresh();
-      } else {
-        toast({ title: "批量调拨失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  // 批量送修
-  const handleBatchMaintenance = async () => {
-    if (selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    try {
-      const result = await maintenanceStart({
-        assetIds: selectedAssets.map((a) => a.id),
-        operator: "admin",
-        remark: "批量送修",
-      });
-      if (result.success) {
-        toast({ variant: "success", title: "批量送修成功" });
-        setBatchMaintenanceOpen(false);
-        setSelectedAssets([]);
-        router.refresh();
-      } else {
-        toast({ title: "批量送修失败", description: result.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
-
-  // 批量删除（真删，不可恢复）
-  const handleBatchDelete = async () => {
-    if (selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    let ok = 0;
-    let fail = 0;
-    try {
-      for (const a of selectedAssets) {
-        const r = await deleteAsset(a.id);
-        if (r.success) ok++;
-        else fail++;
-      }
-    } catch {
-      toast({ title: "操作失败", description: "操作异常，请稍后重试", variant: "destructive" });
-      setBatchDeleteOpen(false);
-      setSelectedAssets([]);
-      router.refresh();
-      return;
-    } finally {
-      setBatchLoading(false);
-    }
-    if (fail === 0) {
-      toast({ variant: "success", title: `批量删除成功，共 ${ok} 台` });
-    } else {
-      toast({ title: `删除完成：${ok} 成功，${fail} 失败`, variant: "destructive" });
-    }
-    setBatchDeleteOpen(false);
-    setSelectedAssets([]);
-    router.refresh();
   };
 
   return (
@@ -1361,10 +1568,8 @@ export function AssetListClient({
               onChange={handleAutoImport}
             />
             <AssetHeaderActions
-            hasSelection={selectedAssets.length > 0}
-            exportLoading={exportLoading}
-            importLoading={importLoading}
-            autoImportLoading={autoImportLoading}
+            hasSelection={state.selection.length > 0}
+            pending={pending}
             onCreate={() => setCreateOpen(true)}
             onExportAll={() => { setExportMode("all"); setExportPreviewOpen(true); }}
             onExportSelected={() => { setExportMode("selected"); setExportPreviewOpen(true); }}
@@ -1376,19 +1581,29 @@ export function AssetListClient({
       />
 
       {/* 批量操作栏 */}
-      {selectedAssets.length > 0 && (
+      {state.selection.length > 0 && (
         <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
           <span className="text-sm font-medium">
-            已选择 {selectedAssets.length} 项
+            已选择 {state.selection.length} 项
           </span>
+          {/* 取消选择紧挨计数，作为退出选择的出口，避免落在破坏性操作之后 */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => actions.setSelection([])}
+          >
+            取消选择
+          </Button>
+          {/* 操作区按状态机 R2 顺序排列（分配 → 归还 → 调拨 → 送修 → 报废），破坏性操作（删除）收尾 */}
           <div className="flex items-center gap-2 ml-auto">
             {canManage && (
               <>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBatchAllocateOpen(true)}
-                  disabled={batchLoading}
+                  onClick={() => actions.openBatch("allocate")}
+                  disabled={state.loading || state.eligible.allocate.length === 0}
+                  title={state.eligible.allocate.length === 0 ? "所选设备中没有「闲置」设备" : undefined}
                 >
                   <UserPlus className="mr-1 h-3 w-3" />
                   批量分配
@@ -1396,8 +1611,9 @@ export function AssetListClient({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBatchReturnOpen(true)}
-                  disabled={batchLoading}
+                  onClick={() => actions.openBatch("return")}
+                  disabled={state.loading || state.eligible.return.length === 0}
+                  title={state.eligible.return.length === 0 ? "所选设备中没有「在用」设备" : undefined}
                 >
                   <RotateCcw className="mr-1 h-3 w-3" />
                   批量归还
@@ -1405,8 +1621,9 @@ export function AssetListClient({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBatchTransferOpen(true)}
-                  disabled={batchLoading}
+                  onClick={() => actions.openBatch("transfer")}
+                  disabled={state.loading || state.eligible.transfer.length === 0}
+                  title={state.eligible.transfer.length === 0 ? "所选设备中没有「在用」设备" : undefined}
                 >
                   <ArrowRightLeft className="mr-1 h-3 w-3" />
                   批量调拨
@@ -1414,8 +1631,9 @@ export function AssetListClient({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBatchMaintenanceOpen(true)}
-                  disabled={batchLoading}
+                  onClick={() => actions.openBatch("maintenance")}
+                  disabled={state.loading || state.eligible.maintenance.length === 0}
+                  title={state.eligible.maintenance.length === 0 ? "所选设备中没有可送修的「闲置 / 在用」设备" : undefined}
                 >
                   <Wrench className="mr-1 h-3 w-3" />
                   批量送修
@@ -1423,8 +1641,19 @@ export function AssetListClient({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBatchScrapOpen(true)}
-                  disabled={batchLoading}
+                  onClick={() => actions.openBatch("maintenanceComplete")}
+                  disabled={state.loading || state.eligible.maintenanceComplete.length === 0}
+                  title={state.eligible.maintenanceComplete.length === 0 ? "所选设备中没有「维修中」设备" : undefined}
+                >
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  批量维修完成
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => actions.openBatch("scrap")}
+                  disabled={state.loading || state.eligible.scrap.length === 0}
+                  title={state.eligible.scrap.length === 0 ? "所选设备中没有可报废的设备（已报废 / 预占不可报废）" : undefined}
                 >
                   <Ban className="mr-1 h-3 w-3" />
                   批量报废
@@ -1435,21 +1664,15 @@ export function AssetListClient({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setBatchDeleteOpen(true)}
-                disabled={batchLoading}
+                onClick={() => actions.openBatch("delete")}
+                disabled={state.loading || state.eligible.delete.length === 0}
+                title={state.eligible.delete.length === 0 ? "所选设备均为预占（在途审批），不可删除" : undefined}
                 className="border-destructive/30 text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="mr-1 h-3 w-3" />
                 批量删除
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedAssets([])}
-            >
-              取消选择
-            </Button>
           </div>
         </div>
       )}
@@ -1525,7 +1748,7 @@ export function AssetListClient({
           onMemoryChange={setMemoryMinGB}
           onDiskChange={setDiskMinGB}
           departments={departments}
-          employees={employees}
+          employees={meta.employees}
         />
         <Popover>
           <PopoverTrigger asChild>
@@ -1566,7 +1789,7 @@ export function AssetListClient({
         columns={columns}
         data={filteredAssets}
         enableRowSelection={true}
-        onRowSelectionChange={setSelectedAssets}
+        onRowSelectionChange={actions.setSelection}
         defaultSorting={[{ id: "createdAt", desc: true }]}
       />
       <CreateAssetDialog
@@ -1574,109 +1797,7 @@ export function AssetListClient({
         onOpenChange={setCreateOpen}
         templates={templates}
         categories={categories}
-        employees={employees}
-      />
-
-      {/* 批量分配对话框 */}
-      <Dialog open={batchAllocateOpen} onOpenChange={(v) => { if (!v) setBatchAllocateEmployeeId(""); setBatchAllocateOpen(v); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>批量分配设备</DialogTitle>
-            <DialogDescription>将选中的 {selectedAssets.length} 台设备分配给指定员工</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="batch-allocate-employee">选择员工</Label>
-            <SearchableSelect
-              id="batch-allocate-employee"
-              value={batchAllocateEmployeeId}
-              onValueChange={setBatchAllocateEmployeeId}
-              placeholder="请选择员工"
-              triggerClassName="w-full"
-              options={employees.map((e) => ({
-                value: e.id.toString(),
-                label: `${e.name}（${e.departmentName}）`,
-              }))}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setBatchAllocateEmployeeId(""); setBatchAllocateOpen(false); }}>取消</Button>
-            <Button onClick={handleBatchAllocate} disabled={batchLoading || !batchAllocateEmployeeId}>
-              {batchLoading ? "分配中..." : "确认分配"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 批量调拨对话框 */}
-      <Dialog open={batchTransferOpen} onOpenChange={(v) => { if (!v) setBatchTransferEmployeeId(""); setBatchTransferOpen(v); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>批量调拨设备</DialogTitle>
-            <DialogDescription>将选中的 {selectedAssets.length} 台设备调拨给指定员工</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="batch-transfer-employee">目标员工</Label>
-            <SearchableSelect
-              id="batch-transfer-employee"
-              value={batchTransferEmployeeId}
-              onValueChange={setBatchTransferEmployeeId}
-              placeholder="请选择目标员工"
-              triggerClassName="w-full"
-              options={employees.map((e) => ({
-                value: e.id.toString(),
-                label: `${e.name}（${e.departmentName}）`,
-              }))}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setBatchTransferEmployeeId(""); setBatchTransferOpen(false); }}>取消</Button>
-            <Button onClick={handleBatchTransfer} disabled={batchLoading || !batchTransferEmployeeId}>
-              {batchLoading ? "调拨中..." : "确认调拨"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 批量送修确认对话框 */}
-      <ConfirmDialog
-        open={batchMaintenanceOpen}
-        onOpenChange={setBatchMaintenanceOpen}
-        title="确认批量送修"
-        description={`确定要将选中的 ${selectedAssets.length} 台设备送修吗？`}
-        confirmText="批量送修"
-        onConfirm={handleBatchMaintenance}
-      />
-
-      {/* 批量归还确认对话框 */}
-      <ConfirmDialog
-        open={batchReturnOpen}
-        onOpenChange={setBatchReturnOpen}
-        title="确认批量归还"
-        description={`确定要归还选中的 ${selectedAssets.length} 台设备吗？`}
-        confirmText="批量归还"
-        onConfirm={handleBatchReturn}
-      />
-
-      {/* 批量报废确认对话框 */}
-      <ConfirmDialog
-        open={batchScrapOpen}
-        onOpenChange={setBatchScrapOpen}
-        title="确认批量报废"
-        description={`确定要报废选中的 ${selectedAssets.length} 台设备吗？此操作不可撤销。`}
-        confirmText="批量报废"
-        variant="destructive"
-        onConfirm={handleBatchScrap}
-      />
-
-      {/* 批量删除确认对话框 */}
-      <ConfirmDialog
-        open={batchDeleteOpen}
-        onOpenChange={setBatchDeleteOpen}
-        title="确认批量删除"
-        description={`确定要永久删除选中的 ${selectedAssets.length} 台设备吗？将同时删除其全部配件与生命周期记录，不可恢复！`}
-        confirmText="批量删除"
-        variant="destructive"
-        onConfirm={handleBatchDelete}
+        employees={meta.employees}
       />
 
       {/* 导出预览对话框 */}
@@ -1686,7 +1807,7 @@ export function AssetListClient({
         data={exportData}
         columns={exportColumns}
         onExport={handleExport}
-        loading={exportLoading}
+        loading={pending === "export"}
       />
     </div>
   );

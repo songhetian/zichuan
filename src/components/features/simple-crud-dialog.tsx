@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,16 +21,78 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useToast } from "@/hooks/use-toast";
 
+export type FieldType = "text" | "password" | "select" | "searchSelect";
+
 export interface FieldConfig {
   key: string;
   label: string;
-  type: "text" | "password" | "select" | "searchSelect";
+  type: FieldType;
   placeholder?: string;
   searchPlaceholder?: string;
   options?: { value: string; label: string; description?: string }[];
   optional?: boolean;
   hint?: string;
 }
+
+/** 字段渲染器入参：弹窗注入「当前值 + 变更回调」，渲染器无需感知表单状态存放位置 */
+interface FieldRendererProps {
+  id: string;
+  field: FieldConfig;
+  value: string;
+  onChange: (value: string) => void;
+}
+
+type FieldRenderer = ComponentType<FieldRendererProps>;
+
+/**
+ * 字段类型 → 渲染器注册表。新增字段类型只需在此登记一项，
+ * 无需改动弹窗的渲染逻辑（取代原先的类型联合 + 嵌套三元）。
+ */
+const FIELD_RENDERERS: Record<FieldType, FieldRenderer> = {
+  text: ({ id, field, value, onChange }) => (
+    <Input
+      id={id}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={field.placeholder}
+    />
+  ),
+  password: ({ id, field, value, onChange }) => (
+    <Input
+      id={id}
+      type="password"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={field.placeholder}
+    />
+  ),
+  select: ({ id, field, value, onChange }) => (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger id={id}>
+        <SelectValue placeholder={field.placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {field.options?.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ),
+  searchSelect: ({ id, field, value, onChange }) => (
+    <SearchableSelect
+      id={id}
+      options={field.options ?? []}
+      value={value}
+      onValueChange={onChange}
+      placeholder={field.placeholder}
+      searchPlaceholder={field.searchPlaceholder}
+      className="w-full"
+    />
+  ),
+};
 
 interface SimpleCrudDialogProps {
   open: boolean;
@@ -113,43 +175,16 @@ export function SimpleCrudDialog({
         <div className="space-y-4">
           {fields.map((field) => {
             const fieldId = `crud-field-${field.key}`
+            const FieldRenderer = FIELD_RENDERERS[field.type]
             return (
             <div key={field.key} className="space-y-2">
               <Label htmlFor={fieldId}>{field.label}{field.optional ? "（可选）" : ""}</Label>
-              {field.type === "select" || field.type === "searchSelect" ? (
-                field.type === "searchSelect" ? (
-                  <SearchableSelect
-                    id={fieldId}
-                    options={field.options ?? []}
-                    value={values[field.key] || ""}
-                    onValueChange={(v) => handleChange(field.key, v)}
-                    placeholder={field.placeholder}
-                    searchPlaceholder={field.searchPlaceholder}
-                    className="w-full"
-                  />
-                ) : (
-                  <Select value={values[field.key] || ""} onValueChange={(v) => handleChange(field.key, v)}>
-                    <SelectTrigger id={fieldId}>
-                      <SelectValue placeholder={field.placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {field.options?.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )
-              ) : (
-                <Input
-                  id={fieldId}
-                  type={field.type === "password" ? "password" : "text"}
-                  value={values[field.key] || ""}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
-                  placeholder={field.placeholder}
-                />
-              )}
+              <FieldRenderer
+                id={fieldId}
+                field={field}
+                value={values[field.key] || ""}
+                onChange={(v) => handleChange(field.key, v)}
+              />
               {field.hint && <p className="text-xs text-muted-foreground">{field.hint}</p>}
             </div>
             )
