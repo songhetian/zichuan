@@ -4,14 +4,16 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-# 安装 Prisma 运行所需的系统依赖
-RUN apk add --no-cache openssl
+# 换用国内镜像源：官方 dl-cdn.alpinelinux.org 在本网络环境下 TLS 握手常被重置
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories && \
+    apk add --no-cache openssl
 
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
-RUN npm install --ignore-scripts && \
-    npx prisma generate
+# npm 与 Prisma 引擎同样走国内镜像（国外源在本网络环境不稳定）
+RUN npm install --ignore-scripts --registry=https://registry.npmmirror.com && \
+    PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma npx prisma generate
 
 # ============================================================
 # 阶段2: 构建应用
@@ -19,8 +21,9 @@ RUN npm install --ignore-scripts && \
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# 安装 Prisma 运行所需的系统依赖
-RUN apk add --no-cache openssl
+# 换用国内镜像源（同阶段1）
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories && \
+    apk add --no-cache openssl
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -39,8 +42,9 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# 安装 Prisma 运行所需的系统依赖
-RUN apk add --no-cache openssl
+# 换用国内镜像源（同阶段1）
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories && \
+    apk add --no-cache openssl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

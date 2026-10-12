@@ -44,6 +44,9 @@
 - 服务器 `.env` 必须含：`DATABASE_URL`、`DOCKER_DATABASE_URL`(host 写服务名 `mysql`)、`SESSION_SECRET`(≥32 随机)。`.env` 不入库 → 全新 clone 须 `cp .env.example .env` 后填密钥（`.env.example` 已入库且是空占位符）。
 - ⚠️ 历史泄露：`.env.example` 曾被提交一个真实 64 位 `SESSION_SECRET`（提交 `4c6f8dc`，现已改占位符）。若服务器 `.env` 照抄过该模板，需轮换密钥（会使现有登录态失效，可接受）。
 - 本机 WorkBuddy 沙箱局限：`docker compose` 子命令不可用（cli-plugins 缺失），用 `docker-compose`；服务器正常，`package.json` 脚本不用改。
+- **Dockerfile 已配国内镜像源（2026-10-12）**：三个阶段 `apk add` 前先 `sed` 换 `mirrors.aliyun.com`（官方 dl-cdn 在本网络 TLS 握手常被重置）；npm install 走 `registry.npmmirror.com`、prisma generate 加 `PRISMA_ENGINES_MIRROR`。别改回官方源。
+- **deploy 报错两种非代码原因**：① `failed to stat active key during commit: snapshot ... not found` = containerd 构建缓存损坏，`docker builder prune -f` 即愈；② `apk`/`npm` TLS 错误 = 国外源被重置，见上一条镜像源。
+- ⚠️ **本机有两套生产容器**：`zichuan-*`（本工作区 `E:\System\zichuan`，端口 80）与 `zichuan-lan-*`（另一 checkout `E:\leixi-system\zichuan`，端口 8080，来自 `docker-compose.lan.yml`）。deploy 只重建本工作区那套；8080 那套要更新得去那个目录单独部署。
 
 ## 测试
 - `npm test` = 全量（含清库），指向 `asset-manage-test@3306`；2026-10-12 起 **68 文件 / 548 用例全绿**（批次 3 后；批次 2 后是 65/511）。
