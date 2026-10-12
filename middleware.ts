@@ -40,7 +40,9 @@ export async function middleware(request: NextRequest) {
       sessionOptions
     );
 
-    if (!session.userId) {
+    // 口径必须与 lib/auth.ts 的 getCurrentUser 一致：**两个字段都要有**。
+    // 只查 userId 会漏掉「会话不完整」的 cookie —— 中间件放行、页面渲染时才炸。
+    if (!session.userId || !session.username) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 

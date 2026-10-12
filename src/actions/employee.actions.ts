@@ -48,6 +48,11 @@ export type EmployeeWithDept = {
   email: string | null;
   assetCount: number;
   createdAt: string;
+  /**
+   * 名下设备的资产编码（与「在用设备数」同口径：`Asset.employeeId = 员工 id`，不过滤状态）。
+   * 仅 `getEmployees` 会带出（员工列表「按设备编码搜索员工」用）；其它入口未加载时为 undefined。
+   */
+  assetNos?: string[];
 };
 
 type PrismaEmployee = {
@@ -60,6 +65,7 @@ type PrismaEmployee = {
   phone: string | null;
   email: string | null;
   _count?: { assets: number };
+  assets?: { assetNo: string }[];
 };
 
 function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
@@ -73,6 +79,7 @@ function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
     email: emp.email ?? null,
     assetCount: emp._count?.assets ?? 0,
     createdAt: emp.createdAt.toISOString(),
+    assetNos: emp.assets?.map((a) => a.assetNo),
   };
 }
 
@@ -158,6 +165,96 @@ export async function createEmployee(
   });
 }
 
+/** 批量生成临时员工入参：部门 + 数量，姓名 = 部门名-随机4位数字 */
+const batchCreateSchema = z.object({
+  departmentId: z.number().int().positive(),
+  count: z.number().int().min(1, "数量至少为 1").max(100, "单次最多生成 100 名"),
+  roleId: z.number().int().positive().nullable().optional(),
+});
+
+/**
+ * 批量生成临时员工（用于「先建人、后绑设备」的场景）：
+ * 姓名 = 部门名-随机4位数字（同批内去重），工号自动递增，账号随之创建。
+ */
+export async function createEmployeesBatch(
+  input: z.infer<typeof batchCreateSchema>
+): Promise<ActionResult<EmployeeWithDept[]>> {
+  return requireAuthSafe(async (user) => {
+    const denied = await guardPermission(user, "system.account.manage", "员工与账号管理需要账号管理权限");
+    if (denied) return denied;
+
+    const validated = batchCreateSchema.safeParse(input);
+    if (!validated.success) {
+      return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
+    }
+    const { departmentId, count, roleId } = validated.data;
+
+    const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+    if (!dept) {
+      return { success: false, error: "部门不存在" };
+    }
+
+    // 角色解析与单个创建同口径：显式传需校验，未传默认普通员工
+    let effectiveRoleId: number | null = null;
+    if (roleId != null) {
+      const role = await prisma.role.findUnique({ where: { id: roleId } });
+      if (!role) return { success: false, error: "角色不存在" };
+      effectiveRoleId = roleId;
+    } else {
+      const empRole = await prisma.role.findUnique({ where: { key: "EMPLOYEE" } });
+      effectiveRoleId = empRole?.id ?? null;
+    }
+
+    // 工号：现有最大序号查一次，循环内本地递增（避免 N 次全表查询）
+    const existingNos = await prisma.employee.findMany({ select: { employeeNo: true } });
+    const usedNos = existingNos.map((e) => e.employeeNo);
+
+    // 姓名：部门名-随机4位数字，同批内去重
+    const usedNames = new Set<string>();
+    const randomName = () => `${dept.name}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const hashed = await bcrypt.hash("123456", 10);
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        const emps: Parameters<typeof formatEmployee>[0][] = [];
+        for (let i = 0; i < count; i++) {
+          let name = randomName();
+          while (usedNames.has(name)) name = randomName();
+          usedNames.add(name);
+
+          const employeeNo = generateEmployeeNo(usedNos);
+          usedNos.push(employeeNo);
+
+          const emp = await tx.employee.create({
+            data: { employeeNo, name, departmentId },
+            include: { department: { select: { name: true } } },
+          });
+          await tx.admin.create({
+            data: {
+              username: employeeNo,
+              password: hashed,
+              roleId: effectiveRoleId,
+              displayName: name,
+              employeeId: emp.id,
+              mustChangePassword: true,
+            },
+          });
+          emps.push(emp);
+        }
+        return emps;
+      });
+      return { success: true, data: created.map(formatEmployee) };
+    } catch (e) {
+      return handleUniqueViolation(
+        e,
+        { employeeNo: "工号已存在", username: "账号已存在" },
+        "批量创建失败"
+      );
+    }
+  });
+}
+
 export async function getEmployees(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<EmployeeWithDept[]>> {
@@ -181,6 +278,8 @@ export async function getEmployees(
     where.OR = [
       { name: { contains: keyword } },
       { employeeNo: { contains: keyword } },
+      // 设备编码：输入资产编号可定位到正在使用该设备的员工
+      { assets: { some: { assetNo: { contains: keyword } } } },
     ];
   }
 
@@ -190,6 +289,8 @@ export async function getEmployees(
     include: {
       department: { select: { name: true } },
       _count: { select: { assets: true } },
+      // 设备编码随员工一起带出：范围已由上面的 scope 收敛，不会带出范围外员工的设备
+      assets: { select: { assetNo: true }, orderBy: { id: "asc" } },
     },
   });
 

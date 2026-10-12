@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Popover,
@@ -49,6 +50,7 @@ import {
   createEmployee,
   deleteEmployee,
   updateEmployee,
+  createEmployeesBatch,
   resetEmployeePassword,
   getEmployeeAssets,
   type EmployeeAsset,
@@ -59,7 +61,8 @@ import {
 } from "@/actions/admin.actions";
 import { exportEmployeesToExcel, importEmployeesFromExcel } from "@/actions/excel.actions";
 import { getSystemLogs } from "@/actions/system-log.actions";
-import { toneInline } from "@/lib/status-styles";
+import { toneInline, TONE_CHIP } from "@/lib/status-styles";
+import { findEmployeeMatch } from "@/lib/employee-search";
 
 const employeeSchema = z.object({
   // 新建员工时工号自动生成，无需手动填写
@@ -96,6 +99,8 @@ interface Employee {
   phone: string | null;
   email: string | null;
   assetCount?: number;
+  /** 名下设备的资产编码（与「在用设备数」同口径）；由 getEmployees 带出，用于按设备编码搜索 */
+  assetNos?: string[];
   createdAt: string;
   /** 绑定的登录账号；未创建账号为 null */
   account?: EmployeeAccount | null;
@@ -109,45 +114,51 @@ interface EmployeeListClientProps {
   roles?: { id: number; key: string; name: string }[];
 }
 
-type EmployeeRow = Employee & { _departments: { id: number; name: string }[] };
+type EmployeeRow = Employee;
 
 /** 员工信息基础列（操作列/账号列需访问组件内状态，在组件内组装） */
 const baseColumns: ColumnDef<EmployeeRow>[] = [
-  { id: "employeeNo", accessorKey: "employeeNo", header: "工号", size: 100 },
-  { id: "name", accessorKey: "name", header: "姓名", size: 100 },
+  { id: "employeeNo", accessorKey: "employeeNo", header: "工号", size: 95 },
+  {
+    id: "name",
+    accessorKey: "name",
+    header: "姓名",
+    size: 110,
+    cell: ({ row }) => <span className="block truncate">{row.original.name}</span>,
+  },
   {
     id: "departmentName",
     accessorKey: "departmentName",
     header: "部门",
-    size: 140,
+    size: 110,
     cell: ({ row }) => row.original.departmentName ?? "-",
   },
   {
     id: "phone",
     accessorKey: "phone",
     header: "电话",
-    size: 140,
+    size: 125,
     cell: ({ row }) => row.getValue("phone") ?? "-",
   },
   {
     id: "email",
     accessorKey: "email",
     header: "邮箱",
-    size: 200,
+    size: 170,
     cell: ({ row }) => row.getValue("email") ?? "-",
   },
   {
     id: "createdAt",
     accessorKey: "createdAt",
     header: "创建时间",
-    size: 170,
+    size: 105,
     cell: ({ row }) =>
       row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : "-",
   },
   {
     id: "assetCount",
     header: "在用设备数",
-    size: 100,
+    size: 85,
     cell: ({ row }) => {
       const count = row.original.assetCount ?? 0;
       // 数量直接可点：进入该员工的「在用设备」只读预览页
@@ -433,7 +444,7 @@ function EmployeeActionButtons({
   onEdited,
   onDeleted,
 }: {
-  employee: Employee & { _departments?: { id: number; name: string }[] };
+  employee: Employee;
   departments?: { id: number; name: string }[];
   canManageAccounts?: boolean;
   roles?: { id: number; key: string; name: string }[];
@@ -798,10 +809,12 @@ export function EmployeeListClient({
           e.id === updated.id
             ? {
                 ...e,
-                employeeNo: updated.employeeNo,
-                name: updated.name,
-                departmentId: updated.departmentId,
-                departmentName: updated.departmentName,
+                // 身份/展示字段一律「返回值优先、缺省沿用原值」：
+                // 编辑接口若只回部分字段，不应把姓名、部门清空（旧写法会写入 undefined）
+                employeeNo: updated.employeeNo ?? e.employeeNo,
+                name: updated.name ?? e.name,
+                departmentId: updated.departmentId ?? e.departmentId,
+                departmentName: updated.departmentName ?? e.departmentName,
                 phone: updated.phone,
                 email: updated.email,
                 assetCount: updated.assetCount ?? e.assetCount,
@@ -832,14 +845,14 @@ export function EmployeeListClient({
           {
             id: "account",
             header: "账号",
-            size: 150,
+            size: 110,
             cell: ({ row }) => {
               const acc = row.original.account ?? null;
               if (!acc) return <span className="text-muted-foreground">未创建</span>;
+              // 单行只显示登录名；displayName 与姓名列基本重复，放 title 备查
               return (
-                <div>
-                  <div>{acc.username}</div>
-                  {acc.displayName && <div className="text-xs text-muted-foreground">{acc.displayName}</div>}
+                <div className="truncate" title={acc.displayName ?? acc.username}>
+                  {acc.username}
                 </div>
               );
             },
@@ -847,7 +860,7 @@ export function EmployeeListClient({
           {
             id: "accountRole",
             header: "角色",
-            size: 120,
+            size: 95,
             cell: ({ row }) => {
               const acc = row.original.account ?? null;
               if (!acc) return "-";
@@ -861,15 +874,23 @@ export function EmployeeListClient({
           {
             id: "accountScope",
             header: "数据范围",
-            size: 170,
+            size: 110,
             cell: ({ row }) => {
               const acc = row.original.account ?? null;
               if (!acc) return "-";
               if (acc.departmentScope === "EXACT" && acc.departmentIds.length > 0) {
-                return <Badge variant="outline">仅指定部门 ({acc.departmentIds.length})</Badge>;
+                return (
+                  <span className="block truncate" title={`仅指定部门 (${acc.departmentIds.length})`}>
+                    仅指定部门 ({acc.departmentIds.length})
+                  </span>
+                );
               }
               if (acc.departmentScope === "SPEC" && acc.departmentIds.length > 0) {
-                return <Badge variant="outline">本部门 +{acc.departmentIds.length} 个扩展部门</Badge>;
+                return (
+                  <span className="block truncate" title={`本部门 +${acc.departmentIds.length} 个扩展部门`}>
+                    本部门 +{acc.departmentIds.length}
+                  </span>
+                );
               }
               return <span className="text-muted-foreground">本部门</span>;
             },
@@ -877,7 +898,7 @@ export function EmployeeListClient({
           {
             id: "accountStatus",
             header: "状态",
-            size: 80,
+            size: 70,
             cell: ({ row }) => {
               const acc = row.original.account ?? null;
               if (!acc) return "-";
@@ -890,10 +911,10 @@ export function EmployeeListClient({
     const actionsCol: ColumnDef<EmployeeRow> = {
       id: "actions",
       header: "操作",
-      size: canManageAccounts ? 340 : 120,
-      // 账号管理态下内容含「编辑/删除 + 数据范围 + 重置密码 + 启用停用」，
-      // 实测约 316px，minSize 留余量确保横向滚动时按钮不被压没
-      minSize: canManageAccounts ? 360 : 120,
+      size: canManageAccounts ? 330 : 120,
+      // 账号管理态下内容含「编辑/删除 + 数据范围 + 重置密码 + 停用启用」，
+      // minSize 保证横向挤压时按钮不被压没；320 已压到一屏宽预算内
+      minSize: canManageAccounts ? 320 : 120,
       meta: { align: "center" as const, sticky: "right" as const },
       cell: ({ row }) => {
         const emp = row.original;
@@ -904,7 +925,7 @@ export function EmployeeListClient({
             <div onClick={(e) => e.stopPropagation()}>
               <EmployeeActionButtons
                 employee={emp}
-                departments={emp._departments}
+                departments={departments}
                 canManageAccounts={canManageAccounts}
                 roles={roles}
                 onEdited={handleLocalEdited}
@@ -960,7 +981,7 @@ export function EmployeeListClient({
     return [...baseColumns, ...accountCols, actionsCol].filter(
       (c) => !hiddenColumns.includes(c.id ?? "")
     );
-  }, [canManageAccounts, openScopeEdit, roles, hiddenColumns, handleLocalEdited, handleLocalDeleted]);
+  }, [canManageAccounts, openScopeEdit, roles, hiddenColumns, departments, handleLocalEdited, handleLocalDeleted]);
 
   const createForm = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema),
@@ -973,6 +994,53 @@ export function EmployeeListClient({
       roleId: defaultRoleId ? String(defaultRoleId) : "",
     },
   });
+
+  // ===== 批量生成临时员工（部门 + 随机数字姓名，方便后续绑定设备） =====
+  const [batchDeptId, setBatchDeptId] = useState("");
+  const [batchCount, setBatchCount] = useState("1");
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const handleBatchCreate = async () => {
+    if (!batchDeptId) {
+      toast({ title: "请选择部门", variant: "destructive" });
+      return;
+    }
+    const count = Number(batchCount);
+    if (!Number.isInteger(count) || count < 1 || count > 100) {
+      toast({ title: "数量需为 1-100 的整数", variant: "destructive" });
+      return;
+    }
+    setBatchLoading(true);
+    const result = await createEmployeesBatch({ departmentId: Number(batchDeptId), count });
+    setBatchLoading(false);
+    if (result.success) {
+      const deptName = departments.find((d) => d.id === Number(batchDeptId))?.name ?? "";
+      toast({
+        variant: "success",
+        title: `已生成 ${result.data.length} 名临时员工`,
+        description: "姓名 = 部门名-随机数字，登录账号已同步创建，可在分配设备时选用",
+      });
+      setEmployeeData((prev) => [
+        ...result.data.map((d) => ({
+          id: d.id,
+          employeeNo: d.employeeNo,
+          name: d.name,
+          departmentId: d.departmentId,
+          departmentName: d.departmentName || deptName,
+          phone: d.phone,
+          email: d.email,
+          assetCount: d.assetCount,
+          createdAt: d.createdAt,
+          account: null,
+        })),
+        ...prev,
+      ]);
+      setCreateOpen(false);
+      router.refresh();
+    } else {
+      toast({ title: "生成失败", description: result.error, variant: "destructive" });
+    }
+  };
 
   const handleCreate = async (values: EmployeeFormValues) => {
     setLoading(true);
@@ -1077,17 +1145,17 @@ export function EmployeeListClient({
     }
   };
 
-  const filteredEmployees = useMemo(() => {
-    return employeeData.filter((emp) => {
-      const matchesDepartment =
-        departmentFilter === "all" || emp.departmentId.toString() === departmentFilter;
-      const matchesKeyword =
-        !keyword.trim() ||
-        emp.name.toLowerCase().includes(keyword.toLowerCase()) ||
-        emp.employeeNo.toLowerCase().includes(keyword.toLowerCase());
-      return matchesDepartment && matchesKeyword;
-    });
+  // 部门过滤 + 关键词匹配（姓名 / 工号 / 名下设备编码），同时保留「命中来源」供行内标注
+  const matchedEmployees = useMemo(() => {
+    return employeeData
+      .filter((emp) => departmentFilter === "all" || emp.departmentId.toString() === departmentFilter)
+      .flatMap((emp) => {
+        const match = findEmployeeMatch(emp, keyword);
+        return match ? [{ emp, match }] : [];
+      });
   }, [employeeData, departmentFilter, keyword]);
+
+  const filteredEmployees = useMemo(() => matchedEmployees.map((r) => r.emp), [matchedEmployees]);
 
   const columnControlOptions = canManageAccounts
     ? [...BASE_COLUMN_OPTIONS, ...ACCOUNT_COLUMN_OPTIONS]
@@ -1100,10 +1168,14 @@ export function EmployeeListClient({
     visible: !hiddenColumns.includes(opt.id),
   }));
 
-  const dataWithDepartments = filteredEmployees.map((e) => ({
-    ...e,
-    _departments: departments,
-  }));
+  // 行只在「筛选结果」真正变化时才重建。
+  // 父级任意重渲染（toast 弹出/消失、权限加载、RSC 对比刷新）都会产生新的数组引用，
+  // 而 DataTable 的 autoResetPageIndex 默认开启 → 会把用户从第 N 页打回第 1 页。
+  const rows = useMemo(
+    () =>
+      matchedEmployees.map(({ emp }) => ({ ...emp })),
+      [matchedEmployees]
+    );
 
   // 导出预览数据 + 列定义（与 exportEmployeesToExcel 的字段 key 一一对应）
   const exportData = filteredEmployees.map((e) => ({
@@ -1176,7 +1248,7 @@ export function EmployeeListClient({
           },
           ]}
         searchValue={keyword}
-        searchPlaceholder="搜索工号、姓名..."
+        searchPlaceholder="搜索工号、姓名、设备编码..."
         onSearchChange={setKeyword}
         showReset
         onReset={() => { setDepartmentFilter("all"); setKeyword(""); }}
@@ -1220,14 +1292,18 @@ export function EmployeeListClient({
       <div className="rounded-lg border border-border/80 bg-card">
         <DataTable
           columns={columns}
-          data={dataWithDepartments}
+          data={rows}
           defaultSorting={[{ id: "createdAt", desc: true }]}
           renderExpandedRow={(employee) => <ExpandedEmployeeRow employee={employee} />}
         />
       </div>
 
       <Dialog open={createOpen} onOpenChange={(open) => {
-        if (!open) createForm.reset();
+        if (!open) {
+          createForm.reset();
+          setBatchDeptId("");
+          setBatchCount("1");
+        }
         setCreateOpen(open);
       }}>
         <DialogContent className="max-w-md">
@@ -1235,6 +1311,12 @@ export function EmployeeListClient({
             <DialogTitle>新建员工</DialogTitle>
             <DialogDescription>添加新的员工信息</DialogDescription>
           </DialogHeader>
+          <Tabs defaultValue="single">
+            <TabsList className="w-full">
+              <TabsTrigger value="single" className="flex-1">单个录入</TabsTrigger>
+              <TabsTrigger value="batch" className="flex-1">批量生成</TabsTrigger>
+            </TabsList>
+            <TabsContent value="single">
           <form onSubmit={createForm.handleSubmit(handleCreate)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1335,6 +1417,54 @@ export function EmployeeListClient({
               </Button>
             </DialogFooter>
           </form>
+            </TabsContent>
+            <TabsContent value="batch">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleBatchCreate();
+                }}
+                className="space-y-4"
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="batch-dept">部门</Label>
+                  <SearchableSelect
+                    id="batch-dept"
+                    value={batchDeptId}
+                    onValueChange={(v) => {
+                      // 部门为必填，忽略 toggle-off 空串保持原选中
+                      if (v) setBatchDeptId(v);
+                    }}
+                    placeholder="选择部门"
+                    ariaLabel="选择部门"
+                    triggerClassName="w-full"
+                    options={departments.map((d) => ({ value: d.id.toString(), label: d.name }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="batch-count">生成数量</Label>
+                  <Input
+                    id="batch-count"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={batchCount}
+                    onChange={(e) => setBatchCount(e.target.value)}
+                    aria-describedby="batch-count-hint"
+                  />
+                  <p id="batch-count-hint" className="text-xs text-muted-foreground">
+                    姓名 = 部门名-随机数字（如 双立人-4821），工号自动生成，登录账号同步创建；生成后即可在分配设备时选用。
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+                  <Button type="submit" disabled={batchLoading}>
+                    {batchLoading ? "生成中..." : "生成"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 

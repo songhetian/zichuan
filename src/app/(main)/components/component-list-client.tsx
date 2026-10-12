@@ -57,12 +57,15 @@ function getCategoryName(categoryId: number, categories: { id: number; name: str
   return cat?.name ?? "-";
 }
 
-const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: string }[] }>[] = [
+function createColumns(
+  categories: { id: number; name: string }[]
+): ColumnDef<ComponentModel>[] {
+  return [
   {
     id: "category",
     header: "分类",
     cell: ({ row }) => {
-      const name = getCategoryName(row.original.categoryId, row.original._categories);
+      const name = getCategoryName(row.original.categoryId, categories);
       return (
         <span className="inline-flex items-center gap-2">
           <span className={cn("h-2 w-2 shrink-0 rounded-full", categoryDotClass(name))} aria-hidden />
@@ -108,18 +111,19 @@ const columns: ColumnDef<ComponentModel & { _categories: { id: number; name: str
       const model = row.original;
       return (
         <div className="flex items-center gap-1 justify-center">
-          <ComponentActionButtons model={model} categories={model._categories} />
+          <ComponentActionButtons model={model} categories={categories} />
         </div>
       );
     },
   },
-];
+  ];
+}
 
 function ComponentActionButtons({
   model,
   categories,
 }: {
-  model: ComponentModel & { _categories: { id: number; name: string }[] };
+  model: ComponentModel;
   categories: { id: number; name: string }[];
 }) {
   const router = useRouter();
@@ -374,10 +378,9 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
     return result;
   }, [models, selectedCategory, searchKeyword]);
 
-  const dataWithCategories = filteredModels.map((m) => ({
-    ...m,
-    _categories: categories,
-  }));
+  // 列定义依赖 categories 闭包；行对象不再携带 _categories（渲染上下文不进 data，
+  // 否则 data 引用被 prop 身份污染 → autoResetPageIndex 把用户打回第 1 页）
+  const columns = useMemo(() => createColumns(categories), [categories]);
 
   const handleCreate = async () => {
     if (!name.trim() || !categoryId) return;
@@ -446,7 +449,7 @@ export function ComponentListClient({ models, categories }: ComponentListClientP
         onReset={() => { setSelectedCategory("all"); setSearchKeyword(""); }}
       />
 
-      <DataTable columns={columns} data={dataWithCategories} />
+      <DataTable columns={columns} data={filteredModels} />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">

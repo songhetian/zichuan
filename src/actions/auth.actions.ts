@@ -95,7 +95,9 @@ export async function logout(): Promise<ActionResult<{ success: true }>> {
 export async function changePassword(
   input: z.infer<typeof changePasswordSchema>
 ): Promise<ActionResult<{ success: true }>> {
-  await requireAuth();
+  // 鉴权必须在 try 之外：会话失效时 requireAuth 抛的是 NEXT_REDIRECT，
+  // 放进 try 会被下面的 catch 吞掉，误导成「修改密码失败」。
+  const user = await requireAuth();
   const validated = changePasswordSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
@@ -103,7 +105,6 @@ export async function changePassword(
 
   try {
     // 仅允许修改当前登录账号的密码，避免 findFirst 误改他人/首条管理员
-    const user = await requireAuth();
     const admin = await prisma.admin.findUnique({ where: { id: user.id } });
     if (!admin) {
       return { success: false, error: "管理员不存在" };
@@ -135,13 +136,16 @@ export async function changePassword(
 export async function forceChangePassword(
   input: z.infer<typeof forceChangePasswordSchema>
 ): Promise<ActionResult<{ success: true }>> {
+  // 鉴权放在 try 外：会话失效时 requireAuth 抛的是 NEXT_REDIRECT，
+  // 放进 try 会被下面的 catch 吞掉，误导成「修改密码失败」。
+  const user = await requireAuth();
+
   const validated = forceChangePasswordSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
   }
 
   try {
-    const user = await requireAuth();
     const admin = await prisma.admin.findUnique({ where: { id: user.id } });
     if (!admin) {
       return { success: false, error: "账号不存在" };

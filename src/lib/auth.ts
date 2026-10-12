@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { getIronSession, SessionOptions } from "iron-session";
 import { prisma } from "./prisma";
 import { ActionResult } from "./types";
@@ -170,10 +171,22 @@ async function loadActiveAccount(
   return { mustChangePassword: admin.mustChangePassword };
 }
 
+/**
+ * 取当前登录用户；会话无效（无 cookie / 已过期 / 账号被停用或注销）时**重定向登录页**。
+ *
+ * 为什么不是 `throw new Error("UNAUTHORIZED")`：
+ * 客户端导航时 Next 会复用已缓存的 layout，**不会重跑 `(main)/layout.tsx` 里的守卫**，
+ * 于是「页面在渲染期调用的 action 抛 UNAUTHORIZED」就会直接变成整页 Error + digest
+ * （终端还会打印 `⨯ Error: UNAUTHORIZED`），用户拿到的是崩溃页而不是登录页。
+ * 会话失效属于「导航级条件」，统一用 NEXT_REDIRECT 表达，交由路由处理。
+ *
+ * 需要在 action 里返回 `{ success:false, error:"请先登录" }` 的场景，
+ * 请改用 `requireAuthSafe`（它不重定向）。
+ */
 export async function requireAuth(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) {
-    throw new Error("UNAUTHORIZED");
+    redirect("/login");
   }
   return user;
 }
@@ -187,8 +200,11 @@ export function withAuth<T>(
 ): () => Promise<ActionResult<T>> {
   return async () => {
     try {
-      const user = await requireAuth();
-      return fn(user);
+      const user = await getCurrentUser();
+      if (!user) {
+        return { success: false, error: "请先登录" };
+      }
+      return await fn(user);
     } catch (e) {
       if (e instanceof Error && e.message === "UNAUTHORIZED") {
         return { success: false, error: "请先登录" };
@@ -202,8 +218,12 @@ export async function requireAuthSafe<T>(
   fn: (user: SessionUser) => Promise<ActionResult<T>>
 ): Promise<ActionResult<T>> {
   try {
-    const user = await requireAuth();
-    return fn(user);
+    // 刻意不用 requireAuth：这里要的是「返回请先登录」而不是跳转登录页
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "请先登录" };
+    }
+    return await fn(user);
   } catch (e) {
     if (e instanceof Error && e.message === "UNAUTHORIZED") {
       return { success: false, error: "请先登录" };

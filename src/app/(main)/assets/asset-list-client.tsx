@@ -1365,10 +1365,32 @@ function AssetListContent({
     { id: "serialNo", label: "序列号" },
   ].map((opt) => ({ ...opt, visible: !hiddenColumns.includes(opt.id) }));
 
+  // RSC 每次刷新都会把资产数据重新序列化成全新对象（行含 components/lifecycleLogs
+  // 嵌套数组，TanStack 的一层浅比较识别不了「新对象、同内容」）→ data 引用必变 →
+  // autoResetPageIndex 把用户打回第 1 页。按内容签名复用旧行对象：
+  // 内容没变的行保持旧引用 → 浅比较通过 → 不重算；真变的行换新对象，正常重算。
+  const prevAssetsRef = useRef(new Map<number, { sig: string; row: AssetItem }>());
+  const stableAssets = useMemo(() => {
+    const nextCache = new Map<number, { sig: string; row: AssetItem }>();
+    const result = assets.map((asset) => {
+      const sig = JSON.stringify(asset);
+      const prev = prevAssetsRef.current.get(asset.id);
+      const row = prev && prev.sig === sig ? prev.row : asset;
+      nextCache.set(asset.id, { sig, row });
+      return row;
+    });
+    prevAssetsRef.current = nextCache;
+    return result;
+  }, [assets]);
+  // ⚠️ 结果数组必须 useMemo，且要做「数组级引用稳定」：TanStack 对 data 用逐项
+  // Object.is 比较（memo 实现 deps[index] !== dep），任何新数组引用都会重算并
+  // 触发 autoResetPageIndex。行级由 stableAssets 保证「同内容=同对象」，
+  // 这里再把浅等的结果数组换成上一次的引用，彻底杜绝误重置。
+  const prevFilteredRef = useRef<AssetItem[] | null>(null);
+  const filteredAssets = useMemo(() => {
   // 构建部门名 -> ID 的映射，用于筛选
   const departmentNameMap = new Map(departments.map((d) => [d.name, d.id]));
-
-  const filteredAssets = assets.filter((asset) => {
+  const result = stableAssets.filter((asset) => {
     const matchStatus = statusFilter === "all" || asset.status === statusFilter;
     const matchDepartment =
       departmentFilter === "all" ||
@@ -1427,6 +1449,29 @@ function AssetListContent({
       matchImportDate
     );
   });
+  const prevFiltered = prevFilteredRef.current;
+  if (
+    prevFiltered &&
+    prevFiltered.length === result.length &&
+    prevFiltered.every((row, i) => row === result[i])
+  ) {
+    return prevFiltered;
+  }
+  prevFilteredRef.current = result;
+  return result;
+  }, [
+    stableAssets,
+    statusFilter,
+    departmentFilter,
+    categoryFilter,
+    employeeFilter,
+    keyword,
+    memoryMinGB,
+    diskMinGB,
+    importFrom,
+    importTo,
+    departments,
+  ]);
 
   const handleExport = async (selectedFields: string[]) => {
     setPending("export");

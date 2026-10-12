@@ -192,6 +192,17 @@ describe("员工 CRUD", () => {
   });
 
   describe("getEmployees", () => {
+    /** 造一台挂在某员工名下的设备——资产编码即「按设备编码搜员工」的依据 */
+    async function giveAsset(employeeId: number, assetNo: string) {
+      const cat = await prisma.assetCategory.create({ data: { name: "计算机", code: "DN" } });
+      const template = await prisma.deviceTemplate.create({
+        data: { name: "标准办公电脑", categoryId: cat.id },
+      });
+      return prisma.asset.create({
+        data: { assetNo, name: "笔记本", status: "IN_USE", employeeId, templateId: template.id },
+      });
+    }
+
     it("可以获取全部员工列表", async () => {
       const dept = await setupDept();
       await createEmployee({ employeeNo: "E001", name: "张三", departmentId: dept.id });
@@ -235,6 +246,33 @@ describe("员工 CRUD", () => {
 
       expect(unwrap(result).length).toBe(1);
       expect(unwrap(result)[0].employeeNo).toBe("E002");
+    });
+
+    it("可以按设备编码搜索：定位到正在使用该设备的员工", async () => {
+      const dept = await setupDept();
+      const 张三 = unwrap(
+        await createEmployee({ employeeNo: "E001", name: "张三", departmentId: dept.id })
+      );
+      await createEmployee({ employeeNo: "E002", name: "李四", departmentId: dept.id });
+      await giveAsset(张三.id, "DN-0012");
+
+      const result = await getEmployees({ keyword: "DN-0012" });
+
+      expect(unwrap(result).map((e) => e.name)).toEqual(["张三"]);
+    });
+
+    it("列表带出员工名下设备的资产编码（供前端按设备编码搜索）", async () => {
+      const dept = await setupDept();
+      const 张三 = unwrap(
+        await createEmployee({ employeeNo: "E001", name: "张三", departmentId: dept.id })
+      );
+      await createEmployee({ employeeNo: "E002", name: "李四", departmentId: dept.id });
+      await giveAsset(张三.id, "DN-0012");
+
+      const emps = unwrap(await getEmployees({}));
+
+      expect(emps.find((e) => e.name === "张三")?.assetNos).toEqual(["DN-0012"]);
+      expect(emps.find((e) => e.name === "李四")?.assetNos).toEqual([]);
     });
   });
 
