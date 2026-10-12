@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { EmployeePicker, type EmployeeOption } from "@/components/ui/employee-picker";
 import {
   Dialog,
   DialogContent,
@@ -68,6 +69,12 @@ import { exportAssetsToExcel, importAssetsFromExcel } from "@/actions/excel.acti
 import { importAssetsFromExcelAuto } from "@/actions/auto-import.actions";
 import { getMemoryGB, getDiskGB } from "@/lib/asset-filter";
 import { filterByImportDate } from "@/lib/filter-by-import-date";
+import { getAvailableActions, type AssetAction } from "@/lib/asset-action-availability";
+import { summarizeSelection } from "@/lib/asset-selection-summary";
+import { describeAllocationRule } from "@/lib/allocation-rule-text";
+import { BatchAllocateDialog } from "./batch-allocate-dialog";
+import { SelectionContextBar } from "@/components/features/selection-context-bar";
+import type { LucideIcon } from "lucide-react";
 
 // ============================================================
 // Helpers
@@ -220,11 +227,19 @@ interface AssetItem {
   lifecycleLogs: AssetLifecycleLog[];
 }
 
+interface AssetCategoryOption {
+  id: number;
+  name: string;
+  code: string;
+  unique: boolean;
+  parentId: number | null;
+}
+
 interface AssetListClientProps {
   assets: AssetItem[];
   templates: { id: number; name: string; components: { modelId: number; modelName: string; modelBrand: string | null; quantity: number }[] }[];
-  categories: { id: number; name: string; code: string; unique: boolean; parentId: number | null }[];
-  employees: { id: number; name: string; departmentName: string }[];
+  categories: AssetCategoryOption[];
+  employees: EmployeeOption[];
   departments: { id: number; name: string }[];
 }
 
@@ -308,12 +323,16 @@ function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogProps) {
 // Action Buttons - 图标化
 // ============================================================
 
-function ActionButtons({
+// 设备行操作菜单。导出以便测试「某状态下菜单里有哪些操作」这条行为。
+export function ActionButtons({
   asset,
   employees,
+  categories = [],
 }: {
   asset: AssetItem;
-  employees: { id: number; name: string; departmentName: string }[];
+  employees: EmployeeOption[];
+  /** 仅用于在分配/调拨弹窗里显示该分类的分配规则说明 */
+  categories?: AssetCategoryOption[];
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -441,6 +460,28 @@ function ActionButtons({
     }
   };
 
+  // 弹窗顶部上下文条的内容：这台设备是什么 + 该分类的分配规则
+  const assetSummary = summarizeSelection([
+    { assetNo: asset.assetNo, categoryName: asset.categoryName },
+  ]);
+  const assetRuleText = describeAllocationRule(
+    categories.find((c) => c.id === asset.categoryId)
+  );
+
+  // 操作 → 菜单项（文案 / 图标 / 触发动作）。哪些操作可用由 getAvailableActions 统一判定，
+  // 这里只负责渲染，避免状态判断再次散落成多个 if。
+  const actionMenu: Record<
+    AssetAction,
+    { label: string; icon: LucideIcon; iconClassName: string; className?: string; onSelect: () => void }
+  > = {
+    allocate: { label: "分配", icon: UserPlus, iconClassName: "text-emerald-500", onSelect: () => setAllocateOpen(true) },
+    return: { label: "归还", icon: RotateCcw, iconClassName: "text-emerald-500", onSelect: () => setReturnOpen(true) },
+    completeRepair: { label: "维修完成", icon: CheckCircle2, iconClassName: "text-emerald-500", onSelect: () => setMaintenanceCompleteOpen(true) },
+    transfer: { label: "调拨", icon: ArrowRightLeft, iconClassName: "text-cyan-500", onSelect: () => setTransferOpen(true) },
+    sendRepair: { label: "送修", icon: Wrench, iconClassName: "text-amber-500", onSelect: () => setMaintenanceOpen(true) },
+    scrap: { label: "报废", icon: Ban, iconClassName: "", className: "text-orange-600 focus:text-orange-700", onSelect: () => setScrapOpen(true) },
+  };
+
   return (
     <>
       <div className="flex items-center gap-0.5 justify-center">
@@ -483,36 +524,16 @@ function ActionButtons({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-32">
-            {asset.status === "IDLE" && (
-              <DropdownMenuItem onSelect={() => setAllocateOpen(true)}>
-                <UserPlus className="mr-2 h-4 w-4 text-emerald-500" />分配
-              </DropdownMenuItem>
-            )}
-            {asset.status === "IN_USE" && (
-              <DropdownMenuItem onSelect={() => setReturnOpen(true)}>
-                <RotateCcw className="mr-2 h-4 w-4 text-emerald-500" />归还
-              </DropdownMenuItem>
-            )}
-            {asset.status === "IN_MAINTENANCE" && (
-              <DropdownMenuItem onSelect={() => setMaintenanceCompleteOpen(true)}>
-                <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />维修完成
-              </DropdownMenuItem>
-            )}
-            {asset.status === "IN_USE" && (
-              <DropdownMenuItem onSelect={() => setTransferOpen(true)}>
-                <ArrowRightLeft className="mr-2 h-4 w-4 text-cyan-500" />调拨
-              </DropdownMenuItem>
-            )}
-            {(asset.status === "IDLE" || asset.status === "IN_USE") && (
-              <DropdownMenuItem onSelect={() => setMaintenanceOpen(true)}>
-                <Wrench className="mr-2 h-4 w-4 text-amber-500" />送修
-              </DropdownMenuItem>
-            )}
-            {asset.status !== "SCRAPPED" && (
-              <DropdownMenuItem onSelect={() => setScrapOpen(true)} className="text-orange-600 focus:text-orange-700">
-                <Ban className="mr-2 h-4 w-4" />报废
-              </DropdownMenuItem>
-            )}
+            {getAvailableActions(asset.status).map((action) => {
+              const item = actionMenu[action];
+              const Icon = item.icon;
+              return (
+                <DropdownMenuItem key={action} onSelect={item.onSelect} className={item.className}>
+                  <Icon className={`mr-2 h-4 w-4 ${item.iconClassName}`} />
+                  {item.label}
+                </DropdownMenuItem>
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -560,25 +581,25 @@ function ActionButtons({
         onConfirm={handleMaintenanceDone}
       />
       <Dialog open={allocateOpen} onOpenChange={(v) => { if (!v) setAllocateEmployeeId(""); setAllocateOpen(v); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>分配设备</DialogTitle>
             <DialogDescription>选择要分配的员工</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>选择员工</Label>
-            <SearchableSelect
-              value={allocateEmployeeId}
-              onValueChange={setAllocateEmployeeId}
-              placeholder="请选择员工"
-              triggerClassName="w-full"
-              options={employees.map((e) => ({
-                value: e.id.toString(),
-                label: `${e.name}（${e.departmentName}）`,
-              }))}
-            />
-          </div>
-          <DialogFooter>
+          <SelectionContextBar
+            summary={assetSummary}
+            ruleText={assetRuleText}
+            icon={UserPlus}
+            accentClassName="text-emerald-500"
+          />
+          <EmployeePicker
+            employees={employees}
+            value={allocateEmployeeId}
+            onValueChange={setAllocateEmployeeId}
+            placeholder="请选择员工"
+            triggerClassName="w-full"
+          />
+          <DialogFooter className="border-t-0">
             <Button variant="outline" onClick={() => { setAllocateEmployeeId(""); setAllocateOpen(false); }}>取消</Button>
             <Button onClick={handleAllocate} disabled={loading || !allocateEmployeeId}>
               {loading ? "分配中..." : "确认分配"}
@@ -588,27 +609,27 @@ function ActionButtons({
       </Dialog>
 
       <Dialog open={transferOpen} onOpenChange={(v) => { if (!v) setTransferEmployeeId(""); setTransferOpen(v); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>调拨设备</DialogTitle>
             <DialogDescription>将设备调拨给其他员工</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>目标员工</Label>
-            <SearchableSelect
-              value={transferEmployeeId}
-              onValueChange={setTransferEmployeeId}
-              placeholder="请选择目标员工"
-              triggerClassName="w-full"
-              options={employees
-                .filter((e) => e.id !== asset.employeeId)
-                .map((e) => ({
-                  value: e.id.toString(),
-                  label: `${e.name}（${e.departmentName}）`,
-                }))}
-            />
-          </div>
-          <DialogFooter>
+          <SelectionContextBar
+            summary={assetSummary}
+            ruleText={assetRuleText}
+            icon={ArrowRightLeft}
+            accentClassName="text-cyan-500"
+          />
+          <EmployeePicker
+            employees={employees}
+            value={transferEmployeeId}
+            onValueChange={setTransferEmployeeId}
+            placeholder="请选择目标员工"
+            employeeLabel="目标员工"
+            triggerClassName="w-full"
+            excludeIds={asset.employeeId ? [asset.employeeId] : []}
+          />
+          <DialogFooter className="border-t-0">
             <Button variant="outline" onClick={() => { setTransferEmployeeId(""); setTransferOpen(false); }}>取消</Button>
             <Button onClick={handleTransfer} disabled={loading || !transferEmployeeId}>
               {loading ? "调拨中..." : "确认调拨"}
@@ -671,7 +692,8 @@ function AssetNoCell({ asset }: { asset: AssetItem }) {
 }
 
 function getColumns(
-  employees: { id: number; name: string; departmentName: string }[]
+  employees: EmployeeOption[],
+  categories: AssetCategoryOption[]
 ): ColumnDef<AssetItem>[] {
   return [
     {
@@ -771,7 +793,7 @@ function getColumns(
       minSize: 180,
       cell: ({ row }) => {
         const asset = row.original;
-        return <ActionButtons asset={asset} employees={employees} />;
+        return <ActionButtons asset={asset} employees={employees} categories={categories} />;
       },
     },
   ];
@@ -792,7 +814,7 @@ interface AdvancedFilterBarProps {
   onDiskChange: (v: string) => void;
   onClear: () => void;
   departments: { id: number; name: string }[];
-  employees: { id: number; name: string; departmentName: string }[];
+  employees: EmployeeOption[];
 }
 
 export function AdvancedFilterBar({
@@ -894,7 +916,6 @@ export function AssetListClient({
   const [batchTransferOpen, setBatchTransferOpen] = useState(false);
   const [batchMaintenanceOpen, setBatchMaintenanceOpen] = useState(false);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
-  const [batchAllocateEmployeeId, setBatchAllocateEmployeeId] = useState("");
   const [batchTransferEmployeeId, setBatchTransferEmployeeId] = useState("");
   const [batchLoading, setBatchLoading] = useState(false);
   const [autoImportLoading, setAutoImportLoading] = useState(false);
@@ -912,7 +933,30 @@ export function AssetListClient({
     }
   }, [searchParams]);
 
-  const columns = getColumns(employees);
+  const columns = getColumns(employees, categories);
+
+  // 批量分配/调拨弹窗的上下文条内容
+  const batchSummary = summarizeSelection(
+    selectedAssets.map((a) => ({ assetNo: a.assetNo, categoryName: a.categoryName }))
+  );
+  // 只有整批同分类时才显示分配规则；混合分类下规则不一致，显示单条会误导
+  const batchCategoryIds = [...new Set(selectedAssets.map((a) => a.categoryId))];
+  const batchRuleText =
+    batchCategoryIds.length === 1
+      ? describeAllocationRule(categories.find((c) => c.id === batchCategoryIds[0]))
+      : undefined;
+
+  // 批量分配弹窗只拿得到「选中设备」，但「谁已持有唯一分类设备」要看全量快照，
+  // 所以这一份映射在页面算好后传给弹窗（规则本身仍在 planAllocation 里）。
+  const employeeOwnedUniqueCategories = new Map<number, number[]>();
+  const uniqueCategoryIds = new Set(categories.filter((c) => c.unique).map((c) => c.id));
+  for (const a of assets) {
+    if (a.employeeId === null || !uniqueCategoryIds.has(a.categoryId)) continue;
+    if (!["IDLE", "IN_USE", "IN_MAINTENANCE"].includes(a.status)) continue;
+    const list = employeeOwnedUniqueCategories.get(a.employeeId) ?? [];
+    if (!list.includes(a.categoryId)) list.push(a.categoryId);
+    employeeOwnedUniqueCategories.set(a.employeeId, list);
+  }
 
   // 构建部门名 -> ID 的映射，用于筛选
   const departmentNameMap = new Map(departments.map((d) => [d.name, d.id]));
@@ -1082,28 +1126,6 @@ export function AssetListClient({
     setAutoImportLoading(false);
     if (autoImportFileRef.current) {
       autoImportFileRef.current.value = "";
-    }
-  };
-
-  // 批量分配
-  const handleBatchAllocate = async () => {
-    if (!batchAllocateEmployeeId || selectedAssets.length === 0) return;
-    setBatchLoading(true);
-    const result = await allocateAssets({
-      assetIds: selectedAssets.map((a) => a.id),
-      employeeId: Number(batchAllocateEmployeeId),
-      operator: "admin",
-      remark: "批量分配",
-    });
-    setBatchLoading(false);
-    if (result.success) {
-      toast({ title: "批量分配成功" });
-      setBatchAllocateOpen(false);
-      setBatchAllocateEmployeeId("");
-      setSelectedAssets([]);
-      router.refresh();
-    } else {
-      toast({ title: "批量分配失败", description: result.error, variant: "destructive" });
     }
   };
 
@@ -1442,55 +1464,38 @@ export function AssetListClient({
       <CreateAssetDialog open={createOpen} onOpenChange={setCreateOpen} templates={templates} />
 
       {/* 批量分配对话框 */}
-      <Dialog open={batchAllocateOpen} onOpenChange={(v) => { if (!v) setBatchAllocateEmployeeId(""); setBatchAllocateOpen(v); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>批量分配设备</DialogTitle>
-            <DialogDescription>将选中的 {selectedAssets.length} 台设备分配给指定员工</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>选择员工</Label>
-            <SearchableSelect
-              value={batchAllocateEmployeeId}
-              onValueChange={setBatchAllocateEmployeeId}
-              placeholder="请选择员工"
-              triggerClassName="w-full"
-              options={employees.map((e) => ({
-                value: e.id.toString(),
-                label: `${e.name}（${e.departmentName}）`,
-              }))}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setBatchAllocateEmployeeId(""); setBatchAllocateOpen(false); }}>取消</Button>
-            <Button onClick={handleBatchAllocate} disabled={batchLoading || !batchAllocateEmployeeId}>
-              {batchLoading ? "分配中..." : "确认分配"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <BatchAllocateDialog
+        open={batchAllocateOpen}
+        onOpenChange={setBatchAllocateOpen}
+        assets={selectedAssets}
+        employees={employees}
+        categories={categories}
+        employeeOwnedUniqueCategories={employeeOwnedUniqueCategories}
+        onAllocated={() => setSelectedAssets([])}
+      />
 
       {/* 批量调拨对话框 */}
       <Dialog open={batchTransferOpen} onOpenChange={(v) => { if (!v) setBatchTransferEmployeeId(""); setBatchTransferOpen(v); }}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>批量调拨设备</DialogTitle>
             <DialogDescription>将选中的 {selectedAssets.length} 台设备调拨给指定员工</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>目标员工</Label>
-            <SearchableSelect
-              value={batchTransferEmployeeId}
-              onValueChange={setBatchTransferEmployeeId}
-              placeholder="请选择目标员工"
-              triggerClassName="w-full"
-              options={employees.map((e) => ({
-                value: e.id.toString(),
-                label: `${e.name}（${e.departmentName}）`,
-              }))}
-            />
-          </div>
-          <DialogFooter>
+          <SelectionContextBar
+            summary={batchSummary}
+            ruleText={batchRuleText}
+            icon={ArrowRightLeft}
+            accentClassName="text-cyan-500"
+          />
+          <EmployeePicker
+            employees={employees}
+            value={batchTransferEmployeeId}
+            onValueChange={setBatchTransferEmployeeId}
+            placeholder="请选择目标员工"
+            employeeLabel="目标员工"
+            triggerClassName="w-full"
+          />
+          <DialogFooter className="border-t-0">
             <Button variant="outline" onClick={() => { setBatchTransferEmployeeId(""); setBatchTransferOpen(false); }}>取消</Button>
             <Button onClick={handleBatchTransfer} disabled={batchLoading || !batchTransferEmployeeId}>
               {batchLoading ? "调拨中..." : "确认调拨"}

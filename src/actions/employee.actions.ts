@@ -2,7 +2,8 @@
 
 import { ActionResult } from "@/lib/types";
 import { handleUniqueViolation } from "@/lib/prisma-error";
-import { generateEmployeeNo } from "@/lib/employee-no";
+import { generateEmployeeNo, generateEmployeeNos } from "@/lib/employee-no";
+import { generateBatchEmployeeNames, BATCH_EMPLOYEE_MAX } from "@/lib/batch-employee";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
@@ -29,6 +30,15 @@ const querySchema = z.object({
   keyword: z.string().optional(),
 });
 
+const batchCreateSchema = z.object({
+  departmentId: z.number(),
+  count: z
+    .number()
+    .int("数量必须是整数")
+    .min(1, "数量至少为 1")
+    .max(BATCH_EMPLOYEE_MAX, `单次最多创建 ${BATCH_EMPLOYEE_MAX} 人`),
+});
+
 type EmployeeWithDept = {
   id: number;
   employeeNo: string;
@@ -38,6 +48,8 @@ type EmployeeWithDept = {
   phone: string | null;
   email: string | null;
   assetCount: number;
+  /** 该员工名下设备的编码（`Asset.employeeId` 指向他），供「按设备编码找使用人」前端实时过滤 */
+  assetNos: string[];
   createdAt: string;
 };
 
@@ -51,6 +63,7 @@ type PrismaEmployee = {
   phone: string | null;
   email: string | null;
   _count?: { assets: number };
+  assets?: { assetNo: string }[];
 };
 
 function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
@@ -63,6 +76,7 @@ function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
     phone: emp.phone ?? null,
     email: emp.email ?? null,
     assetCount: emp._count?.assets ?? 0,
+    assetNos: emp.assets?.map((a) => a.assetNo) ?? [],
     createdAt: emp.createdAt.toISOString(),
   };
 }
@@ -109,6 +123,60 @@ export async function createEmployee(
   }
 }
 
+/**
+ * 批量创建员工（占位员工）。
+ *
+ * 姓名规则：`部门名-4 位随机编号`（如「研发部-3721」）—— 一次造一批人再拿去和
+ * 设备搭配时，看名字就知道属于哪个部门。工号沿用 `EMP0001` 自动序号，一次性
+ * 算好整批（逐个算会因为都还没落库而拿到同一个号）。
+ */
+export async function createEmployeesBatch(input: {
+  departmentId: number;
+  count: number;
+}): Promise<ActionResult<EmployeeWithDept[]>> {
+  await requireAuth();
+
+  const validated = batchCreateSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
+  }
+
+  const { departmentId, count } = validated.data;
+
+  const dept = await prisma.department.findUnique({ where: { id: departmentId } });
+  if (!dept) {
+    return { success: false, error: "部门不存在" };
+  }
+
+  const existing = await prisma.employee.findMany({
+    select: { employeeNo: true, name: true },
+  });
+
+  const names = generateBatchEmployeeNames(
+    dept.name,
+    count,
+    existing.map((e) => e.name)
+  );
+  const employeeNos = generateEmployeeNos(
+    existing.map((e) => e.employeeNo),
+    count
+  );
+
+  try {
+    const created = await prisma.$transaction(
+      names.map((name, i) =>
+        prisma.employee.create({
+          data: { employeeNo: employeeNos[i], name, departmentId },
+          include: { department: { select: { name: true } } },
+        })
+      )
+    );
+    return { success: true, data: created.map(formatEmployee) };
+  } catch (e) {
+    return handleUniqueViolation(e, { employeeNo: "工号已存在，请重试" }, "批量创建失败");
+  }
+}
+
 export async function getEmployees(
   input: z.infer<typeof querySchema> = {}
 ): Promise<ActionResult<EmployeeWithDept[]>> {
@@ -138,6 +206,8 @@ export async function getEmployees(
     include: {
       department: { select: { name: true } },
       _count: { select: { assets: true } },
+      // 只为「按设备编码找使用人」准备：编码排序固定，前端展示才稳定
+      assets: { select: { assetNo: true }, orderBy: { assetNo: "asc" } },
     },
   });
 

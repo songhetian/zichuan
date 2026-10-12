@@ -22,6 +22,8 @@ interface SearchableSelectProps {
   emptyText?: string
   className?: string
   triggerClassName?: string
+  /** 触发按钮的无障碍名称（trigger 内只有选中项文本，读屏时需要它） */
+  ariaLabel?: string
 }
 
 export function SearchableSelect({
@@ -32,6 +34,7 @@ export function SearchableSelect({
   emptyText = "无匹配项",
   className,
   triggerClassName,
+  ariaLabel,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -47,6 +50,7 @@ export function SearchableSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={ariaLabel}
           className={cn("h-9 justify-between font-normal", triggerClassName)}
         >
           <span className="truncate">{selectedLabel}</span>

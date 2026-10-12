@@ -31,15 +31,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Plus, Pencil, Trash2, Download, Upload, ChevronRight, Loader2, Monitor, History, Clock } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, Loader2, Monitor, History, Clock, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   createEmployee,
+  createEmployeesBatch,
   deleteEmployee,
   updateEmployee,
   getEmployeeAssets,
   type EmployeeAsset,
 } from "@/actions/employee.actions";
+import { BATCH_EMPLOYEE_MAX } from "@/lib/batch-employee";
+import { findEmployeesByAssetCode } from "@/lib/employee-asset-search";
 import { exportEmployeesToExcel, importEmployeesFromExcel } from "@/actions/excel.actions";
 import { getSystemLogs } from "@/actions/system-log.actions";
 
@@ -63,17 +66,44 @@ interface Employee {
   phone: string | null;
   email: string | null;
   assetCount?: number;
+  /** 名下设备编码，用于「按设备编码搜使用人」 */
+  assetNos?: string[];
   createdAt: string;
 }
+
+/** 表格行的实际数据：员工 + 供列渲染用的附加字段（部门列表、命中的设备编码） */
+export type EmployeeRow = Employee & {
+  _departments: { id: number; name: string }[];
+  /** 当前「设备编码」搜索命中的编码；没在搜设备时为空数组 */
+  _matchedAssetNos?: string[];
+};
 
 interface EmployeeListClientProps {
   employees: Employee[];
   departments: { id: number; name: string }[];
 }
 
-export const columns: ColumnDef<Employee & { _departments: { id: number; name: string }[] }>[] = [
+export const columns: ColumnDef<EmployeeRow>[] = [
   { accessorKey: "employeeNo", header: "工号", size: 100 },
-  { accessorKey: "name", header: "姓名", size: 100 },
+  {
+    accessorKey: "name",
+    header: "姓名",
+    size: 100,
+    cell: ({ row }) => (
+      <div className="flex flex-wrap items-center gap-1">
+        <span>{row.original.name}</span>
+        {/* 按设备编码搜出来的行，直接把命中的编码标在名字旁边：一眼确认是这台设备 */}
+        {(row.original._matchedAssetNos ?? []).map((assetNo) => (
+          <span
+            key={assetNo}
+            className="rounded border border-primary/30 bg-primary/5 px-1 py-px font-mono text-[10px] text-primary"
+          >
+            {assetNo}
+          </span>
+        ))}
+      </div>
+    ),
+  },
   {
     accessorKey: "departmentName",
     header: "部门",
@@ -119,7 +149,11 @@ export const columns: ColumnDef<Employee & { _departments: { id: number; name: s
     cell: ({ row }) => {
       const emp = row.original;
       return (
-        <div className="flex items-center gap-1 justify-center">
+        // 操作列自己吞掉点击：否则「编辑/删除」会顺带触发整行的「查看设备」弹窗
+        <div
+          className="flex items-center gap-1 justify-center"
+          onClick={(e) => e.stopPropagation()}
+        >
           <EmployeeActionButtons employee={emp} departments={emp._departments} />
         </div>
       );
@@ -127,7 +161,10 @@ export const columns: ColumnDef<Employee & { _departments: { id: number; name: s
   },
 ];
 
-function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
+/**
+ * 某个员工的在用设备 / 分配历史。用在「点击员工行」弹出的弹窗里。
+ */
+function EmployeeUsagePanel({ employee }: { employee: Employee }) {
   const [assets, setAssets] = useState<EmployeeAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<{ id: number; module: string; action: string; detail: string; operator: string; createdAt: Date }[]>([]);
@@ -173,8 +210,8 @@ function ExpandedEmployeeRow({ employee }: { employee: Employee }) {
   };
 
   return (
-    <div className="bg-muted/30 p-4 animate-in slide-in-from-top-1">
-      <div className="flex gap-2 mb-4 border-b pb-2">
+    <div className="space-y-3">
+      <div className="flex gap-2 border-b pb-2">
         <Button
           type="button"
           variant={activeTab === "assets" ? "default" : "ghost"}
@@ -450,12 +487,19 @@ function EmployeeActionButtons({
 
 export function EmployeeListClient({ employees, departments }: EmployeeListClientProps) {
   const [createOpen, setCreateOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchDeptId, setBatchDeptId] = useState("");
+  const [batchCount, setBatchCount] = useState("10");
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [usageEmployee, setUsageEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
+  // 按设备编码找使用人：填了编码就只留正在用这台设备的员工
+  const [assetCode, setAssetCode] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const { toast } = useToast();
@@ -488,6 +532,40 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
       router.refresh();
     } else {
       toast({ title: "创建失败", description: result.error, variant: "destructive" });
+    }
+  };
+
+  // 批量建人：姓名由服务端按「部门名-随机编号」生成，这里只负责收「哪个部门 + 几个人」
+  const batchCountNumber = Number(batchCount);
+  const batchCountValid =
+    Number.isInteger(batchCountNumber) &&
+    batchCountNumber >= 1 &&
+    batchCountNumber <= BATCH_EMPLOYEE_MAX;
+  const batchDeptName =
+    departments.find((d) => d.id.toString() === batchDeptId)?.name ?? "部门名";
+
+  const handleBatchCreate = async () => {
+    if (!batchDeptId || !batchCountValid) return;
+    setBatchLoading(true);
+    const result = await createEmployeesBatch({
+      departmentId: Number(batchDeptId),
+      count: batchCountNumber,
+    });
+    setBatchLoading(false);
+    if (result.success) {
+      toast({
+        title: `已创建 ${result.data.length} 名员工`,
+        description: result.data
+          .slice(0, 3)
+          .map((e) => e.name)
+          .join("、") + (result.data.length > 3 ? " 等" : ""),
+      });
+      setBatchOpen(false);
+      setBatchDeptId("");
+      setBatchCount("10");
+      router.refresh();
+    } else {
+      toast({ title: "批量创建失败", description: result.error, variant: "destructive" });
     }
   };
 
@@ -538,28 +616,48 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
     }
   };
 
+  // 设备编码查询串（去掉首尾空白）：过滤、空状态文案、筛选条件判定共用一份
+  const assetCodeQuery = assetCode.trim();
+
   const filteredEmployees = useMemo(() => {
-    return employees.filter((emp) => {
-      const matchesDepartment =
-        departmentFilter === "all" || emp.departmentId.toString() === departmentFilter;
-      const matchesKeyword =
-        !keyword.trim() ||
-        emp.name.toLowerCase().includes(keyword.toLowerCase()) ||
-        emp.employeeNo.toLowerCase().includes(keyword.toLowerCase());
-      return matchesDepartment && matchesKeyword;
-    });
-  }, [employees, departmentFilter, keyword]);
+    // 先按设备编码圈人（没填就不过滤，且不留「匹配到哪台」的标记），
+    // 再叠加部门与关键字 —— 三者是「与」的关系。
+    const byAssetCode = assetCodeQuery
+      ? findEmployeesByAssetCode(employees, assetCodeQuery)
+      : employees.map((employee) => ({ employee, matchedAssetNos: [] as string[] }));
+
+    return byAssetCode
+      .filter(({ employee }) => {
+        const matchesDepartment =
+          departmentFilter === "all" || employee.departmentId.toString() === departmentFilter;
+        const matchesKeyword =
+          !keyword.trim() ||
+          employee.name.toLowerCase().includes(keyword.toLowerCase()) ||
+          employee.employeeNo.toLowerCase().includes(keyword.toLowerCase());
+        return matchesDepartment && matchesKeyword;
+      })
+      .map(({ employee, matchedAssetNos }) => ({ ...employee, _matchedAssetNos: matchedAssetNos }));
+  }, [employees, departmentFilter, keyword, assetCodeQuery]);
 
   const dataWithDepartments = filteredEmployees.map((e) => ({
     ...e,
     _departments: departments,
   }));
 
+  // 空状态要说人话：只搜设备编码而没人持有时，直接点名这台设备；
+  // 但同时还有部门/关键字条件时不能这么说（可能明明有人用，是被别的条件筛掉的）。
+  const hasOtherFilters = departmentFilter !== "all" || keyword.trim().length > 0;
+  const emptyText = !assetCodeQuery
+    ? undefined
+    : hasOtherFilters
+      ? "没有同时满足这些条件的员工"
+      : `没有员工正在使用「${assetCodeQuery}」`;
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="员工管理"
-        description="管理员工信息"
+        description="管理员工信息 · 点击任意员工可查看其正在使用的设备"
         action={
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setPreviewOpen(true)} disabled={exportLoading}>
@@ -577,6 +675,10 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
               className="hidden"
               onChange={handleFileChange}
             />
+            <Button variant="outline" onClick={() => setBatchOpen(true)}>
+              <Users className="mr-2 h-4 w-4" />
+              批量创建
+            </Button>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               新建员工
@@ -604,20 +706,34 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
               </Select>
             ),
           },
+          {
+            key: "assetCode",
+            content: (
+              <div className="relative">
+                <Monitor className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={assetCode}
+                  onChange={(e) => setAssetCode(e.target.value)}
+                  aria-label="按设备编码搜索"
+                  placeholder="按设备编码搜使用人，如 DT-7KF3WX"
+                  className="w-64 pl-8"
+                />
+              </div>
+            ),
+          },
         ]}
         searchValue={keyword}
         searchPlaceholder="搜索工号、姓名..."
         onSearchChange={setKeyword}
         showReset
-        onReset={() => { setDepartmentFilter("all"); setKeyword(""); }}
+        onReset={() => { setDepartmentFilter("all"); setKeyword(""); setAssetCode(""); }}
       />
       <DataTable
         columns={columns}
         data={dataWithDepartments}
         defaultSorting={[{ id: "createdAt", desc: true }]}
-        renderExpandedRow={(employee) =>
-          (employee.assetCount ?? 0) > 0 ? <ExpandedEmployeeRow employee={employee} /> : null
-        }
+        onRowClick={(employee) => setUsageEmployee(employee)}
+        emptyText={emptyText}
       />
 
       <Dialog open={createOpen} onOpenChange={(open) => {
@@ -680,6 +796,89 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量创建：按部门 + 数量造占位员工，姓名 = 部门名-随机编号 */}
+      <Dialog
+        open={batchOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBatchDeptId("");
+            setBatchCount("10");
+          }
+          setBatchOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>批量创建员工</DialogTitle>
+            <DialogDescription>
+              姓名自动生成为「部门名-随机编号」（如 {batchDeptName}-3721），工号自动生成（EMP0001…）
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>部门</Label>
+              <SearchableSelect
+                value={batchDeptId}
+                onValueChange={(v) => {
+                  // 部门必填，忽略 toggle-off 空串保持原选中
+                  if (v) setBatchDeptId(v);
+                }}
+                ariaLabel="选择部门"
+                placeholder="选择部门"
+                triggerClassName="w-full"
+                options={departments.map((d) => ({ value: d.id.toString(), label: d.name }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>数量</Label>
+              <Input
+                type="number"
+                min={1}
+                max={BATCH_EMPLOYEE_MAX}
+                value={batchCount}
+                onChange={(e) => setBatchCount(e.target.value)}
+                placeholder="数量"
+              />
+              <p className="text-xs text-muted-foreground">
+                一次最多 {BATCH_EMPLOYEE_MAX} 人；创建后可在列表里直接和设备搭配。
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBatchOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={handleBatchCreate}
+              disabled={batchLoading || !batchDeptId || !batchCountValid}
+            >
+              {batchLoading ? "创建中..." : `创建 ${batchCountNumber || 0} 人`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 点击员工行 → 他名下的设备 / 分配历史 */}
+      <Dialog
+        open={usageEmployee !== null}
+        onOpenChange={(open) => {
+          if (!open) setUsageEmployee(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{usageEmployee?.name} 的设备</DialogTitle>
+            <DialogDescription>
+              {usageEmployee?.departmentName} · 工号 {usageEmployee?.employeeNo}
+            </DialogDescription>
+          </DialogHeader>
+          {usageEmployee ? (
+            <EmployeeUsagePanel key={usageEmployee.id} employee={usageEmployee} />
+          ) : null}
         </DialogContent>
       </Dialog>
 

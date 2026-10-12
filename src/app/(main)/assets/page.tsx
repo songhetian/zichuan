@@ -59,6 +59,8 @@ export default async function AssetsPage() {
       employees={employees.map((e) => ({
         id: e.id,
         name: e.name,
+        employeeNo: e.employeeNo,
+        departmentId: e.departmentId,
         departmentName: e.department.name,
       }))}
       departments={departments}

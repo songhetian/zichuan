@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { EmployeePicker, type EmployeeOption } from "@/components/ui/employee-picker";
 import {
   Printer,
   Loader2,
@@ -46,11 +46,8 @@ interface AssetItem {
   departmentName: string;
 }
 
-interface EmployeeItem {
-  id: number;
-  name: string;
-  departmentName: string;
-}
+// 与全站选人控件共用同一形状（含 employeeNo / departmentId，供部门筛选使用）
+type EmployeeItem = EmployeeOption;
 
 interface DepartmentItem {
   id: number;
@@ -372,8 +369,8 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
         {/* 按员工模式 */}
         {mode === "employee" && (
           <div className="bg-card border rounded-xl p-5">
-            <label className="text-sm font-medium block mb-3">选择员工</label>
-            <SearchableSelect
+            <EmployeePicker
+              employees={employees}
               value={selectedEmployeeId}
               onValueChange={(v) => {
                 setSelectedEmployeeId(v);
@@ -382,13 +379,6 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
               }}
               placeholder="请选择员工"
               triggerClassName="w-full max-w-xs"
-              options={[
-                { value: "", label: "请选择员工" },
-                ...employees.map((emp) => ({
-                  value: String(emp.id),
-                  label: `${emp.name}${emp.departmentName ? `（${emp.departmentName}）` : ""}`,
-                })),
-              ]}
             />
             {selectedEmployeeId && (
               <p className="text-xs text-muted-foreground mt-2">

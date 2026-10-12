@@ -4,6 +4,7 @@ import { ActionResult } from "@/lib/types";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { planAllocation, type AllocationAsset } from "@/lib/allocation";
 
 // ============================================================
 // Schema 校验
@@ -25,6 +26,14 @@ const returnSchema = z.object({
 const transferSchema = z.object({
   assetIds: z.array(z.number()).min(1, "设备列表不能为空"),
   toEmployeeId: z.number(),
+  operator: z.string().min(1),
+  remark: z.string().optional(),
+});
+
+const multiAllocateSchema = z.object({
+  assignments: z
+    .array(z.object({ assetId: z.number(), employeeId: z.number() }))
+    .min(1, "分配列表不能为空"),
   operator: z.string().min(1),
   remark: z.string().optional(),
 });
@@ -125,6 +134,22 @@ export async function allocateAssets(
       });
       if (uniqueCategories.length > 0) {
         const uniqueCategoryIds = new Set(uniqueCategories.map(c => c.id));
+
+        // 批内自冲突：同一批里出现 2 台以上同唯一分类的设备，分给同一个人必然违规。
+        // 下面的查询刻意带 notIn 排除本批（更新后本批已属于该员工，不排除会把每次
+        // 分配都判成违规），因此这一层必须单独校验 —— 历史上正是漏了它，
+        // 才让「5 台笔记本全给一个人」在后端畅通无阻。
+        const batchCountByCategory = new Map<number, number>();
+        for (const a of assets) {
+          const catId = templateToCategory.get(a.templateId);
+          if (catId === undefined || !uniqueCategoryIds.has(catId)) continue;
+          batchCountByCategory.set(catId, (batchCountByCategory.get(catId) ?? 0) + 1);
+        }
+        if ([...batchCountByCategory.values()].some((n) => n > 1)) {
+          const categoryNames = uniqueCategories.map(c => c.name).join("、");
+          throw new Error(`UNIQUE_VIOLATION:${categoryNames}`);
+        }
+
         const existingAssets = await tx.asset.findMany({
           where: {
             employeeId,
@@ -180,6 +205,179 @@ export async function allocateAssets(
     }
     return { success: false, error: "分配失败" };
   }
+}
+
+// ============================================================
+// 批量分配（多员工）
+// ============================================================
+
+export interface AllocateSkipped {
+  assetId: number;
+  assetNo: string;
+  reason: string;
+}
+
+/**
+ * 一次提交多个员工的分配映射（批量分配弹窗的提交口）。
+ *
+ * 与 `allocateAssets` 的两点不同，都是为了配合「多选员工 + 均值分配 + 跳过冲突」：
+ *  - **按员工独立事务**（放弃整批原子）：一个员工遇到冲突不该拖垮其他人；
+ *  - 提交前用 `planAllocation` 按员工复核，**只落可行子集**，冲突项原样回报。
+ *
+ * 校验规则与前端预览共用 `planAllocation`，不存在第二份实现。
+ */
+export async function allocateAssetsToEmployees(
+  input: z.infer<typeof multiAllocateSchema>
+): Promise<ActionResult<{ allocatedCount: number; skipped: AllocateSkipped[] }>> {
+  await requireAuth();
+
+  const validated = multiAllocateSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.errors[0]?.message ?? "参数错误" };
+  }
+
+  const { assignments, operator, remark } = validated.data;
+
+  const assetIds = [...new Set(assignments.map((a) => a.assetId))];
+  const employeeIds = [...new Set(assignments.map((a) => a.employeeId))];
+
+  const assets = await prisma.asset.findMany({
+    where: { id: { in: assetIds } },
+    include: {
+      template: {
+        select: { categoryId: true, category: { select: { name: true, unique: true } } },
+      },
+    },
+  });
+  if (assets.length !== assetIds.length) {
+    return { success: false, error: "部分设备不存在" };
+  }
+
+  const employees = await prisma.employee.findMany({ where: { id: { in: employeeIds } } });
+  if (employees.length !== employeeIds.length) {
+    return { success: false, error: "部分员工不存在" };
+  }
+
+  // 各员工「已持有的唯一分类」。不排除本批设备 —— 本批此刻仍是闲置/库存，
+  // 本来就不属于任何人；要排除的是「本批被分出去之后」的状态，那由配额封顶负责。
+  const ownedRows = await prisma.asset.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
+      template: { category: { unique: true } },
+    },
+    select: { employeeId: true, template: { select: { categoryId: true } } },
+  });
+  const ownedByEmployee = new Map<number, number[]>();
+  for (const row of ownedRows) {
+    if (row.employeeId === null) continue;
+    const list = ownedByEmployee.get(row.employeeId) ?? [];
+    if (!list.includes(row.template.categoryId)) list.push(row.template.categoryId);
+    ownedByEmployee.set(row.employeeId, list);
+  }
+
+  const assetById = new Map(assets.map((a) => [a.id, a]));
+  const employeeById = new Map(employees.map((e) => [e.id, e]));
+
+  const grouped = new Map<number, number[]>();
+  for (const a of assignments) {
+    const list = grouped.get(a.employeeId);
+    if (list) list.push(a.assetId);
+    else grouped.set(a.employeeId, [a.assetId]);
+  }
+
+  const skipped: AllocateSkipped[] = [];
+  let allocatedCount = 0;
+
+  // 员工处理顺序固定（部门→工号），与前端预览的槽位顺序一致
+  const orderedEmployeeIds = [...grouped.keys()].sort((x, y) => {
+    const ex = employeeById.get(x)!;
+    const ey = employeeById.get(y)!;
+    if (ex.departmentId !== ey.departmentId) return ex.departmentId - ey.departmentId;
+    const byNo = ex.employeeNo.localeCompare(ey.employeeNo, undefined, { numeric: true });
+    return byNo !== 0 ? byNo : ex.id - ey.id;
+  });
+
+  for (const employeeId of orderedEmployeeIds) {
+    const employee = employeeById.get(employeeId)!;
+    const groupAssetIds = grouped.get(employeeId)!;
+
+    const planAssets: AllocationAsset[] = groupAssetIds
+      .map((id) => assetById.get(id)!)
+      .map((a) => ({
+        id: a.id,
+        assetNo: a.assetNo,
+        status: a.status,
+        categoryId: a.template.categoryId,
+        categoryName: a.template.category.name,
+        categoryUnique: a.template.category.unique,
+        employeeId: a.employeeId,
+      }));
+
+    const plan = planAllocation(planAssets, [
+      {
+        id: employee.id,
+        name: employee.name,
+        employeeNo: employee.employeeNo,
+        departmentId: employee.departmentId,
+        departmentName: "",
+        ownedUniqueCategoryIds: ownedByEmployee.get(employee.id) ?? [],
+      },
+    ]);
+
+    skipped.push(...plan.conflicts);
+
+    const idsToAllocate = plan.assignments.map((a) => a.assetId);
+    if (idsToAllocate.length === 0) continue;
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.asset.updateMany({
+          where: { id: { in: idsToAllocate }, status: { in: ["IDLE", "IN_STOCK"] } },
+          data: { status: "IN_USE", employeeId: employee.id, name: employee.name },
+        });
+        if (updated.count !== idsToAllocate.length) {
+          throw new Error("STATUS_CONFLICT");
+        }
+
+        await tx.lifecycleLog.createMany({
+          data: idsToAllocate.map((id) => ({
+            assetId: id,
+            action: "ALLOCATED",
+            fromStatus: assetById.get(id)?.status ?? "IDLE",
+            toStatus: "IN_USE",
+            employeeId: employee.id,
+            operator,
+            remark: remark ?? null,
+          })),
+        });
+      });
+
+      allocatedCount += idsToAllocate.length;
+
+      // 多员工提交按员工各记一条，比「一批统一一条」更可追溯
+      const assetNos = idsToAllocate.map((id) => assetById.get(id)!.assetNo).join("、");
+      await prisma.systemLog.create({
+        data: {
+          module: "分配",
+          action: "分配设备",
+          detail: `将 ${assetNos} 分配给 ${employee.name}`,
+          operator,
+        },
+      });
+    } catch {
+      // 复核通过但提交时状态已变（并发），逐台回报而不影响其他员工
+      for (const id of idsToAllocate) {
+        skipped.push({
+          assetId: id,
+          assetNo: assetById.get(id)?.assetNo ?? "",
+          reason: "提交时设备状态已变化，不可分配",
+        });
+      }
+    }
+  }
+
+  return { success: true, data: { allocatedCount, skipped } };
 }
 
 // ============================================================
@@ -325,6 +523,20 @@ export async function transferAssets(
       });
       if (uniqueCategories.length > 0) {
         const uniqueCategoryIds = new Set(uniqueCategories.map(c => c.id));
+
+        // 批内自冲突：同批里 2 台以上同唯一分类设备调拨给同一人必然违规
+        // （与 allocateAssets 同款修复，理由见那里的注释）
+        const batchCountByCategory = new Map<number, number>();
+        for (const a of assets) {
+          const catId = templateToCategory.get(a.templateId);
+          if (catId === undefined || !uniqueCategoryIds.has(catId)) continue;
+          batchCountByCategory.set(catId, (batchCountByCategory.get(catId) ?? 0) + 1);
+        }
+        if ([...batchCountByCategory.values()].some((n) => n > 1)) {
+          const categoryNames = uniqueCategories.map(c => c.name).join("、");
+          throw new Error(`UNIQUE_VIOLATION:${categoryNames}`);
+        }
+
         const existingAssets = await tx.asset.findMany({
           where: {
             employeeId: toEmployeeId,

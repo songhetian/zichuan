@@ -42,6 +42,8 @@ export default async function LabelsPage() {
     ? employeesResult.data.map((e) => ({
         id: e.id,
         name: e.name,
+        employeeNo: e.employeeNo,
+        departmentId: e.departmentId,
         departmentName: e.departmentName,
       }))
     : [];

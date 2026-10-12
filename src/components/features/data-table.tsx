@@ -60,7 +60,14 @@ interface DataTableProps<TData, TValue> {
   enableRowSelection?: boolean
   onRowSelectionChange?: (selectedRows: TData[]) => void
   renderExpandedRow?: (row: TData) => React.ReactNode
+  /** 整行点击回调（如「点员工弹出他的设备」）。与 renderExpandedRow 二选一。 */
+  onRowClick?: (row: TData) => void
   defaultSorting?: SortingState
+  /**
+   * 一条数据都没有时的空状态文案。默认「暂无数据」；
+   * 带条件的搜索（如「按设备编码找使用人」）传更具体的话，免得用户以为是页面坏了。
+   */
+  emptyText?: React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -69,7 +76,9 @@ export function DataTable<TData, TValue>({
   enableRowSelection = false,
   onRowSelectionChange,
   renderExpandedRow,
+  onRowClick,
   defaultSorting = [],
+  emptyText,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSorting)
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -141,8 +150,14 @@ export function DataTable<TData, TValue>({
                     <TableRow
                       key={`row-${row.id}`}
                       data-state={row.getIsSelected() && "selected"}
-                      className={`group transition-colors duration-150 ${rowIndex % 2 === 1 ? 'bg-muted/10' : ''} hover:bg-accent/50 ${renderExpandedRow ? 'cursor-pointer' : ''} ${row.getIsSelected() ? '!bg-primary/10 border-l-2 border-l-primary' : ''}`}
-                      onClick={renderExpandedRow ? () => row.toggleExpanded() : undefined}
+                      className={`group transition-colors duration-150 ${rowIndex % 2 === 1 ? 'bg-muted/10' : ''} hover:bg-accent/50 ${renderExpandedRow || onRowClick ? 'cursor-pointer' : ''} ${row.getIsSelected() ? '!bg-primary/10 border-l-2 border-l-primary' : ''}`}
+                      onClick={
+                        onRowClick
+                          ? () => onRowClick(row.original)
+                          : renderExpandedRow
+                            ? () => row.toggleExpanded()
+                            : undefined
+                      }
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef.meta as { align?: string } | undefined)?.align
@@ -170,7 +185,7 @@ export function DataTable<TData, TValue>({
                     {data.length === 0 ? (
                       <>
                         <Inbox className="h-8 w-8 text-muted-foreground/50" />
-                        <p className="text-muted-foreground">暂无数据</p>
+                        <p className="text-muted-foreground">{emptyText ?? "暂无数据"}</p>
                       </>
                     ) : (
                       <>

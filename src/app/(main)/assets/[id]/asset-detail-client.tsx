@@ -34,7 +34,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { EmployeePicker } from "@/components/ui/employee-picker";
+import { SelectionContextBar } from "@/components/features/selection-context-bar";
+import { summarizeSelection } from "@/lib/asset-selection-summary";
+import { describeAllocationRule } from "@/lib/allocation-rule-text";
 import { Pencil, Wrench, RotateCcw, Trash2, ArrowRightLeft, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { updateAsset } from "@/actions/asset.actions";
@@ -59,6 +62,8 @@ interface ComponentModel {
 interface EmployeeOption {
   id: number;
   name: string;
+  employeeNo?: string;
+  departmentId: number;
   departmentName: string;
 }
 
@@ -98,6 +103,8 @@ interface AssetDetailClientProps {
   };
   componentModels: ComponentModel[];
   employees: EmployeeOption[];
+  /** 该设备分类的分配规则（唯一 / 普通），用于调拨弹窗的规则说明 */
+  category?: { name: string; unique: boolean };
 }
 
 const actionLabelMap: Record<string, string> = {
@@ -118,9 +125,15 @@ const statusLabelMap: Record<string, string> = {
   SCRAPPED: "报废",
 };
 
-export function AssetDetailClient({ asset, componentModels, employees }: AssetDetailClientProps) {
+export function AssetDetailClient({ asset, componentModels, employees, category }: AssetDetailClientProps) {
   const router = useRouter();
   const { toast } = useToast();
+
+  // 调拨弹窗上下文条：这台设备 + 该分类的分配规则
+  const transferSummary = summarizeSelection([
+    { assetNo: asset.assetNo, categoryName: asset.categoryName },
+  ]);
+  const transferRuleText = describeAllocationRule(category);
 
   // Edit dialog state
   const [editOpen, setEditOpen] = useState(false);
@@ -508,27 +521,27 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
           setTransferOpen(open);
         }}
       >
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>调拨设备</DialogTitle>
             <DialogDescription>将设备调拨给其他员工</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>目标员工</Label>
-            <SearchableSelect
-              value={transferEmployeeId}
-              onValueChange={setTransferEmployeeId}
-              placeholder="请选择目标员工"
-              triggerClassName="w-full"
-              options={employees
-                .filter((e) => e.id !== asset.employeeId)
-                .map((e) => ({
-                  value: e.id.toString(),
-                  label: `${e.name}（${e.departmentName}）`,
-                }))}
-            />
-          </div>
-          <DialogFooter>
+          <SelectionContextBar
+            summary={transferSummary}
+            ruleText={transferRuleText}
+            icon={ArrowRightLeft}
+            accentClassName="text-cyan-500"
+          />
+          <EmployeePicker
+            employees={employees}
+            value={transferEmployeeId}
+            onValueChange={setTransferEmployeeId}
+            placeholder="请选择目标员工"
+            employeeLabel="目标员工"
+            triggerClassName="w-full"
+            excludeIds={asset.employeeId ? [asset.employeeId] : []}
+          />
+          <DialogFooter className="border-t-0">
             <Button variant="outline" onClick={() => { setTransferEmployeeId(""); setTransferOpen(false); }}>
               取消
             </Button>

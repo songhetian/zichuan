@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach } from "vitest"
+import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, screen, cleanup } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { DataTable } from "@/components/features/data-table"
 import { ColumnDef } from "@tanstack/react-table"
 
@@ -53,5 +54,36 @@ describe("DataTable 列对齐", () => {
     const statusCells = screen.getAllByText("IDLE")
     const firstStatusCell = statusCells[0].closest("td")
     expect(firstStatusCell?.className).toContain("text-center")
+  })
+})
+
+describe("DataTable 整行点击", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it("传 onRowClick 时点整行回传该行数据，且行可点击", async () => {
+    const onRowClick = vi.fn()
+    const user = userEvent.setup()
+    render(<DataTable columns={columns} data={data} onRowClick={onRowClick} />)
+
+    const row = screen.getByText("测试设备").closest("tr")!
+    expect(row.className).toContain("cursor-pointer")
+
+    await user.click(screen.getByText("测试设备"))
+
+    expect(onRowClick).toHaveBeenCalledWith(data[0])
+  })
+
+  it("不传 onRowClick 时行不可点击，也不会触发回调", async () => {
+    const user = userEvent.setup()
+    render(<DataTable columns={columns} data={data} />)
+
+    const row = screen.getByText("测试设备").closest("tr")!
+    expect(row.className).not.toContain("cursor-pointer")
+
+    await user.click(screen.getByText("测试设备"))
+
+    expect(screen.getByText("测试设备")).toBeInTheDocument()
   })
 })
