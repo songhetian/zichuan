@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { generateAssetNo } from "@/lib/asset-numbering";
+import { generateEmployeeNo } from "@/lib/employee-no";
+import { writeSystemLog } from "@/lib/system-log-writer";
 import * as XLSX from "xlsx";
 import { ActionResult } from "@/lib/types";
 import { requireAuth } from "@/lib/auth";
@@ -355,6 +357,117 @@ export async function importAssetsFromExcel(
 
     return { success: true, data: { importedCount, errors } };
   } catch (e) {
+    return { success: false, error: "Excel 文件解析失败" };
+  }
+}
+
+// ============================================================
+// 按部门批量导入员工
+// ============================================================
+
+/**
+ * 批量导入员工到指定部门。
+ *
+ * Excel 只需「姓名」列（电话 / 邮箱 / 工号可选），部门由界面先选好，表格里不带部门列。
+ * 工号规则与新建员工一致：留空则自动生成 EMP0001 形式；重复则报错跳过该行。
+ * 同部门同名不算错误（Employee.name 非唯一键），只给一条警告。
+ */
+export async function importEmployeesToDepartment(input: {
+  departmentId: number;
+  buffer: Buffer;
+}): Promise<
+  ActionResult<{ importedCount: number; errors: string[]; warnings: string[] }>
+> {
+  const user = await requireAuth();
+
+  const dept = await prisma.department.findUnique({ where: { id: input.departmentId } });
+  if (!dept) {
+    return { success: false, error: "部门不存在" };
+  }
+
+  try {
+    const wb = XLSX.read(input.buffer);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws);
+
+    if (rows.length === 0) {
+      return { success: false, error: "Excel 文件没有数据" };
+    }
+
+    // 一次性取出现有工号，边导入边把新工号加进去，避免自动生成的号相互撞车
+    const existingNoRows = await prisma.employee.findMany({
+      select: { employeeNo: true },
+    });
+    const usedNos = new Set(existingNoRows.map((e) => e.employeeNo));
+
+    // 同部门已有姓名（仅用于重复提醒）
+    const existingNames = new Set(
+      (
+        await prisma.employee.findMany({
+          where: { departmentId: input.departmentId },
+          select: { name: true },
+        })
+      ).map((e) => e.name)
+    );
+
+    let importedCount = 0;
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowNum = i + 2;
+      const name = String(row["姓名"] ?? "").trim();
+      const rawNo = String(row["工号"] ?? "").trim();
+      const phone = String(row["电话"] ?? "").trim() || null;
+      const email = String(row["邮箱"] ?? "").trim() || null;
+
+      if (!name) {
+        errors.push(`第${rowNum}行：姓名为空，已跳过`);
+        continue;
+      }
+
+      let employeeNo = rawNo;
+      if (employeeNo) {
+        if (usedNos.has(employeeNo)) {
+          errors.push(`第${rowNum}行：工号 ${employeeNo} 已存在，已跳过`);
+          continue;
+        }
+      } else {
+        employeeNo = generateEmployeeNo([...usedNos]);
+      }
+
+      try {
+        await prisma.employee.create({
+          data: {
+            employeeNo,
+            name,
+            departmentId: input.departmentId,
+            phone,
+            email,
+          },
+        });
+        usedNos.add(employeeNo);
+        importedCount++;
+        if (existingNames.has(name)) {
+          warnings.push(`第${rowNum}行：${dept.name} 中已存在同名员工「${name}」`);
+        } else {
+          existingNames.add(name);
+        }
+      } catch {
+        errors.push(`第${rowNum}行：创建失败（工号 ${employeeNo}）`);
+      }
+    }
+
+    await writeSystemLog({
+      module: "员工",
+      action: "批量导入员工",
+      detail: `向 ${dept.name} 批量导入员工 ${importedCount} 人（共 ${rows.length} 行）`,
+      operator: user.username,
+    });
+
+    return { success: true, data: { importedCount, errors, warnings } };
+  } catch {
     return { success: false, error: "Excel 文件解析失败" };
   }
 }

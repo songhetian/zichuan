@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { computeAssetCapacities } from "@/lib/asset-capacity";
 import { requireAuth } from "@/lib/auth";
+import { writeSystemLog } from "@/lib/system-log-writer";
 
 // ============================================================
 // Schema 校验
@@ -73,6 +74,10 @@ type AssetDetail = {
     operator: string;
     remark: string | null;
     createdAt: Date;
+    /** 分配/归还/调拨涉及的人员姓名（由 employeeId 反查得到，schema 中无关联关系） */
+    employeeName: string | null;
+    /** 调拨转出方姓名（由 fromEmployeeId 反查得到） */
+    fromEmployeeName: string | null;
   }[];
 };
 
@@ -109,13 +114,38 @@ type PrismaAsset = {
     action: string;
     fromStatus: string | null;
     toStatus: string | null;
+    employeeId: number | null;
+    fromEmployeeId: number | null;
     operator: string;
     remark: string | null;
     createdAt: Date;
   }[];
 };
 
-function formatAsset(asset: PrismaAsset | null): AssetDetail {
+/**
+ * 由生命周期日志里的 employeeId / fromEmployeeId 反查员工姓名。
+ * schema 中这两个字段没有关联关系，只能读端手动回查。
+ */
+async function resolveEmployeeNames(
+  logs: { employeeId: number | null; fromEmployeeId: number | null }[]
+): Promise<Map<number, string>> {
+  const ids = new Set<number>();
+  for (const l of logs) {
+    if (l.employeeId != null) ids.add(l.employeeId);
+    if (l.fromEmployeeId != null) ids.add(l.fromEmployeeId);
+  }
+  if (ids.size === 0) return new Map();
+  const emps = await prisma.employee.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, name: true },
+  });
+  return new Map(emps.map((e) => [e.id, e.name]));
+}
+
+function formatAsset(
+  asset: PrismaAsset | null,
+  employeeNames: Map<number, string> = new Map()
+): AssetDetail {
   if (!asset) {
     return {
       id: 0,
@@ -169,6 +199,12 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
       operator: l.operator,
       remark: l.remark,
       createdAt: l.createdAt,
+      employeeName:
+        l.employeeId != null ? employeeNames.get(l.employeeId) ?? null : null,
+      fromEmployeeName:
+        l.fromEmployeeId != null
+          ? employeeNames.get(l.fromEmployeeId) ?? null
+          : null,
     })),
   };
 }
@@ -266,6 +302,13 @@ export async function createAsset(
         },
         lifecycleLogs: { orderBy: { createdAt: "desc" } },
       },
+    });
+
+    await writeSystemLog({
+      module: "设备",
+      action: "新建设备",
+      detail: `新建设备 ${asset?.assetNo ?? ""}（${name}）`,
+      operator,
     });
 
     return { success: true, data: formatAsset(asset) };
@@ -404,7 +447,8 @@ export async function getAssetById(
       return { success: false, error: "设备不存在" };
     }
 
-    return { success: true, data: formatAsset(asset) };
+    const employeeNames = await resolveEmployeeNames(asset.lifecycleLogs ?? []);
+    return { success: true, data: formatAsset(asset, employeeNames) };
   } catch (e) {
     return { success: false, error: "查询设备详情失败，请稍后重试" };
   }
@@ -414,7 +458,7 @@ export async function updateAsset(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<AssetDetail>> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -457,7 +501,14 @@ export async function updateAsset(
       },
     });
 
-    return { success: true, data: formatAsset(asset) };
+    const employeeNames = await resolveEmployeeNames(asset.lifecycleLogs ?? []);
+    await writeSystemLog({
+      module: "设备",
+      action: "编辑设备",
+      detail: `编辑设备 ${existing.assetNo}（${existing.name}）`,
+      operator: user.username,
+    });
+    return { success: true, data: formatAsset(asset, employeeNames) };
   } catch (e) {
     if (e instanceof Error) {
       if (e.message.includes("Record to update not found")) {
@@ -472,7 +523,7 @@ export async function updateAsset(
 export async function deleteAsset(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const existing = await prisma.asset.findUnique({ where: { id } });
   if (!existing) {
@@ -481,6 +532,12 @@ export async function deleteAsset(
 
   try {
     await prisma.asset.delete({ where: { id } });
+    await writeSystemLog({
+      module: "设备",
+      action: "删除设备",
+      detail: `删除设备 ${existing.assetNo}（${existing.name}）`,
+      operator: user.username,
+    });
     return { success: true, data: { id } };
   } catch (e) {
     if (e instanceof Error && e.message.includes("Foreign key constraint")) {
@@ -575,7 +632,16 @@ export async function batchCreateAssets(
       },
     });
 
-    return { success: true, data: assets.map(formatAsset) };
+    await writeSystemLog({
+      module: "设备",
+      action: "批量新建设备",
+      detail: `批量入库 ${assets.length} 台设备（${template.name}）：${assets
+        .map((a) => a.assetNo)
+        .join("、")}`,
+      operator,
+    });
+
+    return { success: true, data: assets.map((a) => formatAsset(a)) };
   } catch (e) {
     if (e instanceof Error && e.message.includes("Unique constraint")) {
       return { success: false, error: "设备编号冲突，请重试" };

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 
 const options = [
   { value: "idle", label: "闲置" },
@@ -62,5 +63,31 @@ describe("SearchableSelect 搜索过滤", () => {
     await openSelect(user)
     await user.click(screen.getByText("在用"))
     expect(selected).toBe("in_use")
+  })
+})
+
+describe("SearchableSelect 在弹窗内的滚轮", () => {
+  it("弹窗内打开下拉后，滚轮事件不会被弹窗的滚动锁拦截", async () => {
+    const user = userEvent.setup()
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>测试弹窗</DialogTitle>
+          <SearchableSelect options={options} value="" onValueChange={() => {}} placeholder="全部状态" />
+        </DialogContent>
+      </Dialog>
+    )
+
+    await user.click(screen.getByRole("combobox"))
+
+    const list = document.querySelector("[cmdk-list]") as HTMLElement | null
+    expect(list).not.toBeNull()
+
+    const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 })
+    list!.dispatchEvent(wheel)
+
+    // 弹窗的滚动锁（react-remove-scroll）会对弹窗外的 wheel 调 preventDefault，
+    // 下拉面板被 portal 到 body、在弹窗外，必须仍能滚动 → 这里不应被 preventDefault
+    expect(wheel.defaultPrevented).toBe(false)
   })
 })

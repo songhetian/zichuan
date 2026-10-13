@@ -31,8 +31,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Plus, Pencil, Trash2, Download, Upload, Loader2, Monitor, History, Clock, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, Loader2, Monitor, History, Clock, Users, FileSpreadsheet, UserPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AllocationImportDialog } from "./allocation-import-dialog";
+import { EmployeeImportDialog } from "./employee-import-dialog";
 import {
   createEmployee,
   createEmployeesBatch,
@@ -492,6 +494,8 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
   const [batchCount, setBatchCount] = useState("10");
   const [batchLoading, setBatchLoading] = useState(false);
   const [usageEmployee, setUsageEmployee] = useState<Employee | null>(null);
+  const [allocateOpen, setAllocateOpen] = useState(false);
+  const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -660,6 +664,14 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
         description="管理员工信息 · 点击任意员工可查看其正在使用的设备"
         action={
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setEmployeeImportOpen(true)}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              批量导入员工
+            </Button>
+            <Button variant="outline" onClick={() => setAllocateOpen(true)}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Excel 自动分配
+            </Button>
             <Button variant="outline" onClick={() => setPreviewOpen(true)} disabled={exportLoading}>
               <Download className="mr-2 h-4 w-4" />
               导出 Excel
@@ -932,6 +944,13 @@ export function EmployeeListClient({ employees, departments }: EmployeeListClien
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AllocationImportDialog open={allocateOpen} onOpenChange={setAllocateOpen} />
+      <EmployeeImportDialog
+        open={employeeImportOpen}
+        onOpenChange={setEmployeeImportOpen}
+        departments={departments}
+      />
     </div>
   );
 }

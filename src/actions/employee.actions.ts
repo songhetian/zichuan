@@ -7,6 +7,7 @@ import { generateBatchEmployeeNames, BATCH_EMPLOYEE_MAX } from "@/lib/batch-empl
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { writeSystemLog } from "@/lib/system-log-writer";
 
 const createSchema = z.object({
   // 工号可选：不传时自动生成（如 EMP0001），传了则使用自定义工号
@@ -84,7 +85,7 @@ function formatEmployee(emp: PrismaEmployee): EmployeeWithDept {
 export async function createEmployee(
   input: z.infer<typeof createSchema>
 ): Promise<ActionResult<EmployeeWithDept>> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const validated = createSchema.safeParse(input);
   if (!validated.success) {
@@ -117,6 +118,12 @@ export async function createEmployee(
       },
       include: { department: { select: { name: true } } },
     });
+    await writeSystemLog({
+      module: "员工",
+      action: "新建员工",
+      detail: `新建员工 ${emp.name}（工号 ${emp.employeeNo}，${dept.name}）`,
+      operator: user.username,
+    });
     return { success: true, data: formatEmployee(emp) };
   } catch (e) {
     return handleUniqueViolation(e, { employeeNo: "工号已存在" }, "创建失败");
@@ -134,7 +141,7 @@ export async function createEmployeesBatch(input: {
   departmentId: number;
   count: number;
 }): Promise<ActionResult<EmployeeWithDept[]>> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const validated = batchCreateSchema.safeParse(input);
   if (!validated.success) {
@@ -171,6 +178,12 @@ export async function createEmployeesBatch(input: {
         })
       )
     );
+    await writeSystemLog({
+      module: "员工",
+      action: "批量新建员工",
+      detail: `批量新建员工 ${created.length} 人（${dept.name}）`,
+      operator: user.username,
+    });
     return { success: true, data: created.map(formatEmployee) };
   } catch (e) {
     return handleUniqueViolation(e, { employeeNo: "工号已存在，请重试" }, "批量创建失败");
@@ -233,7 +246,7 @@ export async function updateEmployee(
   id: number,
   input: z.infer<typeof updateSchema>
 ): Promise<ActionResult<EmployeeWithDept>> {
-  await requireAuth();
+  const user = await requireAuth();
 
   const validated = updateSchema.safeParse(input);
   if (!validated.success) {
@@ -260,6 +273,12 @@ export async function updateEmployee(
       where: { id },
       data: validated.data,
       include: { department: { select: { name: true } } },
+    });
+    await writeSystemLog({
+      module: "员工",
+      action: "编辑员工",
+      detail: `编辑员工 ${emp.name}（工号 ${emp.employeeNo}，${emp.department?.name ?? ""}）`,
+      operator: user.username,
     });
     return { success: true, data: formatEmployee(emp) };
   } catch (e) {
@@ -309,9 +328,12 @@ export async function getEmployeeAssets(
 export async function deleteEmployee(
   id: number
 ): Promise<ActionResult<{ id: number }>> {
-  await requireAuth();
+  const user = await requireAuth();
 
-  const existing = await prisma.employee.findUnique({ where: { id } });
+  const existing = await prisma.employee.findUnique({
+    where: { id },
+    include: { department: { select: { name: true } } },
+  });
   if (!existing) {
     return { success: false, error: "员工不存在" };
   }
@@ -325,5 +347,11 @@ export async function deleteEmployee(
   }
 
   await prisma.employee.delete({ where: { id } });
+  await writeSystemLog({
+    module: "员工",
+    action: "删除员工",
+    detail: `删除员工 ${existing.name}（工号 ${existing.employeeNo}，${existing.department?.name ?? ""}）`,
+    operator: user.username,
+  });
   return { success: true, data: { id } };
 }

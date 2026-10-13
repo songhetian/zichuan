@@ -23,10 +23,40 @@ interface LifecycleLog {
   operator: string;
   remark: string | null;
   createdAt: Date;
+  /** 分配/归还/调拨涉及的人员姓名 */
+  employeeName?: string | null;
+  /** 调拨转出方姓名 */
+  fromEmployeeName?: string | null;
 }
 
 interface LifecycleTimelineProps {
   logs: LifecycleLog[];
+}
+
+/** 前端写死的机械占位备注：对用户无信息量，展示时忽略（真实手填备注照常显示） */
+const MACHINE_REMARKS = new Set([
+  "列表快捷分配",
+  "列表快捷归还",
+  "列表快捷调拨",
+  "详情页调拨",
+]);
+
+/** 根据日志生成「谁分给谁」的描述；无人员信息时返回 null */
+function buildActorDescription(log: LifecycleLog): string | null {
+  if (log.action === "ALLOCATED" && log.employeeName) {
+    return `分配给 ${log.employeeName}`;
+  }
+  if (log.action === "RETURNED" && log.employeeName) {
+    return `${log.employeeName} 归还`;
+  }
+  if (log.action === "TRANSFERRED") {
+    if (log.fromEmployeeName && log.employeeName) {
+      return `从 ${log.fromEmployeeName} → ${log.employeeName} 调拨`;
+    }
+    if (log.employeeName) return `调拨给 ${log.employeeName}`;
+    if (log.fromEmployeeName) return `从 ${log.fromEmployeeName} 调拨`;
+  }
+  return null;
 }
 
 const actionConfig: Record<
@@ -125,6 +155,9 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
           };
           const Icon = config.icon;
           const isFirst = index === 0;
+          const actorDesc = buildActorDescription(log);
+          const visibleRemark =
+            log.remark && !MACHINE_REMARKS.has(log.remark) ? log.remark : null;
 
           return (
             <div key={log.id} className="relative flex gap-4">
@@ -167,9 +200,15 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
                       )}
                     </div>
 
-                    {log.remark && (
+                    {actorDesc && (
+                      <p className="text-sm font-medium text-foreground">
+                        {actorDesc}
+                      </p>
+                    )}
+
+                    {visibleRemark && (
                       <p className="text-sm text-muted-foreground">
-                        {log.remark}
+                        {visibleRemark}
                       </p>
                     )}
 

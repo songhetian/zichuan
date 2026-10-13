@@ -8,6 +8,14 @@ import { DataTable } from "@/components/features/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Copy, Check } from "lucide-react";
 import { moduleLabel } from "@/lib/system-log-labels";
 import {
   Select,
@@ -33,6 +41,8 @@ interface SystemLog {
   detail: string;
   operator: string;
   createdAt: Date;
+  /** 由详情文本还原的设备编号 */
+  assetNo?: string | null;
 }
 
 interface LifecycleLog {
@@ -42,6 +52,8 @@ interface LifecycleLog {
   operator: string;
   remark: string | null;
   createdAt: Date;
+  employeeName?: string | null;
+  fromEmployeeName?: string | null;
 }
 
 interface LogListClientProps {
@@ -81,24 +93,84 @@ const ACTION_OPTIONS = [
 // ---------------------------------------------------------------------------
 
 function isLifecycleLog(log: SystemLog | LifecycleLog): log is LifecycleLog {
-  return "assetNo" in log;
+  // 注意：SystemLog 也有 assetNo 字段（由详情文本还原），不能用 assetNo 区分；
+  // remark 只有 LifecycleLog 才有，作为判别键。
+  return "remark" in log;
 }
 
-function formatRelativeTime(date: Date): string {
-  const now = Date.now();
-  const diff = now - new Date(date).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "刚刚";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}分钟前`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}天前`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}个月前`;
-  const years = Math.floor(months / 12);
-  return `${years}年前`;
+/** 绝对时间：2026-08-05 16:35:24 */
+function formatDateTime(date: Date): string {
+  const d = new Date(date);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** 生命周期日志「对象」列：分配/归还是姓名，调拨是「转出 → 转入」 */
+function buildObjectLabel(log: LifecycleLog): string {
+  if (log.action === "TRANSFERRED") {
+    if (log.fromEmployeeName && log.employeeName) {
+      return `${log.fromEmployeeName} → ${log.employeeName}`;
+    }
+    return log.employeeName ?? log.fromEmployeeName ?? "-";
+  }
+  return log.employeeName ?? "-";
+}
+
+/** 详情单元格：截断显示 + 悬浮看全文 + 点击弹窗可复制 */
+function LogDetailCell({ detail }: { detail: string }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(detail);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 剪贴板不可用时忽略
+    }
+  };
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="block max-w-[280px] cursor-pointer truncate text-sm"
+            onClick={() => setOpen(true)}
+          >
+            {detail}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm whitespace-pre-wrap break-all">
+          {detail}
+        </TooltipContent>
+      </Tooltip>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>日志详情</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-sm">
+            {detail}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCopy}>
+              {copied ? (
+                <Check className="mr-2 h-4 w-4" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
+              )}
+              {copied ? "已复制" : "复制"}
+            </Button>
+            <Button onClick={() => setOpen(false)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -109,22 +181,12 @@ export const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   {
     accessorKey: "createdAt",
     header: "时间",
-    size: 120,
-    cell: ({ row }) => {
-      const date = new Date(row.original.createdAt);
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="cursor-default text-sm whitespace-nowrap">
-              {formatRelativeTime(date)}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {date.toLocaleString("zh-CN")}
-          </TooltipContent>
-        </Tooltip>
-      );
-    },
+    size: 170,
+    cell: ({ row }) => (
+      <span className="text-sm whitespace-nowrap">
+        {formatDateTime(row.original.createdAt)}
+      </span>
+    ),
   },
   {
     accessorKey: "action",
@@ -145,6 +207,14 @@ export const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
     size: 160,
     cell: ({ row }) => (
       <span className="text-sm font-mono">{row.original.assetNo ?? "-"}</span>
+    ),
+  },
+  {
+    id: "object",
+    header: "对象",
+    size: 160,
+    cell: ({ row }) => (
+      <span className="text-sm">{buildObjectLabel(row.original)}</span>
     ),
   },
   {
@@ -171,22 +241,12 @@ export const systemColumns: ColumnDef<SystemLog>[] = [
   {
     accessorKey: "createdAt",
     header: "时间",
-    size: 120,
-    cell: ({ row }) => {
-      const date = new Date(row.original.createdAt);
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="cursor-default text-sm whitespace-nowrap">
-              {formatRelativeTime(date)}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {date.toLocaleString("zh-CN")}
-          </TooltipContent>
-        </Tooltip>
-      );
-    },
+    size: 170,
+    cell: ({ row }) => (
+      <span className="text-sm whitespace-nowrap">
+        {formatDateTime(row.original.createdAt)}
+      </span>
+    ),
   },
   {
     accessorKey: "module",
@@ -207,14 +267,18 @@ export const systemColumns: ColumnDef<SystemLog>[] = [
     ),
   },
   {
+    accessorKey: "assetNo",
+    header: "设备编号",
+    size: 160,
+    cell: ({ row }) => (
+      <span className="text-sm font-mono">{row.original.assetNo ?? "-"}</span>
+    ),
+  },
+  {
     accessorKey: "detail",
     header: "详情",
     size: 260,
-    cell: ({ row }) => (
-      <span className="text-sm max-w-[300px] truncate block">
-        {row.original.detail}
-      </span>
-    ),
+    cell: ({ row }) => <LogDetailCell detail={row.original.detail} />,
   },
   {
     accessorKey: "operator",
@@ -279,13 +343,24 @@ export function LogListClient({
           const matchAssetNo = log.assetNo?.toLowerCase().includes(kw);
           const matchOp = log.operator.toLowerCase().includes(kw);
           const matchRemark = log.remark?.toLowerCase().includes(kw);
-          if (!matchAssetNo && !matchOp && !matchRemark) return false;
+          const matchEmployee =
+            log.employeeName?.toLowerCase().includes(kw) ||
+            log.fromEmployeeName?.toLowerCase().includes(kw);
+          if (!matchAssetNo && !matchOp && !matchRemark && !matchEmployee)
+            return false;
         } else {
           const matchModule = log.module.toLowerCase().includes(kw);
           const matchAction = log.action.toLowerCase().includes(kw);
           const matchDetail = log.detail.toLowerCase().includes(kw);
           const matchOp = log.operator.toLowerCase().includes(kw);
-          if (!matchModule && !matchAction && !matchDetail && !matchOp)
+          const matchAssetNo = log.assetNo?.toLowerCase().includes(kw);
+          if (
+            !matchModule &&
+            !matchAction &&
+            !matchDetail &&
+            !matchOp &&
+            !matchAssetNo
+          )
             return false;
         }
       }
@@ -408,7 +483,7 @@ export function LogListClient({
           searchPlaceholder={
             type === "system"
               ? "搜索模块、动作、详情或操作员..."
-              : "搜索编号、操作人或备注..."
+              : "搜索编号、对象、操作人或备注..."
           }
           onSearchChange={setKeywordFilter}
           showReset

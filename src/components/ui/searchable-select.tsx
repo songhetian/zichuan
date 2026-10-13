@@ -60,6 +60,11 @@ export function SearchableSelect({
       <PopoverContent
         className="p-0 min-w-[var(--radix-popover-trigger-width)] max-w-[min(90vw,360px)]"
         align="start"
+        // 弹窗（Radix Dialog）会给 document 挂 wheel/touchmove 的滚动锁并对弹窗外的元素
+        // preventDefault；下拉面板被 portal 到 body、在弹窗外，不拦一下就会「滚不动」。
+        // 阻止冒泡到 document 即绕开滚动锁，列表自身照常原生滚动。
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
       >
         <CommandPrimitive>
           <div className="flex items-center border-b px-3">
