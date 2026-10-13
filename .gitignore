@@ -37,18 +37,23 @@ __pycache__/
 
 # 临时/草稿文件（下划线开头）
 scripts/_*
-tests/_*
+
+# 测试用例（*.test.ts/tsx）不进仓库：用户要求 GitHub 只保留源码（2026-10-13 确认）。
+# 测试基础设施已迁到 test-utils/（setup / db-guard / helpers），随仓库保留。
+# 若某个测试确实需要进仓库，显式加回：git add -f tests/xxx.test.ts
+tests/
 
 # 工具产物
 # vitest 用 esbuild 加载 TS 配置时会留下 timestamp 临时文件；
 # 注意要带 `vitest*` 通配，否则 vitest.frontend.config.ts / vitest.node.config.ts 的产物匹配不到。
 vitest*.config.ts.timestamp-*.mjs
 
-# ⚠️ 不要把 scripts/ 或 tests/ 整目录忽略。
-# 它们是项目源码：package.json 的 scripts 与 vitest 配置都依赖其中的文件。
-# 整目录忽略会让新增的脚本/测试静默不进版本控制，
-# 换机器或 clone 后直接报 "Cannot find module '.../scripts/xxx.js'"。
-# 需要清理的是其中的临时产物（scripts/_*、tests/_*、scripts/backups/），已在本文件中单列。
+# ⚠️ 不要整目录忽略 `scripts/`（历史两次致 10 个脚本静默未跟踪；
+#    clone 后直接报 "Cannot find module '.../scripts/xxx.js'"）。
+#    需要清理的是其中的临时产物（scripts/_*、scripts/backups/），已在本文件中单列。
+#
+# `tests/` 是**有意整目录忽略**的（见上）：测试用例不进仓库，但测试基础设施在
+# `test-utils/` 里随仓库保留——不要把 test-utils/ 也忽略掉。
 
 docs/**
 **.md
