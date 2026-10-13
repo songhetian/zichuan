@@ -85,6 +85,9 @@ type AssetDetail = {
     action: string;
     fromStatus: string | null;
     toStatus: string | null;
+    /** 相关人员（分配/归还/调拨时），用于时间线展示「分配给：XXX」 */
+    employeeId: number | null;
+    employeeName: string | null;
     operator: string;
     remark: string | null;
     createdAt: Date;
@@ -127,13 +130,18 @@ type PrismaAsset = {
     action: string;
     fromStatus: string | null;
     toStatus: string | null;
+    employeeId: number | null;
     operator: string;
     remark: string | null;
     createdAt: Date;
   }[];
 };
 
-function formatAsset(asset: PrismaAsset | null): AssetDetail {
+function formatAsset(
+  asset: PrismaAsset | null,
+  /** 生命周期日志人员姓名映射（employeeId → name），由调用方批量补全 */
+  employeeNames?: Map<number, string>
+): AssetDetail {
   if (!asset) {
     return {
       id: 0,
@@ -192,6 +200,8 @@ function formatAsset(asset: PrismaAsset | null): AssetDetail {
       action: l.action,
       fromStatus: l.fromStatus,
       toStatus: l.toStatus,
+      employeeId: l.employeeId ?? null,
+      employeeName: l.employeeId ? (employeeNames?.get(l.employeeId) ?? null) : null,
       operator: l.operator,
       remark: l.remark,
       createdAt: l.createdAt,
@@ -351,7 +361,7 @@ export async function createAsset(
       },
     })) as unknown as PrismaAsset[];
 
-    return { success: true, data: assets.map(formatAsset) };
+    return { success: true, data: assets.map((asset) => formatAsset(asset)) };
   } catch (e) {
     if (e instanceof Error) {
       if (e.message.startsWith(INSUFFICIENT_STOCK_PREFIX)) {
@@ -513,7 +523,21 @@ export async function getAssetById(
       return { success: false, error: "设备不存在" };
     }
 
-    return { success: true, data: formatAsset(asset) };
+    // 批量补全生命周期日志的相关人员姓名（LifecycleLog.employeeId 为标量，无关联）
+    const empIds = new Set<number>();
+    for (const log of asset.lifecycleLogs) {
+      if (log.employeeId) empIds.add(log.employeeId);
+    }
+    const employeeNames = new Map<number, string>();
+    if (empIds.size > 0) {
+      const rows = await prisma.employee.findMany({
+        where: { id: { in: [...empIds] } },
+        select: { id: true, name: true },
+      });
+      for (const row of rows) employeeNames.set(row.id, row.name);
+    }
+
+    return { success: true, data: formatAsset(asset, employeeNames) };
   } catch (e) {
     return { success: false, error: "查询设备详情失败，请稍后重试" };
   }

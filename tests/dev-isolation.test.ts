@@ -87,11 +87,11 @@ describe("开发/生产隔离 - 脚本内部闸门", () => {
 });
 
 describe("开发/生产隔离 - 配置文件", () => {
-  it(".env.dev 指向的必须是开发库（库名以 -dev 结尾）", () => {
+  it(".env.dev 指向的必须是开发库（库名含独立 dev 段，如 asset-manage-dev / asset-manage-dev-online）", () => {
     const envDev = read(".env.dev");
     const m = envDev.match(/^DATABASE_URL\s*=\s*"?mysql:\/\/[^/]+\/([^"\s]+)/m);
     expect(m, ".env.dev 中缺少 DATABASE_URL").not.toBeNull();
-    expect(m![1].endsWith("-dev")).toBe(true);
+    expect(/(^|-)dev($|-)/.test(m![1])).toBe(true);
   });
 
   it(".dockerignore 必须排除 .env（standalone 产物会带上它，否则密钥进镜像层）", () => {

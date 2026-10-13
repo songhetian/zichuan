@@ -21,6 +21,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +47,7 @@ interface LifecycleLog {
   action: string;
   assetNo: string | null;
   operator: string;
+  employeeName: string | null;
   remark: string | null;
   createdAt: Date;
 }
@@ -148,6 +156,14 @@ export const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
     ),
   },
   {
+    id: "employeeName",
+    header: "人员",
+    size: 100,
+    cell: ({ row }) => (
+      <span className="text-sm">{row.original.employeeName ?? "-"}</span>
+    ),
+  },
+  {
     accessorKey: "remark",
     header: "备注",
     size: 240,
@@ -167,64 +183,79 @@ export const lifecycleColumns: ColumnDef<LifecycleLog>[] = [
   },
 ];
 
-export const systemColumns: ColumnDef<SystemLog>[] = [
-  {
-    accessorKey: "createdAt",
-    header: "时间",
-    size: 120,
-    cell: ({ row }) => {
-      const date = new Date(row.original.createdAt);
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="cursor-default text-sm whitespace-nowrap">
-              {formatRelativeTime(date)}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {date.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
-          </TooltipContent>
-        </Tooltip>
-      );
+/** 系统日志列：详情列支持点击查看全文（内容不截断丢失） */
+function makeSystemColumns(
+  onViewDetail: (detail: string) => void
+): ColumnDef<SystemLog>[] {
+  return [
+    {
+      accessorKey: "createdAt",
+      header: "时间",
+      size: 120,
+      cell: ({ row }) => {
+        const date = new Date(row.original.createdAt);
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="cursor-default text-sm whitespace-nowrap">
+                {formatRelativeTime(date)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {date.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
+            </TooltipContent>
+          </Tooltip>
+        );
+      },
     },
-  },
-  {
-    accessorKey: "module",
-    header: "模块",
-    size: 100,
-    cell: ({ row }) => (
-      <Badge variant="secondary">{moduleLabel(row.original.module)}</Badge>
-    ),
-  },
-  {
-    accessorKey: "action",
-    header: "动作",
-    size: 100,
-    cell: ({ row }) => (
-      <Badge variant="outline">
-        {ACTION_LABEL_MAP[row.original.action] ?? row.original.action}
-      </Badge>
-    ),
-  },
-  {
-    accessorKey: "detail",
-    header: "详情",
-    size: 260,
-    cell: ({ row }) => (
-      <span className="text-sm max-w-[300px] truncate block">
-        {row.original.detail}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "operator",
-    header: "操作员",
-    size: 100,
-    cell: ({ row }) => (
-      <span className="text-sm">{row.original.operator}</span>
-    ),
-  },
-];
+    {
+      accessorKey: "module",
+      header: "模块",
+      size: 100,
+      cell: ({ row }) => (
+        <Badge variant="secondary">{moduleLabel(row.original.module)}</Badge>
+      ),
+    },
+    {
+      accessorKey: "action",
+      header: "动作",
+      size: 100,
+      cell: ({ row }) => (
+        <Badge variant="outline">
+          {ACTION_LABEL_MAP[row.original.action] ?? row.original.action}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "detail",
+      header: "详情",
+      size: 260,
+      cell: ({ row }) => {
+        const detail = row.original.detail;
+        if (!detail) return <span className="text-sm text-muted-foreground">-</span>;
+        return (
+          // 点击弹出完整详情（单元格内截断显示，框内显全，绝不占邻列）
+          <button
+            type="button"
+            onClick={() => onViewDetail(detail)}
+            title="点击查看完整详情"
+            className="inline-block w-full max-w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-left text-sm text-foreground underline-offset-2 transition-colors hover:text-primary hover:underline"
+          >
+            {detail}
+          </button>
+        );
+      },
+    },
+    {
+      accessorKey: "operator",
+      header: "操作员",
+      size: 100,
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.operator}</span>
+      ),
+    },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -239,6 +270,8 @@ export function LogListClient({
   const [actionFilter, setActionFilter] = useState("all");
   const [operatorFilter, setOperatorFilter] = useState("");
   const [keywordFilter, setKeywordFilter] = useState("");
+  // 系统日志详情全文弹出框
+  const [selectedDetail, setSelectedDetail] = useState<string | null>(null);
 
   // ---- derived module options (system logs only) ----
   const moduleOptions = useMemo(() => {
@@ -246,6 +279,12 @@ export function LogListClient({
     initialLogs.forEach((log) => modules.add(log.module));
     return Array.from(modules).sort();
   }, [initialLogs]);
+
+  // ---- system columns (详情列需访问组件内 state) ----
+  const systemColumns = useMemo(
+    () => makeSystemColumns(setSelectedDetail),
+    []
+  );
 
   // ---- filtered data ----
   const filteredLogs = useMemo(() => {
@@ -279,7 +318,9 @@ export function LogListClient({
           const matchAssetNo = log.assetNo?.toLowerCase().includes(kw);
           const matchOp = log.operator.toLowerCase().includes(kw);
           const matchRemark = log.remark?.toLowerCase().includes(kw);
-          if (!matchAssetNo && !matchOp && !matchRemark) return false;
+          const matchEmployee = log.employeeName?.toLowerCase().includes(kw);
+          if (!matchAssetNo && !matchOp && !matchRemark && !matchEmployee)
+            return false;
         } else {
           const matchModule = log.module.toLowerCase().includes(kw);
           const matchAction = log.action.toLowerCase().includes(kw);
@@ -429,6 +470,21 @@ export function LogListClient({
             data={filteredLogs as LifecycleLog[]}
           />
         )}
+
+        {/* ---- 系统日志详情全文弹出框 ---- */}
+        <Dialog open={!!selectedDetail} onOpenChange={(o) => !o && setSelectedDetail(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>操作详情</DialogTitle>
+              <DialogDescription>该条系统操作的完整详情内容</DialogDescription>
+            </DialogHeader>
+            {selectedDetail && (
+              <div className="max-h-[55vh] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/80 bg-muted/20 p-4 text-sm leading-relaxed text-foreground">
+                {selectedDetail}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
   );
 }

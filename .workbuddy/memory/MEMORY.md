@@ -72,7 +72,7 @@
 ## Git
 - **🔥 禁止整目录忽略 `scripts/` 或 `tests/`**（历史两次致 10 脚本 + 21 测试静默未跟踪）。`docs/**` 与 `**.md` 保留忽略是有意的，别当 bug 修。
 - 只忽略：`__pycache__/`、`*.pyc`、`scripts/_*`、`tests/_*`、`.next*/`、`vitest*.config.ts.timestamp-*.mjs`。排查：`git check-ignore -v`、`git ls-files --others --ignored --exclude-standard`；ignore 对已跟踪文件无效；提交前 `git status --short --untracked-files=all`。
-- ⚠️ `~/.gitconfig` 的 `insteadOf`：`ssh://git@github.com/` 不匹配 SCP 风格 `git@github.com:owner/repo`；覆盖 SCP 必须写 `insteadOf = git@github.com:`（曾因此把 SSH 悄悄改写成 HTTPS）。已配 `~/.ssh/config`：`ssh.github.com:443` + connect.exe 走 Clash 7897。
+- ⚠️ `~/.gitconfig` 的 `insteadOf`：`ssh://git@github.com/` 不匹配 SCP 风格 `git@github.com:owner/repo`；覆盖 SCP 必须写 `insteadOf = git@github.com:`（曾因此把 SSH 悄悄改写成 HTTPS）。`~/.ssh/config` = `ssh.github.com:443` 直连；**不要再加 ProxyCommand 走 Clash 7897**——Clash 节点会间歇性掐断 SSH-over-443（报 `Connection closed by UNKNOWN port 65535`），直连 443 实测稳定（2026-10-12 验证）。排查口诀：`ssh -T git@github.com` 通而 `git push` 不通 = 两者 ssh 路径不同，用 `GIT_SSH_COMMAND="ssh -vv" git push` 看 `Executing proxy command`。
 
 ## 代码约定
 - `node scripts/*.js` 不自动读 `.env` → 一律 `import { loadEnv } from "./load-env.js"; loadEnv();`。

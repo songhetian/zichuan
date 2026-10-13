@@ -39,11 +39,14 @@ export function loadDevConfig() {
 
   const [, user, password, host, port, dbName] = m;
 
-  if (!dbName.endsWith(DEV_DB_SUFFIX)) {
+  // 视为「开发库」的判定：库名中必须含独立的 "dev" 段（如 asset-manage-dev、
+  // asset-manage-dev-online），用于区别于真实库 asset-manage，避免误连真实数据。
+  const isDevDbName = /(^|-)dev($|-)/.test(dbName);
+  if (!isDevDbName) {
     return {
       error:
         `DATABASE_URL 指向的不是开发库（${host}:${port}/${dbName}）。\n` +
-        `库名必须以 "${DEV_DB_SUFFIX}" 结尾。真实数据在 3308/asset-manage，不要指向它。`,
+        `库名必须包含 "-dev"（如 asset-manage-dev / asset-manage-dev-online）。真实数据在 3308/asset-manage，不要指向它。`,
     };
   }
 

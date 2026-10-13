@@ -49,11 +49,29 @@ export function SearchableSelect({
   triggerClassName,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
+  // 用 state 持有列表节点：Popover 内容在 open 后才挂载，ref 需在挂载时回调才能拿到
+  const [listEl, setListEl] = React.useState<HTMLDivElement | null>(null)
 
   const selected = React.useMemo(
     () => options.find((o) => o.value === value) ?? null,
     [options, value],
   )
+
+  // 下拉在 Dialog 内使用时，Radix 的滚动锁会吞掉滚轮事件（列表滚不动）。
+  // 这里给列表挂原生非 passive 的 wheel 监听，就地滚动并阻止冒泡。
+  React.useEffect(() => {
+    if (!open || !listEl) return
+    const onWheel = (e: WheelEvent) => {
+      const atTop = listEl.scrollTop <= 0 && e.deltaY < 0
+      const atBottom =
+        listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 1 && e.deltaY > 0
+      if (atTop || atBottom) return
+      e.preventDefault()
+      listEl.scrollTop += e.deltaY
+    }
+    listEl.addEventListener("wheel", onWheel, { passive: false })
+    return () => listEl.removeEventListener("wheel", onWheel)
+  }, [open, listEl])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -99,7 +117,10 @@ export function SearchableSelect({
               placeholder={searchPlaceholder}
             />
           </div>
-          <CommandPrimitive.List className="max-h-[360px] overflow-y-auto p-1">
+          <CommandPrimitive.List
+            ref={setListEl}
+            className="max-h-[360px] overflow-y-auto overscroll-contain p-1"
+          >
             <CommandPrimitive.Empty className="py-6 text-center text-sm text-muted-foreground">
               {emptyText}
             </CommandPrimitive.Empty>

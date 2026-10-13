@@ -31,6 +31,8 @@ interface LifecycleLog {
   operator: string;
   remark: string | null;
   createdAt: Date;
+  /** 相关人员（分配/归还/调拨时）；由服务端批量补全姓名 */
+  employeeName?: string | null;
 }
 
 interface LifecycleTimelineProps {
@@ -80,6 +82,14 @@ const actionConfig: Record<
     icon: CheckCircle2,
     ...nodeTone(LIFECYCLE_ACTION_TONE.MAINTENANCE_DONE),
   },
+};
+
+/** 生命周期动作 → 相关人员展示前缀（分配/归还/调拨等带人员语义的动作） */
+const PERSON_LABEL: Record<string, string> = {
+  ALLOCATED: "分配给",
+  TRANSFERRED: "调拨给",
+  RETURNED: "归还人",
+  REPLACED: "回收自",
 };
 
 export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
@@ -160,6 +170,15 @@ export function LifecycleTimeline({ logs }: LifecycleTimelineProps) {
                     {log.remark && (
                       <p className="text-sm text-muted-foreground">
                         {log.remark}
+                      </p>
+                    )}
+
+                    {log.employeeName && (
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">
+                          {PERSON_LABEL[log.action] ?? "相关人员"}：
+                        </span>
+                        <span className="font-medium">{log.employeeName}</span>
                       </p>
                     )}
 

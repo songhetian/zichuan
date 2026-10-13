@@ -518,6 +518,8 @@ export async function executeReplaceChange(
           action: assignee ? "ALLOCATED" : "CREATED",
           fromStatus: newAsset.status,
           toStatus: newStatus,
+          // 有归属时记录相关人员，供设备详情时间线展示「分配给：XXX」
+          employeeId: assignee ? oldAsset.employeeId : null,
           operator: user.username,
           operatorId: user.id,
           requestId,
@@ -664,6 +666,8 @@ export async function executeRepairChange(
           action: "ALLOCATED",
           fromStatus: replacement.status,
           toStatus: "IN_USE",
+          // 记录相关人员，供设备详情时间线展示「分配给：XXX」
+          employeeId: oldAsset.employeeId,
           operator: user.username,
           operatorId: user.id,
           requestId,

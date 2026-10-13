@@ -19,6 +19,7 @@ export async function getLifecycleLogs(
     action: string;
     assetNo: string | null;
     operator: string;
+    employeeName: string | null;
     remark: string | null;
     createdAt: Date;
   }[]>
@@ -44,11 +45,25 @@ export async function getLifecycleLogs(
     },
   });
 
+  // 批量补全相关人员姓名（LifecycleLog.employeeId 为标量，无关联）
+  const empIds = new Set<number>();
+  for (const log of logs) {
+    if (log.employeeId) empIds.add(log.employeeId);
+  }
+  const empRows = empIds.size
+    ? await prisma.employee.findMany({
+        where: { id: { in: [...empIds] } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const empMap = new Map(empRows.map((e) => [e.id, e.name]));
+
   let result = logs.map((log) => ({
     id: log.id,
     action: log.action,
     assetNo: log.asset?.assetNo ?? null,
     operator: log.operator,
+    employeeName: log.employeeId ? (empMap.get(log.employeeId) ?? null) : null,
     remark: log.remark,
     createdAt: log.createdAt,
   }));
@@ -60,6 +75,7 @@ export async function getLifecycleLogs(
         log.action.toLowerCase().includes(lower) ||
         (log.assetNo?.toLowerCase() ?? "").includes(lower) ||
         log.operator.toLowerCase().includes(lower) ||
+        (log.employeeName?.toLowerCase() ?? "").includes(lower) ||
         (log.remark?.toLowerCase() ?? "").includes(lower)
     );
   }

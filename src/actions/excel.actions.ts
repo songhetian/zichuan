@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { consumeBomStock, INSUFFICIENT_STOCK_PREFIX } from "@/lib/bom-stock";
@@ -11,6 +12,11 @@ import { requireAuth } from "@/lib/auth";
 import { guardPermission, resolveAssetScope, resolveEmployeeScope } from "@/lib/permissions";
 import { getMyHandledRecords, getMyCcRecords, type HandledRecordQuery, type CcRecordQuery } from "@/actions/approval.actions";
 import { getStatusLabel } from "@/lib/status-labels";
+import {
+  parseAssignSheet,
+  buildAssignIssuesWorkbook,
+  type AssignImportIssue,
+} from "@/lib/asset-assign-import";
 
 export async function exportAssetsToExcel(
   selectedFields?: string[],
@@ -392,6 +398,273 @@ export async function importEmployeesFromExcel(
   } catch (e) {
     return { success: false, error: "Excel 文件解析失败" };
   }
+}
+
+// ============================================================
+// 批量分配设备（Excel 自动分配）
+//   模板：姓名 | 部门 | 设备编号01 | 设备编号02 | ...
+//   按「姓名」把对应设备编号绑定到该员工（部门/员工不存在则自动创建），
+//   设备置「在用」；编号写错的行标记错误并跳过，错误行另行导出可下载。
+// ============================================================
+
+/** 分配模板的「设备编号」列数（主管按需填写，多余的列留空即可） */
+const ASSIGN_TEMPLATE_DEVICE_COLUMNS = 5;
+
+/** 生成批量分配模板（仅供下载填写，不含任何业务数据） */
+export async function exportAssetAssignTemplate(): Promise<
+  ActionResult<{ buffer: number[]; fileName: string }>
+> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "没有批量分配设备的权限");
+  if (denied) return denied;
+
+  const headers = [
+    "姓名",
+    "部门",
+    ...Array.from(
+      { length: ASSIGN_TEMPLATE_DEVICE_COLUMNS },
+      (_, i) => `设备编号${String(i + 1).padStart(2, "0")}`
+    ),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet([headers]);
+  ws["!cols"] = headers.map(() => ({ wch: 18 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "设备分配");
+
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  return {
+    success: true,
+    data: {
+      buffer: Array.from(buf),
+      fileName: `设备分配模板_${formatDate()}.xlsx`,
+    },
+  };
+}
+
+/** 自动创建/复用部门，返回部门 id */
+async function getOrCreateAssignDepartment(
+  tx: Prisma.TransactionClient,
+  name: string
+): Promise<number> {
+  const departmentName = name || "未分配部门";
+  const existing = await tx.department.findUnique({ where: { name: departmentName } });
+  if (existing) return existing.id;
+  const created = await tx.department.create({ data: { name: departmentName } });
+  return created.id;
+}
+
+/**
+ * 自动创建/复用员工（同部门同名视为同一人）。
+ * 自动创建员工时一并创建登录账号（用户名=工号、默认密码 123456、首登强制改密、默认角色 EMPLOYEE）——
+ * 与「新建员工」保持同一口径：账号完全绑定在员工上。
+ */
+async function getOrCreateAssignEmployee(
+  tx: Prisma.TransactionClient,
+  name: string,
+  departmentId: number,
+  defaultRoleId: number | null
+): Promise<number> {
+  const existing = await tx.employee.findFirst({ where: { name, departmentId } });
+  if (existing) return existing.id;
+
+  // 生成不冲突的自增工号 EMP####
+  const base = await tx.employee.count();
+  let employeeNo = "";
+  for (let i = 0; i < 10000; i++) {
+    const candidate = `EMP${String(base + 1 + i).padStart(4, "0")}`;
+    const dup = await tx.employee.findUnique({ where: { employeeNo: candidate } });
+    if (!dup) {
+      employeeNo = candidate;
+      break;
+    }
+  }
+  if (!employeeNo) employeeNo = `EMP${Date.now().toString().slice(-8)}`;
+
+  const emp = await tx.employee.create({
+    data: { employeeNo, name, departmentId },
+  });
+  const hashed = await bcrypt.hash("123456", 10);
+  await tx.admin.create({
+    data: {
+      username: employeeNo,
+      password: hashed,
+      roleId: defaultRoleId,
+      displayName: name,
+      employeeId: emp.id,
+      mustChangePassword: true,
+    },
+  });
+  return emp.id;
+}
+
+/**
+ * 导入「设备分配」Excel：按姓名把编号绑定到人，逐行部分成功。
+ * 不存在的部门/员工自动创建；编号不存在或非闲置则记为该行错误并跳过，其余继续导入。
+ */
+export async function importAssetAssignments(input: { buffer: number[] }): Promise<
+  ActionResult<{
+    assignedCount: number;
+    errorCount: number;
+    errors: AssignImportIssue[];
+    errorFile?: { buffer: number[]; fileName: string };
+  }>
+> {
+  const user = await requireAuth();
+  const denied = await guardPermission(user, "asset.manage", "批量分配设备需要资产分配权限");
+  if (denied) return denied;
+
+  let parsed: ReturnType<typeof parseAssignSheet>;
+  try {
+    const wb = XLSX.read(Buffer.from(input.buffer));
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const sheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+    parsed = parseAssignSheet(sheet);
+  } catch {
+    return { success: false, error: "Excel 文件解析失败" };
+  }
+
+  const issues: AssignImportIssue[] = [...parsed.issues];
+  let assignedCount = 0;
+
+  // 自动创建员工时的默认角色
+  const role = await prisma.role.findUnique({ where: { key: "EMPLOYEE" } });
+  const defaultRoleId = role?.id ?? null;
+
+  // 同一（部门, 姓名）的多行合并为一个人
+  const grouped = new Map<string, { name: string; department: string; assetNos: string[] }>();
+  for (const person of parsed.people) {
+    const key = `${person.department}\u0000${person.name}`;
+    const bucket = grouped.get(key);
+    if (bucket) bucket.assetNos.push(...person.assetNos);
+    else grouped.set(key, { name: person.name, department: person.department, assetNos: [...person.assetNos] });
+  }
+
+  for (const person of grouped.values()) {
+    const deptLabel = person.department || "未分配部门";
+
+    // 1) 校验编号：读库判断存在性/状态（不改变数据）
+    const found = await prisma.asset.findMany({
+      where: { assetNo: { in: person.assetNos } },
+      include: {
+        template: {
+          select: { categoryId: true, category: { select: { name: true, unique: true } } },
+        },
+      },
+    });
+    const byNo = new Map(found.map((a) => [a.assetNo, a]));
+
+    const assignable: typeof found = [];
+    for (const assetNo of person.assetNos) {
+      const asset = byNo.get(assetNo);
+      if (!asset) {
+        issues.push({ rowNo: 0, name: person.name, department: deptLabel, assetNo, reason: "设备编号不存在" });
+        continue;
+      }
+      if (asset.status !== "IDLE" || asset.employeeId !== null) {
+        issues.push({
+          rowNo: 0,
+          name: person.name,
+          department: deptLabel,
+          assetNo,
+          reason: `设备非闲置状态（当前：${getStatusLabel(asset.status)}），不可分配`,
+        });
+        continue;
+      }
+      assignable.push(asset);
+    }
+
+    // 该人没有任何可分配编号 → 不创建部门/员工（避免凭空造人）
+    if (assignable.length === 0) continue;
+
+    // 2) 建部门/员工 + 逐个分配（单事务保证原子性）
+    const result = await prisma.$transaction(async (tx) => {
+      const departmentId = await getOrCreateAssignDepartment(tx, person.department);
+      const employeeId = await getOrCreateAssignEmployee(tx, person.name, departmentId, defaultRoleId);
+
+      const localIssues: AssignImportIssue[] = [];
+      const assignedNos: string[] = [];
+
+      for (const asset of assignable) {
+        // R4 唯一分类：该分类每人限一台
+        if (asset.template?.category?.unique) {
+          const existing = await tx.asset.findFirst({
+            where: {
+              employeeId,
+              id: { not: asset.id },
+              status: { in: ["IDLE", "IN_USE", "IN_MAINTENANCE"] },
+              template: { categoryId: asset.template.categoryId },
+            },
+            select: { assetNo: true },
+          });
+          if (existing) {
+            localIssues.push({
+              rowNo: 0,
+              name: person.name,
+              department: deptLabel,
+              assetNo: asset.assetNo,
+              reason: `该员工已拥有「${asset.template.category.name}」类设备（每人限一台）`,
+            });
+            continue;
+          }
+        }
+
+        const categoryName = asset.template?.category?.name ?? "设备";
+        await tx.asset.update({
+          where: { id: asset.id },
+          data: { status: "IN_USE", employeeId, name: `${person.name}的${categoryName}` },
+        });
+        await tx.lifecycleLog.create({
+          data: {
+            assetId: asset.id,
+            action: "ALLOCATED",
+            fromStatus: "IDLE",
+            toStatus: "IN_USE",
+            employeeId,
+            operator: user.username,
+            operatorId: user.id,
+            remark: "批量分配导入",
+          },
+        });
+        assignedNos.push(asset.assetNo);
+      }
+
+      return { localIssues, assignedNos };
+    });
+
+    issues.push(...result.localIssues);
+    if (result.assignedNos.length > 0) {
+      assignedCount += result.assignedNos.length;
+      // 系统日志（module=分配）
+      await prisma.systemLog.create({
+        data: {
+          module: "分配",
+          action: "ALLOCATED",
+          detail: `批量分配导入：${deptLabel}/${person.name} 分配 ${result.assignedNos.length} 台设备（${result.assignedNos.join("、")}）`,
+          operator: user.username,
+        },
+      });
+    }
+  }
+
+  const errorCount = issues.length;
+  return {
+    success: true,
+    data: {
+      assignedCount,
+      errorCount,
+      errors: issues,
+      ...(errorCount > 0
+        ? {
+            errorFile: {
+              buffer: buildAssignIssuesWorkbook(issues),
+              fileName: `分配错误行_${formatDate()}.xlsx`,
+            },
+          }
+        : {}),
+    },
+  };
 }
 
 // ============================================================

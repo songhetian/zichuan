@@ -348,7 +348,7 @@ model SystemLog {
   id        Int      @id @default(autoincrement())
   module    String // 模块
   action    String // 动作
-  detail    String // 详情
+  detail    String   @db.Text // 详情（TEXT：允许存放完整、较长的操作详情，不截断）
   operator  String // 操作员
   createdAt DateTime @default(now())
 

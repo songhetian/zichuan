@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/features/page-header";
 import { FilterBar } from "@/components/features/filter-bar";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { ExportPreview } from "@/components/features/export-preview";
+import { BatchAssignImportDialog } from "@/components/features/batch-assign-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +44,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Plus, Pencil, Trash2, Download, Upload, Monitor, History, Clock, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, Monitor, History, Clock, Eye, ArrowRightLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { usePermission } from "@/hooks/use-permission";
 import {
@@ -674,7 +675,10 @@ export function EmployeeListClient({
   roles = [],
 }: EmployeeListClientProps) {
   const canImportEmployee = usePermission("employee.import");
+  // 批量分配设备属于资产流转动作，后端要求 asset.manage，前端同门控
+  const canAssignAssets = usePermission("asset.manage");
   const [createOpen, setCreateOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
@@ -1210,6 +1214,12 @@ export function EmployeeListClient({
                 {importLoading ? "导入中..." : "导入 Excel"}
               </Button>
             )}
+            {canAssignAssets && (
+              <Button variant="outline" onClick={() => setAssignOpen(true)}>
+                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                批量分配
+              </Button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -1659,6 +1669,8 @@ export function EmployeeListClient({
         onExport={handleExport}
         loading={exportLoading}
       />
+
+      <BatchAssignImportDialog open={assignOpen} onOpenChange={setAssignOpen} />
     </div>
   );
 }

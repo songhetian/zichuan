@@ -95,6 +95,7 @@ interface AssetDetailClientProps {
       operator: string;
       remark: string | null;
       createdAt: Date;
+      employeeName?: string | null;
     }[];
   };
   componentModels: ComponentModel[];
