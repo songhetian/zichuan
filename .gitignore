@@ -31,6 +31,9 @@ scripts/dist/*
 scripts/_*
 tests/_*
 
+# 真机取证临时物（CDP 截图、浏览器配置、会话 cookie 等）
+.tmp-*
+
 # 工具产物
 vitest.config.ts.timestamp-*.mjs
 

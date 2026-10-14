@@ -71,7 +71,9 @@ async function main() {
       run(`${compose} build`);
       run(`${compose} up -d mysql`);
       run(`${compose} up db-init`);
-      run(`${compose} up -d app nginx`);
+      // 必须带 --force-recreate：compose 在镜像 tag 未变时可能判定「容器已是最新」，
+      // 于是继续跑旧镜像（表现为「部署成功但页面没变化」）。强制重建才可靠。
+      run(`${compose} up -d --force-recreate app nginx`);
       run(`${compose} ps`);
       break;
     }
