@@ -73,4 +73,24 @@ describe("AssetLabel", () => {
     expect(root.className).toContain("justify-center");
     expect(root.className).toContain("text-center");
   });
+
+  it("外层套一圈虚线，内层是实线框", () => {
+    const { container } = render(<AssetLabel label={label} />);
+    const outer = container.firstElementChild as HTMLElement;
+    const inner = outer.firstElementChild as HTMLElement;
+
+    expect(outer.className).toContain("border-dashed");
+    expect(inner.className).toContain("border");
+    expect(inner.className).not.toContain("border-dashed");
+    expect(inner.textContent?.trim()).toBe("DN-0001");
+  });
+
+  it("打印版的外层同样有虚线框", () => {
+    const { container } = render(<AssetLabel label={label} compact />);
+    const outer = container.firstElementChild as HTMLElement;
+    const inner = outer.firstElementChild as HTMLElement;
+
+    expect(outer.className).toContain("border-dashed");
+    expect(inner.className).not.toContain("border-dashed");
+  });
 });
