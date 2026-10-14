@@ -36,6 +36,8 @@ export default async function LabelsPage() {
     status: a.status,
     employeeName: a.employeeName ?? "",
     departmentName: a.departmentName,
+    // 「哪天导入的」—— 按导入日期筛选要用（转成 ISO 字符串，避免跨 RSC 边界的序列化差异）
+    createdAt: a.createdAt.toISOString(),
   }));
 
   const employees = employeesResult.success

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -21,6 +22,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmployeePicker, type EmployeeOption } from "@/components/ui/employee-picker";
+import { AssetLabel } from "@/components/features/asset-label";
+import { filterByDateKey, formatImportDateTime } from "@/lib/import-date";
 import {
   Printer,
   Loader2,
@@ -28,6 +31,8 @@ import {
   Monitor,
   Users,
   Building2,
+  CalendarDays,
+  X,
 } from "lucide-react";
 import { generateLabelData } from "@/actions/label.actions";
 import html2canvas from "html2canvas-pro";
@@ -44,6 +49,8 @@ interface AssetItem {
   status: string;
   employeeName: string;
   departmentName: string;
+  /** 导入时间（ISO 字符串）—— 用于列表展示与「按导入日期筛选」 */
+  createdAt: string;
 }
 
 // 与全站选人控件共用同一形状（含 employeeNo / departmentId，供部门筛选使用）
@@ -102,6 +109,8 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
+  /** 按导入日期筛选（本地时区的 YYYY-MM-DD；空串=全部） */
+  const [importDate, setImportDate] = useState<string>("");
   const [labels, setLabels] = useState<LabelData[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewed, setPreviewed] = useState(false);
@@ -130,6 +139,18 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
     return [];
   }, [mode, assets, employees, departments, selectedEmployeeId, selectedDepartmentId]);
 
+  // 再叠加「导入日期」筛选：列表、全选、计数都以筛选后的结果为准
+  const visibleAssets = useMemo(
+    () => filterByDateKey(selectableAssets, importDate),
+    [selectableAssets, importDate]
+  );
+
+  // 切换导入日期时清空已选，避免「选了 A 天的设备、却看着 B 天的列表」
+  const handleImportDateChange = (value: string) => {
+    setImportDate(value);
+    setSelectedIds(new Set());
+  };
+
   // 切换设备选择
   const handleToggleAsset = (id: number) => {
     setSelectedIds((prev) => {
@@ -140,12 +161,12 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
     });
   };
 
-  // 全选/取消全选
+  // 全选/取消全选（只作用于当前筛选后的列表）
   const handleSelectAll = () => {
-    if (selectedIds.size === selectableAssets.length) {
+    if (selectedIds.size === visibleAssets.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(selectableAssets.map((a) => a.id)));
+      setSelectedIds(new Set(visibleAssets.map((a) => a.id)));
     }
   };
 
@@ -284,25 +305,65 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
         {/* 按设备/按部门模式：显示可选设备列表 */}
         {(mode === "asset" || mode === "department") && (
           <div className="bg-card border rounded-xl overflow-hidden">
-            {/* 列表头部 */}
-            <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b">
-              <span className="text-sm font-medium">设备列表</span>
+            {/* 列表头部：导入日期筛选 + 选中计数 */}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-muted/30 border-b">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium whitespace-nowrap">设备列表</span>
+                <div className="flex items-center gap-1.5">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Input
+                    type="date"
+                    value={importDate}
+                    onChange={(e) => handleImportDateChange(e.target.value)}
+                    aria-label="按导入日期筛选"
+                    title="只看这一天导入的设备"
+                    className="h-8 w-[150px] text-sm"
+                  />
+                  {importDate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleImportDateChange("")}
+                      className="h-8 px-2 text-xs text-muted-foreground"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      清除
+                    </Button>
+                  )}
+                </div>
+              </div>
               <span className="text-sm text-muted-foreground">
-                已选 <span className="font-medium text-foreground">{selectedIds.size}</span> / {selectableAssets.length} 台设备
+                已选 <span className="font-medium text-foreground">{selectedIds.size}</span> /{" "}
+                {visibleAssets.length} 台设备
+                {importDate && (
+                  <span className="ml-1">（共 {selectableAssets.length} 台）</span>
+                )}
               </span>
             </div>
 
             {/* 设备表格 */}
-            {selectableAssets.length === 0 ? (
+            {visibleAssets.length === 0 ? (
               <div className="py-12 text-center">
                 <Monitor className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
                 <p className="text-sm text-muted-foreground">
                   {mode === "department" && !selectedDepartmentId
                     ? "请先选择部门"
-                    : mode === "department"
-                      ? "该部门暂无设备"
-                      : "暂无设备数据"}
+                    : selectableAssets.length > 0 && importDate
+                      ? `该日期没有导入的设备（共 ${selectableAssets.length} 台）`
+                      : mode === "department"
+                        ? "该部门暂无设备"
+                        : "暂无设备数据"}
                 </p>
+                {selectableAssets.length > 0 && importDate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleImportDateChange("")}
+                    className="mt-3"
+                  >
+                    清除日期筛选
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="max-h-[420px] overflow-auto">
@@ -312,7 +373,7 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
                       <TableHead className="w-[60px] text-center">
                         <Checkbox
                           checked={
-                            selectedIds.size === selectableAssets.length
+                            selectedIds.size === visibleAssets.length
                               ? true
                               : selectedIds.size > 0
                                 ? "indeterminate"
@@ -326,10 +387,11 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
                       <TableHead className="text-center">状态</TableHead>
                       <TableHead className="text-center">使用人</TableHead>
                       <TableHead className="text-center">部门</TableHead>
+                      <TableHead className="text-center whitespace-nowrap">导入时间</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectableAssets.map((asset) => {
+                    {visibleAssets.map((asset) => {
                       const status = STATUS_MAP[asset.status] ?? { label: asset.status, variant: "secondary" as const };
                       const isSelected = selectedIds.has(asset.id);
                       return (
@@ -356,6 +418,9 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
                           </TableCell>
                           <TableCell className="text-center">{asset.employeeName || "-"}</TableCell>
                           <TableCell className="text-center">{asset.departmentName || "-"}</TableCell>
+                          <TableCell className="text-center whitespace-nowrap text-xs text-muted-foreground">
+                            {formatImportDateTime(asset.createdAt)}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -437,95 +502,17 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
               >
                 {/* 屏幕预览：固定 2:1 比例，模拟真实标签尺寸 */}
                 <div className="print:hidden aspect-[2/1] w-full">
-                  <LabelContent label={label} />
+                  <AssetLabel label={label} />
                 </div>
                 {/* 打印样式：80mm × 40mm */}
                 <div className="hidden print:block" style={{ width: "80mm", height: "40mm", boxSizing: "border-box" }}>
-                  <LabelContent label={label} compact />
+                  <AssetLabel label={label} compact />
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ============================================================
-// Label Content Component
-// ============================================================
-
-function LabelContent({ label, compact = false }: { label: LabelData; compact?: boolean }) {
-  if (compact) {
-    return (
-      <div className="flex h-full w-full overflow-hidden" style={{ boxSizing: "border-box" }}>
-        {/* 左侧竖条 */}
-        <div className="w-1.5 bg-primary shrink-0" />
-
-        {/* 右侧内容 */}
-        <div className="flex-1 flex flex-col justify-center px-2 py-1 overflow-hidden">
-          {/* 编号：最大最醒目 */}
-          <div className="font-mono font-black text-[18px] leading-none tracking-tight text-foreground truncate">
-            {label.assetNo}
-          </div>
-
-          {/* 设备名：第二层级 */}
-          <div className="text-[11px] font-medium text-foreground/80 truncate mt-1">
-            {label.name}
-          </div>
-
-          {/* 底部分隔线 + 人名部门 */}
-          <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-border/60">
-            <span className="text-[9px] text-muted-foreground truncate">
-              {label.employeeName || "未分配"}
-            </span>
-            {label.departmentName && (
-              <>
-                <span className="text-[8px] text-muted-foreground/40">·</span>
-                <span className="text-[9px] text-muted-foreground truncate">
-                  {label.departmentName}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-full w-full rounded-md overflow-hidden border border-border/80 shadow-sm bg-white">
-      {/* 左侧竖条 */}
-      <div className="w-2 bg-primary shrink-0" />
-
-      {/* 右侧内容 */}
-      <div className="flex-1 flex flex-col justify-center px-4 py-3 overflow-hidden">
-        {/* 编号：最大最醒目 */}
-        <div className="font-mono font-black text-2xl tracking-tight text-foreground truncate">
-          {label.assetNo}
-        </div>
-
-        {/* 设备名：第二层级 */}
-        <div className="text-sm font-medium text-foreground/80 truncate mt-1">
-          {label.name}
-        </div>
-
-        {/* 底部分隔线 + 人名部门 */}
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/60">
-          <span className="text-xs text-muted-foreground truncate">
-            {label.employeeName || "未分配"}
-          </span>
-          {label.departmentName && (
-            <>
-              <span className="text-xs text-muted-foreground/30">·</span>
-              <span className="text-xs text-muted-foreground truncate">
-                {label.departmentName}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
