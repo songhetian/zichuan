@@ -1,8 +1,9 @@
 /**
  * AssetLabel —— 标签打印页的单个标签视觉。
  *
- * 两条产品约定（2026-10-14 用户要求）：
- *   1. 标签上【不显示部门】—— 部门在设备列表里看得到，打印到实物标签上属于噪声；
+ * 产品约定（2026-10-14 用户要求）：
+ *   1. 标签上【只显示设备编号】—— 名称、部门、使用人在列表/详情里看得到，
+ *      印到 80×40mm 的实物标签上只会挤占编号的可读性；
  *   2. 内容【居中】展示 —— 标签是小尺寸实物，居中比左对齐更整齐。
  * @vitest-environment jsdom
  */
@@ -14,33 +15,43 @@ import { AssetLabel, type AssetLabelData } from "@/components/features/asset-lab
 const label: AssetLabelData = {
   id: 1,
   assetNo: "DN-0001",
-  name: "张三的电脑主机",
+  name: "联想主机",
   employeeName: "张三",
   departmentName: "技术部",
 };
 
 describe("AssetLabel", () => {
-  it("展示设备编号、名称与使用人", () => {
+  it("展示设备编号", () => {
     render(<AssetLabel label={label} />);
 
     expect(screen.getByText("DN-0001")).toBeInTheDocument();
-    expect(screen.getByText("张三的电脑主机")).toBeInTheDocument();
-    expect(screen.getByText("张三")).toBeInTheDocument();
   });
 
-  it("不展示部门", () => {
+  it("不展示名称、使用人与部门", () => {
     render(<AssetLabel label={label} />);
 
+    expect(screen.queryByText("联想主机")).not.toBeInTheDocument();
+    expect(screen.queryByText("张三")).not.toBeInTheDocument();
     expect(screen.queryByText("技术部")).not.toBeInTheDocument();
   });
 
-  it("未分配使用人时显示占位文案", () => {
-    render(<AssetLabel label={{ ...label, employeeName: "" }} />);
+  it("编号用等宽 + 特粗字重突出显示", () => {
+    render(<AssetLabel label={label} />);
+    const no = screen.getByText("DN-0001");
 
-    expect(screen.getByText("未分配")).toBeInTheDocument();
+    expect(no.className).toContain("font-mono");
+    expect(no.className).toContain("font-black");
   });
 
-  it("内容居中：容器纵向排列且水平居中、文本居中", () => {
+  it("标签里只有编号一行文本", () => {
+    const { container } = render(<AssetLabel label={label} />);
+    const root = container.firstElementChild as HTMLElement;
+
+    expect(root.children.length).toBe(1);
+    expect(root.textContent?.trim()).toBe("DN-0001");
+  });
+
+  it("内容居中：容器纵向/水平居中且文本居中", () => {
     const { container } = render(<AssetLabel label={label} />);
     const root = container.firstElementChild as HTMLElement;
 
@@ -49,12 +60,17 @@ describe("AssetLabel", () => {
     expect(root.className).toContain("text-center");
   });
 
-  it("打印版（compact）同样不显示部门且居中", () => {
+  it("打印版（compact）同样只有编号且居中", () => {
     const { container } = render(<AssetLabel label={label} compact />);
     const root = container.firstElementChild as HTMLElement;
 
+    expect(screen.getByText("DN-0001")).toBeInTheDocument();
+    expect(screen.queryByText("联想主机")).not.toBeInTheDocument();
+    expect(screen.queryByText("张三")).not.toBeInTheDocument();
     expect(screen.queryByText("技术部")).not.toBeInTheDocument();
+    expect(root.children.length).toBe(1);
     expect(root.className).toContain("items-center");
+    expect(root.className).toContain("justify-center");
     expect(root.className).toContain("text-center");
   });
 });

@@ -1,18 +1,25 @@
 /**
  * AssetLabel —— 标签打印页的单个标签视觉（屏幕预览与打印共用同一套结构）。
  *
- * 产品约定：
- *   - **不显示部门**：部门在设备列表里可查，印到实物标签上只是噪声；
- *   - **内容居中**：标签是小尺寸实物（80×40mm），居中比左对齐更整齐；
- *   - 屏幕预览与打印只差字号，结构保持一致，避免「预览和实物不一样」。
+ * 产品约定（2026-10-14 用户要求）：
+ *   - **只显示设备编号**：名称、部门、使用人在设备列表/详情里随时可查，
+ *     印到 80×40mm 的实物标签上只会挤占编号的可读性；
+ *   - **内容居中**：标签是小尺寸实物，居中比左对齐更整齐；
+ *   - 屏幕预览与打印只差字号与圆角，结构一致，避免「预览和实物不一样」。
+ *
+ * 排版：编号是唯一主角 —— 等宽字体（不同编号位数对齐一致）、特粗字重、
+ * 超大字号，整块在标签内水平垂直居中。边框只描线、不用色块填充，
+ * 这样黑白标签机也能印出同样的效果。
  */
 
 export interface AssetLabelData {
   id: number;
   assetNo: string;
-  name: string;
-  employeeName: string;
-  /** 故意不渲染：保留字段以便调用方直接传 action 返回的 LabelData */
+  /** 故意不渲染：保留字段，方便调用方直接透传 action 返回的 LabelData */
+  name?: string;
+  /** 故意不渲染：同上 */
+  employeeName?: string;
+  /** 故意不渲染：同上 */
   departmentName?: string;
 }
 
@@ -22,47 +29,25 @@ interface AssetLabelProps {
   compact?: boolean;
 }
 
+/** 编号样式：等宽 + 特粗 + 字距收紧，字号由调用处按预览/打印分别指定 */
+const CODE_CLASS =
+  "max-w-full truncate font-mono font-black leading-none tracking-tight";
+
 export function AssetLabel({ label, compact = false }: AssetLabelProps) {
   if (compact) {
+    // 打印版：80×40mm 实物尺寸。细黑边框既当边框也是裁切参考线
     return (
-      <div
-        className="flex h-full w-full flex-col items-center justify-center overflow-hidden px-2 py-1 text-center"
-        style={{ boxSizing: "border-box" }}
-      >
-        {/* 编号：最大最醒目 */}
-        <div className="max-w-full truncate font-mono text-[18px] font-black leading-none tracking-tight text-foreground">
-          {label.assetNo}
-        </div>
-
-        {/* 设备名：第二层级 */}
-        <div className="mt-1 max-w-full truncate text-[11px] font-medium text-foreground/80">
-          {label.name}
-        </div>
-
-        {/* 分隔线 + 使用人 */}
-        <div className="mt-1 w-full border-t border-border/60 pt-1">
-          <span className="block truncate text-[10px] text-muted-foreground">
-            {label.employeeName || "未分配"}
-          </span>
-        </div>
+      <div className="flex h-full w-full items-center justify-center overflow-hidden border border-black/45 bg-white px-2 text-center">
+        <div className={`${CODE_CLASS} text-[38px]`}>{label.assetNo}</div>
       </div>
     );
   }
 
+  // 屏幕预览：结构与打印版一致，只是字号更大、带圆角与浅阴影
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-md border border-border/80 bg-white px-4 py-3 text-center shadow-sm">
-      <div className="max-w-full truncate font-mono text-2xl font-black tracking-tight text-foreground">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg border-2 border-border bg-white px-4 text-center shadow-sm">
+      <div className={`${CODE_CLASS} text-[46px] text-foreground`}>
         {label.assetNo}
-      </div>
-
-      <div className="mt-1 max-w-full truncate text-sm font-medium text-foreground/80">
-        {label.name}
-      </div>
-
-      <div className="mt-2 w-full border-t border-border/60 pt-2">
-        <span className="block truncate text-xs text-muted-foreground">
-          {label.employeeName || "未分配"}
-        </span>
       </div>
     </div>
   );
