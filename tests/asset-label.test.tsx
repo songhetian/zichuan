@@ -3,8 +3,9 @@
  *
  * 产品约定（2026-10-14 用户要求）：
  *   1. 标签上【只显示设备编号】—— 名称、部门、使用人在列表/详情里看得到，
- *      印到 80×40mm 的实物标签上只会挤占编号的可读性；
- *   2. 内容【居中】展示 —— 标签是小尺寸实物，居中比左对齐更整齐。
+ *      印到实物标签上只会挤占编号的可读性；
+ *   2. 内容【居中】展示 —— 标签是小尺寸实物，居中比左对齐更整齐；
+ *   3. 编号要【看得清楚】—— 标签缩小后字号仍要够大，且不能被截断。
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
@@ -92,5 +93,18 @@ describe("AssetLabel", () => {
 
     expect(outer.className).toContain("border-dashed");
     expect(inner.className).not.toContain("border-dashed");
+  });
+
+  it("编号字号不低于可读下限，且预览与打印用同一字号", () => {
+    const preview = render(<AssetLabel label={label} />);
+    const previewPx = parseFloat((preview.getByText("DN-0001") as HTMLElement).style.fontSize);
+    preview.unmount();
+
+    const print = render(<AssetLabel label={label} compact />);
+    const printPx = parseFloat((print.getByText("DN-0001") as HTMLElement).style.fontSize);
+
+    expect(previewPx).toBeGreaterThanOrEqual(28);
+    expect(printPx).toBeGreaterThanOrEqual(28);
+    expect(previewPx).toBe(printPx);
   });
 });

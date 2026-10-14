@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { EmployeePicker, type EmployeeOption } from "@/components/ui/employee-picker";
 import { AssetLabel } from "@/components/features/asset-label";
+import { LABEL_WIDTH_MM, LABEL_HEIGHT_MM } from "@/lib/label-size";
 import { filterByDateKey, formatImportDateTime } from "@/lib/import-date";
 import {
   Printer,
@@ -41,6 +42,16 @@ import jsPDF from "jspdf";
 // ============================================================
 // Types
 // ============================================================
+
+/**
+ * 标签外框尺寸（预览与打印共用）：尺寸来自 lib/label-size.ts，
+ * 改一处两边同时生效，避免「预览一个尺寸、打印另一个尺寸」。
+ */
+const LABEL_BOX_STYLE = {
+  width: `${LABEL_WIDTH_MM}mm`,
+  height: `${LABEL_HEIGHT_MM}mm`,
+  boxSizing: "border-box",
+} as const;
 
 interface AssetItem {
   id: number;
@@ -491,7 +502,7 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
           <div className="print:hidden flex items-center justify-between">
             <h3 className="text-base font-semibold">标签预览</h3>
             <p className="text-sm text-muted-foreground">
-              共 {labels.length} 个标签 · 80 × 40 mm
+              共 {labels.length} 个标签 · {LABEL_WIDTH_MM} × {LABEL_HEIGHT_MM} mm
             </p>
           </div>
           <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:gap-0">
@@ -500,12 +511,15 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
                 key={label.assetNo}
                 className="print:break-inside-avoid print:m-0 print:p-0"
               >
-                {/* 屏幕预览：固定 2:1 比例，模拟真实标签尺寸 */}
-                <div className="print:hidden aspect-[2/1] w-full">
+                {/* 屏幕预览：按标签真实物理尺寸显示（1mm ≈ 3.78px），所见即所得 */}
+                <div
+                  className="print:hidden mx-auto"
+                  style={LABEL_BOX_STYLE}
+                >
                   <AssetLabel label={label} />
                 </div>
-                {/* 打印样式：80mm × 40mm */}
-                <div className="hidden print:block" style={{ width: "80mm", height: "40mm", boxSizing: "border-box" }}>
+                {/* 打印样式：与预览同一尺寸 */}
+                <div className="hidden print:block" style={LABEL_BOX_STYLE}>
                   <AssetLabel label={label} compact />
                 </div>
               </div>
