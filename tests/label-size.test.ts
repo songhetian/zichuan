@@ -18,6 +18,14 @@ import {
   LABEL_CODE_FONT_CQW,
   LABEL_TEXT_WIDTH_PX,
   MONO_ADVANCE_EM,
+  EXPORT_PAGE_MARGIN_MM,
+  EXPORT_GAP_MM,
+  EXPORT_SHEET_PADDING_MM,
+  EXPORT_SHEET_WIDTH_MM,
+  EXPORT_SHEET_HEIGHT_MM,
+  EXPORT_ROWS_PER_PAGE,
+  paginateForExport,
+  mmToPx,
   codeWidthPx,
   codeFitsLabel,
 } from "@/lib/label-size";
@@ -76,5 +84,42 @@ describe("label-size", () => {
 
   it("超长编号放不下 —— 这是已知限制，长度超限需要重新调尺寸", () => {
     expect(codeFitsLabel("DN-20261014-0001")).toBe(false);
+  });
+
+  describe("导出 PDF 排版几何", () => {
+    it("单页 sheet 放得进 A4 竖版可打印区域", () => {
+      // A4: 210×297，页边距 10mm → 可打印 190×277
+      expect(EXPORT_SHEET_WIDTH_MM).toBeLessThanOrEqual(210 - 2 * EXPORT_PAGE_MARGIN_MM);
+      expect(EXPORT_SHEET_HEIGHT_MM).toBeLessThanOrEqual(297 - 2 * EXPORT_PAGE_MARGIN_MM);
+    });
+
+    it("sheet 是两列布局且能容纳每页行数", () => {
+      expect(EXPORT_SHEET_WIDTH_MM).toBeGreaterThanOrEqual(
+        2 * LABEL_WIDTH_MM + EXPORT_GAP_MM + 2 * EXPORT_SHEET_PADDING_MM,
+      );
+      expect(EXPORT_SHEET_HEIGHT_MM).toBeGreaterThanOrEqual(
+        EXPORT_ROWS_PER_PAGE * LABEL_HEIGHT_MM +
+          (EXPORT_ROWS_PER_PAGE - 1) * EXPORT_GAP_MM +
+          2 * EXPORT_SHEET_PADDING_MM,
+      );
+    });
+
+    it("分页：每页 2×7=14 个，15 个分成两页", () => {
+      const pages = paginateForExport(Array.from({ length: 15 }, (_, i) => i));
+      expect(pages).toHaveLength(2);
+      expect(pages[0]).toHaveLength(14);
+      expect(pages[1]).toHaveLength(1);
+    });
+
+    it("分页：空列表与整页边界", () => {
+      expect(paginateForExport([])).toEqual([]);
+      const exact = paginateForExport(Array.from({ length: 28 }, (_, i) => i));
+      expect(exact).toHaveLength(2);
+      expect(exact[1]).toHaveLength(14);
+    });
+
+    it("mmToPx 换算正确（96dpi）", () => {
+      expect(mmToPx(75)).toBeCloseTo(75 * (96 / 25.4), 6);
+    });
   });
 });

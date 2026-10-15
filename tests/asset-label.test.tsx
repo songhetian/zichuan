@@ -120,4 +120,25 @@ describe("AssetLabel", () => {
     expect(CODE_STYLE.fontSize).toBe(`${LABEL_CODE_FONT_CQW}cqw`);
     expect(CODE_STYLE.fontSize).toMatch(/cqw$/);
   });
+
+  it("传入 fontPx 时用固定 px 字号且不声明 container-type（导出 PDF 管线用）", () => {
+    // html2canvas 不支持 cqw / 容器查询，导出 PDF 必须走固定 px
+    const { container } = render(<AssetLabel label={label} compact fontPx={39.7} />);
+    const root = container.firstElementChild as HTMLElement;
+    const no = screen.getByText("DN-0001") as HTMLElement;
+
+    expect(no.style.fontSize).toBe("39.7px");
+    expect(root.className).not.toContain("container-type");
+    // html2canvas 对 text-overflow: ellipsis 渲染有 bug（误加省略号），
+    // 且该模式字号已由数学保证放得下 —— 不得带 truncate
+    expect(no.className).not.toContain("truncate");
+    // 其余契约不变：只有编号、居中
+    expect(root.textContent?.trim()).toBe("DN-0001");
+    expect(root.className).toContain("items-center");
+  });
+
+  it("浏览器管线（cqw 模式）保留 truncate 兜底", () => {
+    render(<AssetLabel label={label} />);
+    expect((screen.getByText("DN-0001") as HTMLElement).className).toContain("truncate");
+  });
 });

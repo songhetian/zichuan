@@ -23,7 +23,54 @@ export const LABEL_WIDTH_MM = 75;
 export const LABEL_HEIGHT_MM = 35;
 
 /** CSS 中 1mm 对应的像素数（96dpi ÷ 25.4） */
-const PX_PER_MM = 96 / 25.4;
+export const PX_PER_MM = 96 / 25.4;
+
+/** mm → px（浏览器 CSS 标准 96dpi） */
+export function mmToPx(mm: number): number {
+  return mm * PX_PER_MM;
+}
+
+// ============================================================
+// 导出 PDF 的排版几何
+//
+// 导出与打印必须是同一套视觉（两列、75×35mm、编号完整）。html2canvas
+// 不支持 cqw / 容器查询，无法复用屏幕预览的渲染结果，因此导出时在
+// 离屏容器里以固定 px 重新渲染（AssetLabel 的 fontPx 模式），再按
+// px→mm 精确映射贴入 A4。这里的常量把「一页放多少、sheet 多大」
+// 固化成可测事实，超页会被 tests/label-size.test.ts 挡住。
+// ============================================================
+
+/** A4 页边距（mm）—— 与浏览器打印默认边距一致 */
+export const EXPORT_PAGE_MARGIN_MM = 10;
+
+/** 标签行列间距（mm）—— 留出下剪刀的裁剪余量 */
+export const EXPORT_GAP_MM = 4;
+
+/** sheet 内边距（mm） */
+export const EXPORT_SHEET_PADDING_MM = 2;
+
+/** 每页行数：⌊(297 − 2×10 − 2×2 − 6×4) / 35⌋ = 7，一页 2×7 = 14 个 */
+export const EXPORT_ROWS_PER_PAGE = 7;
+
+/** 导出 sheet 净宽（mm）：2 列标签 + 1 个列距 + 左右内边距 = 158 */
+export const EXPORT_SHEET_WIDTH_MM =
+  2 * LABEL_WIDTH_MM + EXPORT_GAP_MM + 2 * EXPORT_SHEET_PADDING_MM;
+
+/** 导出 sheet 净高（mm）：7 行标签 + 6 个行距 + 上下内边距 = 273 */
+export const EXPORT_SHEET_HEIGHT_MM =
+  EXPORT_ROWS_PER_PAGE * LABEL_HEIGHT_MM +
+  (EXPORT_ROWS_PER_PAGE - 1) * EXPORT_GAP_MM +
+  2 * EXPORT_SHEET_PADDING_MM;
+
+/** 按「每页 2 列 × EXPORT_ROWS_PER_PAGE 行」切分标签列表 */
+export function paginateForExport<T>(items: T[]): T[][] {
+  const pageSize = EXPORT_ROWS_PER_PAGE * 2;
+  const pages: T[][] = [];
+  for (let i = 0; i < items.length; i += pageSize) {
+    pages.push(items.slice(i, i + pageSize));
+  }
+  return pages;
+}
 
 /**
  * 编号字号（cqw，container query width）—— 占标签容器宽度的比例。

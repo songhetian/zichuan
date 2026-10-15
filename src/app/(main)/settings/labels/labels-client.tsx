@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import { PageHeader } from "@/components/features/page-header";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,7 +24,19 @@ import {
 } from "@/components/ui/table";
 import { EmployeePicker, type EmployeeOption } from "@/components/ui/employee-picker";
 import { AssetLabel } from "@/components/features/asset-label";
-import { LABEL_WIDTH_MM, LABEL_HEIGHT_MM } from "@/lib/label-size";
+import {
+  LABEL_WIDTH_MM,
+  LABEL_HEIGHT_MM,
+  LABEL_CODE_FONT_PX,
+  PX_PER_MM,
+  EXPORT_PAGE_MARGIN_MM,
+  EXPORT_GAP_MM,
+  EXPORT_SHEET_PADDING_MM,
+  EXPORT_SHEET_WIDTH_MM,
+  EXPORT_ROWS_PER_PAGE,
+  paginateForExport,
+  mmToPx,
+} from "@/lib/label-size";
 import { filterByDateKey, formatImportDateTime } from "@/lib/import-date";
 import {
   Printer,
@@ -126,6 +139,9 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
   const [loading, setLoading] = useState(false);
   const [previewed, setPreviewed] = useState(false);
   const [exporting, setExporting] = useState(false);
+  /** 导出 PDF 当前渲染的页码（null = 不在导出中）；离屏 sheet 按页渲染后截图 */
+  const [exportPage, setExportPage] = useState<number | null>(null);
+  const exportSheetRef = useRef<HTMLDivElement>(null);
 
   // 根据模式计算可选设备列表
   const selectableAssets = useMemo(() => {
@@ -223,26 +239,53 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
   };
 
   // 导出 PDF
+  //
+  // ⚠️ 不能直接截屏幕上的 #label-print-area：html2canvas 不支持 cqw 字号与
+  // 容器查询（曾导致导出的 PDF 三列、字体错乱、编号被截成 "DN-DN8…"），
+  // 且屏幕栅格宽度 ≠ 打印布局。因此导出走专用渲染：React 在离屏容器里
+  // 按页渲染【固定 px 字号的两列 compact 标签】，再按 px→mm 精确映射贴入
+  // A4 —— PDF 里每个标签就是 75×35mm，与打印完全一致。
   const handleExportPDF = async () => {
-    const labelArea = document.getElementById("label-print-area");
-    if (!labelArea) return;
+    if (labels.length === 0) return;
 
     setExporting(true);
     try {
-      const canvas = await html2canvas(labelArea, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: true,
-      });
-
-      const imgData = canvas.toDataURL("image/png");
+      const pages = paginateForExport(labels);
       const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pageW = pdf.internal.pageSize.getWidth();
+      const xMm = (pageW - EXPORT_SHEET_WIDTH_MM) / 2; // 水平居中
+      const SCALE = 2; // html2canvas 放大倍数，影响清晰度不影响几何
 
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      for (let i = 0; i < pages.length; i++) {
+        // flushSync 让离屏 sheet 在本帧同步出现，随后才能截图
+        flushSync(() => setExportPage(i));
+        const sheet = exportSheetRef.current;
+        if (!sheet) throw new Error("导出容器未就绪");
+
+        // 首页等字体加载完成；每页等双 rAF 确保布局与绘制完成
+        if (i === 0 && document.fonts) await document.fonts.ready;
+        await new Promise<void>((r) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => r())),
+        );
+
+        const canvas = await html2canvas(sheet, {
+          scale: SCALE,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          logging: false,
+        });
+
+        if (i > 0) pdf.addPage();
+        // canvas 是 2x 渲染：先除回 scale 再按 96dpi 换算成 mm，
+        // 保证 PDF 里每个标签物理尺寸就是 75×35mm
+        const wMm = canvas.width / SCALE / PX_PER_MM;
+        const hMm = canvas.height / SCALE / PX_PER_MM;
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", xMm, EXPORT_PAGE_MARGIN_MM, wMm, hMm);
+      }
+
       pdf.save("设备标签.pdf");
     } finally {
+      setExportPage(null);
       setExporting(false);
     }
   };
@@ -531,6 +574,38 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* 导出 PDF 的离屏渲染容器：屏幕上不可见（fixed -10000px），
+          按页渲染固定 px 字号的两列 compact 标签，供 html2canvas 逐页截图。
+          几何全部来自 label-size.ts 的导出常量，与打印布局同源。 */}
+      {exportPage != null && (
+        <div
+          ref={exportSheetRef}
+          aria-hidden
+          style={{
+            position: "fixed",
+            left: -10000,
+            top: 0,
+            background: "#ffffff",
+            boxSizing: "border-box",
+            width: mmToPx(EXPORT_SHEET_WIDTH_MM),
+            padding: mmToPx(EXPORT_SHEET_PADDING_MM),
+            display: "grid",
+            gridTemplateColumns: `repeat(2, ${mmToPx(LABEL_WIDTH_MM)}px)`,
+            columnGap: mmToPx(EXPORT_GAP_MM),
+            rowGap: mmToPx(EXPORT_GAP_MM),
+          }}
+        >
+          {paginateForExport(labels)[exportPage]?.map((label) => (
+            <div
+              key={label.assetNo}
+              style={{ width: mmToPx(LABEL_WIDTH_MM), height: mmToPx(LABEL_HEIGHT_MM) }}
+            >
+              <AssetLabel label={label} compact fontPx={LABEL_CODE_FONT_PX} />
+            </div>
+          ))}
         </div>
       )}
     </div>

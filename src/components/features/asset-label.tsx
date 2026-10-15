@@ -17,6 +17,9 @@
  * 编号字号取其宽度的固定比例。打印缩放、字体 fallback、不同 DPI 下文字都
  * 与容器同比例伸缩，不会出现「浏览器里放得下、打出来被 truncate」。
  *
+ * fontPx 模式：html2canvas（导出 PDF 用）不支持 cqw / 容器查询，导出时
+ * 传 fontPx 让编号用固定 px 字号、且不声明 container-type，其余结构不变。
+ *
  * 排版：编号是唯一主角 —— 等宽字体（不同编号位数对齐一致）、特粗字重，
  * 整块在标签内水平垂直居中。两层框都只描线、不用色块填充，
  * 这样黑白标签机也能印出同样的效果。
@@ -38,6 +41,11 @@ interface AssetLabelProps {
   label: AssetLabelData;
   /** 打印版：与预览同尺寸同字号，只去掉圆角/阴影、虚线改用黑色 */
   compact?: boolean;
+  /**
+   * 固定 px 字号（导出 PDF 专用）：传入后不用 cqw，也不声明 container-type。
+   * 浏览器打印/屏幕预览不要传 —— cqw 的自适应能力正是防截断的关键。
+   */
+  fontPx?: number;
 }
 
 /**
@@ -46,16 +54,32 @@ interface AssetLabelProps {
  * 上读不到该声明（React 序列化时即被丢弃），只能从样式对象本身验证。
  */
 export const CODE_CLASS =
-  "max-w-full truncate font-mono font-black leading-none tracking-tight";
+  "font-mono font-black leading-none tracking-tight";
 export const CODE_STYLE = { fontSize: `${LABEL_CODE_FONT_CQW}cqw` };
 
-export function AssetLabel({ label, compact = false }: AssetLabelProps) {
+/** 两层框的公共结构：外圈虚线（裁切线）+ 内圈实线（内容框），全部只描线不填色 */
+const SHELL_CLASS =
+  "flex h-full w-full items-center justify-center overflow-hidden p-[1.5mm] text-center";
+const INNER_CLASS =
+  "flex h-full w-full items-center justify-center overflow-hidden px-1.5 text-center";
+
+export function AssetLabel({ label, compact = false, fontPx }: AssetLabelProps) {
+  // 浏览器渲染管线走 cqw 自适应；html2canvas 管线（导出 PDF）走固定 px。
+  // truncate 只用于浏览器端兜底 —— html2canvas 对 text-overflow: ellipsis
+  // 的渲染有 bug（会误加省略号），且 fontPx 模式下字号已由数学保证放得下，
+  // 所以导出管线不带 truncate。
+  const useCqw = fontPx == null;
+  const containerType = useCqw ? " [container-type:inline-size]" : "";
+  const overflowGuard = useCqw ? " max-w-full truncate" : "";
+  const codeStyle = useCqw ? CODE_STYLE : { fontSize: `${fontPx}px` };
+  const codeClass = `${CODE_CLASS}${overflowGuard}`;
+
   if (compact) {
     // 打印版：外圈虚线 = 模切/裁切参考线，内圈实线 = 内容框
     return (
-      <div className="flex h-full w-full items-center justify-center overflow-hidden border border-dashed border-black/35 p-[1.5mm] text-center [container-type:inline-size]">
-        <div className="flex h-full w-full items-center justify-center overflow-hidden border border-black/45 bg-white px-1.5 text-center">
-          <div className={CODE_CLASS} style={CODE_STYLE}>
+      <div className={`${SHELL_CLASS} border border-dashed border-black/35${containerType}`}>
+        <div className={`${INNER_CLASS} border border-black/45 bg-white`}>
+          <div className={codeClass} style={codeStyle}>
             {label.assetNo}
           </div>
         </div>
@@ -65,9 +89,9 @@ export function AssetLabel({ label, compact = false }: AssetLabelProps) {
 
   // 屏幕预览：与打印版同一尺寸、同一字号，只多圆角与浅阴影
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-white p-[1.5mm] text-center [container-type:inline-size]">
-      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-md border-2 border-border bg-white px-1.5 text-center shadow-sm">
-        <div className={CODE_CLASS} style={CODE_STYLE}>
+    <div className={`${SHELL_CLASS} rounded-lg border-2 border-dashed border-border bg-white${containerType}`}>
+      <div className={`${INNER_CLASS} rounded-md border-2 border-border bg-white shadow-sm`}>
+        <div className={codeClass} style={codeStyle}>
           {label.assetNo}
         </div>
       </div>
