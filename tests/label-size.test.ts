@@ -87,6 +87,10 @@ describe("label-size", () => {
   });
 
   describe("导出 PDF 排版几何", () => {
+    it("间距足够下剪刀（用户要求方便裁剪，≥8mm）", () => {
+      expect(EXPORT_GAP_MM).toBeGreaterThanOrEqual(8);
+    });
+
     it("单页 sheet 放得进 A4 竖版可打印区域", () => {
       // A4: 210×297，页边距 10mm → 可打印 190×277
       expect(EXPORT_SHEET_WIDTH_MM).toBeLessThanOrEqual(210 - 2 * EXPORT_PAGE_MARGIN_MM);
@@ -104,18 +108,18 @@ describe("label-size", () => {
       );
     });
 
-    it("分页：每页 2×7=14 个，15 个分成两页", () => {
+    it("分页：每页 2×6=12 个，15 个分成两页", () => {
       const pages = paginateForExport(Array.from({ length: 15 }, (_, i) => i));
       expect(pages).toHaveLength(2);
-      expect(pages[0]).toHaveLength(14);
-      expect(pages[1]).toHaveLength(1);
+      expect(pages[0]).toHaveLength(12);
+      expect(pages[1]).toHaveLength(3);
     });
 
     it("分页：空列表与整页边界", () => {
       expect(paginateForExport([])).toEqual([]);
-      const exact = paginateForExport(Array.from({ length: 28 }, (_, i) => i));
+      const exact = paginateForExport(Array.from({ length: 24 }, (_, i) => i));
       expect(exact).toHaveLength(2);
-      expect(exact[1]).toHaveLength(14);
+      expect(exact[1]).toHaveLength(12);
     });
 
     it("mmToPx 换算正确（96dpi）", () => {

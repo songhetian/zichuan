@@ -43,20 +43,24 @@ export function mmToPx(mm: number): number {
 /** A4 页边距（mm）—— 与浏览器打印默认边距一致 */
 export const EXPORT_PAGE_MARGIN_MM = 10;
 
-/** 标签行列间距（mm）—— 留出下剪刀的裁剪余量 */
-export const EXPORT_GAP_MM = 4;
+/** 标签行列间距（mm）—— 用户要求加大方便裁剪（≥8mm，剪刀有余量） */
+export const EXPORT_GAP_MM = 8;
 
 /** sheet 内边距（mm） */
 export const EXPORT_SHEET_PADDING_MM = 2;
 
-/** 每页行数：⌊(297 − 2×10 − 2×2 − 6×4) / 35⌋ = 7，一页 2×7 = 14 个 */
-export const EXPORT_ROWS_PER_PAGE = 7;
+/**
+ * 每页行数：间距 8mm 时 A4 可打印高 277mm 只放得下 6 行
+ * （6×35 + 5×8 + 2×2 = 254mm ≤ 277；7 行需 297mm 会超页），
+ * 一页 2×6 = 12 个。
+ */
+export const EXPORT_ROWS_PER_PAGE = 6;
 
 /** 导出 sheet 净宽（mm）：2 列标签 + 1 个列距 + 左右内边距 = 158 */
 export const EXPORT_SHEET_WIDTH_MM =
   2 * LABEL_WIDTH_MM + EXPORT_GAP_MM + 2 * EXPORT_SHEET_PADDING_MM;
 
-/** 导出 sheet 净高（mm）：7 行标签 + 6 个行距 + 上下内边距 = 273 */
+/** 导出 sheet 净高（mm）：6 行标签 + 5 个行距 + 上下内边距 = 254 */
 export const EXPORT_SHEET_HEIGHT_MM =
   EXPORT_ROWS_PER_PAGE * LABEL_HEIGHT_MM +
   (EXPORT_ROWS_PER_PAGE - 1) * EXPORT_GAP_MM +

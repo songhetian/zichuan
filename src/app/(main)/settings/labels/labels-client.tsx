@@ -552,9 +552,10 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
             打印布局固定两列：A4 竖版可打印宽度约 190mm，两列 75mm + 间隙刚好
             铺满，标签能放多大放多大；若用三列会被浏览器整体缩放，反而更小。
             print: 变体必须能覆盖 lg:grid-cols-3（Tailwind 变体顺序中 print 在
-            responsive 之后，同特异性后者胜出）。
+            responsive 之后，同特异性后者胜出）。间距与导出 PDF 一致取 8mm 级别，
+            方便打印后裁剪；浏览器打印自动分页，间距大只是每页行数少一行。
           */}
-          <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:grid-cols-2 print:gap-3">
+          <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:grid-cols-2 print:gap-8">
             {labels.map((label) => (
               <div
                 key={label.assetNo}
