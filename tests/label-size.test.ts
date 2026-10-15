@@ -4,12 +4,18 @@
  * 为什么值得单独测：一张标签只印编号，编号一旦被截断或缩得太小，
  * 实物标签就失去意义。这里把「标签多宽、字多大、9 位编号占多少」
  * 变成可断言的事实，以后谁调尺寸都会立刻被这几条挡住。
+ *
+ * 2026-10-15 起字号不再用固定 px，而是 cqw（容器宽度的百分比）：
+ * 真实打印环境（字体 fallback / 打印缩放 / DPR）与浏览器预览有差异，
+ * 固定 px 曾导致打印出来编号末尾被 truncate 成 "DN-DN8…"（见用户实拍）。
+ * 改用 cqw 后字号与容器宽度联动，任何环境下都不会溢出。
  */
 import { describe, it, expect } from "vitest";
 import {
   LABEL_WIDTH_MM,
   LABEL_HEIGHT_MM,
   LABEL_CODE_FONT_PX,
+  LABEL_CODE_FONT_CQW,
   LABEL_TEXT_WIDTH_PX,
   MONO_ADVANCE_EM,
   codeWidthPx,
@@ -20,13 +26,30 @@ import {
 const REAL_CODE = "DN-2U7W9N";
 
 describe("label-size", () => {
-  it("标签比原来的 80×40mm 更小（宽高都收）", () => {
-    expect(LABEL_WIDTH_MM).toBeLessThan(80);
-    expect(LABEL_HEIGHT_MM).toBeLessThan(40);
+  it("标签比 60×30mm 明显放大（用户反馈上一版太小）", () => {
+    expect(LABEL_WIDTH_MM).toBeGreaterThan(60);
+    expect(LABEL_HEIGHT_MM).toBeGreaterThan(30);
+    // 但不能超过 A4 竖版两列布局的上限（可用宽约 190mm，留出间隙）
+    expect(LABEL_WIDTH_MM * 2).toBeLessThanOrEqual(190);
   });
 
   it("编号字号不低于可读下限（≥28px）", () => {
     expect(LABEL_CODE_FONT_PX).toBeGreaterThanOrEqual(28);
+  });
+
+  it("字号用 cqw 随容器宽度自适应，且比例在安全范围内", () => {
+    // 9 位等宽字符占宽 = 9 × 0.6 × 比例，要 < 100% 才有余量；
+    // 再扣掉 tracking-tight 的收紧，比例 ≤16% 都是安全的
+    expect(LABEL_CODE_FONT_CQW).toBeGreaterThan(10);
+    expect(LABEL_CODE_FONT_CQW).toBeLessThanOrEqual(16);
+  });
+
+  it("设计基准字号 = cqw 比例 × 容器宽度（两者永远联动，不会各说各话）", () => {
+    const containerPx = LABEL_WIDTH_MM * (96 / 25.4);
+    expect(LABEL_CODE_FONT_PX).toBeCloseTo(
+      (LABEL_CODE_FONT_CQW / 100) * containerPx,
+      1,
+    );
   });
 
   it("短编号也必须比长编号窄（等宽估算的单调性）", () => {

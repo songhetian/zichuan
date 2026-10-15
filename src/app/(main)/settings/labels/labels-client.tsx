@@ -505,7 +505,13 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
               共 {labels.length} 个标签 · {LABEL_WIDTH_MM} × {LABEL_HEIGHT_MM} mm
             </p>
           </div>
-          <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:gap-0">
+          {/*
+            打印布局固定两列：A4 竖版可打印宽度约 190mm，两列 75mm + 间隙刚好
+            铺满，标签能放多大放多大；若用三列会被浏览器整体缩放，反而更小。
+            print: 变体必须能覆盖 lg:grid-cols-3（Tailwind 变体顺序中 print 在
+            responsive 之后，同特异性后者胜出）。
+          */}
+          <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:grid-cols-2 print:gap-3">
             {labels.map((label) => (
               <div
                 key={label.assetNo}

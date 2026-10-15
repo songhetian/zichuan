@@ -11,7 +11,12 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { AssetLabel, type AssetLabelData } from "@/components/features/asset-label";
+import {
+  AssetLabel,
+  CODE_STYLE,
+  type AssetLabelData,
+} from "@/components/features/asset-label";
+import { LABEL_CODE_FONT_CQW } from "@/lib/label-size";
 
 const label: AssetLabelData = {
   id: 1,
@@ -95,16 +100,24 @@ describe("AssetLabel", () => {
     expect(inner.className).not.toContain("border-dashed");
   });
 
-  it("编号字号不低于可读下限，且预览与打印用同一字号", () => {
+  it("外层是 inline-size 容器，编号字号用 cqw 随容器自适应（打印不截断）", () => {
     const preview = render(<AssetLabel label={label} />);
-    const previewPx = parseFloat((preview.getByText("DN-0001") as HTMLElement).style.fontSize);
+    const previewOuter = preview.container.firstElementChild as HTMLElement;
+    const previewNo = preview.getByText("DN-0001") as HTMLElement;
     preview.unmount();
 
     const print = render(<AssetLabel label={label} compact />);
-    const printPx = parseFloat((print.getByText("DN-0001") as HTMLElement).style.fontSize);
+    const printOuter = print.container.firstElementChild as HTMLElement;
+    const printNo = print.getByText("DN-0001") as HTMLElement;
 
-    expect(previewPx).toBeGreaterThanOrEqual(28);
-    expect(printPx).toBeGreaterThanOrEqual(28);
-    expect(previewPx).toBe(printPx);
+    // 外层声明 container-type: inline-size，cqw 才有参照
+    expect(previewOuter.className).toContain("container-type");
+    expect(printOuter.className).toContain("container-type");
+
+    // 字号是 cqw 而非固定 px：容器大就大、小就小，永远不会溢出被截断。
+    // jsdom 不认识 cqw 单位，渲染后的 DOM 上读不到该声明（React 序列化时
+    // 即被丢弃），因此改为断言组件实际导出的样式对象 —— 预览与打印共用。
+    expect(CODE_STYLE.fontSize).toBe(`${LABEL_CODE_FONT_CQW}cqw`);
+    expect(CODE_STYLE.fontSize).toMatch(/cqw$/);
   });
 });

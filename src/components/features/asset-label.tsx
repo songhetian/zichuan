@@ -13,11 +13,15 @@
  * 尺寸与字号不在本文件里拍脑袋，统一来自 lib/label-size.ts；那里同时保证
  * 9 位编号（前缀 + "-" + 6 位随机码）放得下、不会被截断。
  *
+ * 2026-10-15：字号改用 cqw —— 外层容器声明 container-type: inline-size，
+ * 编号字号取其宽度的固定比例。打印缩放、字体 fallback、不同 DPI 下文字都
+ * 与容器同比例伸缩，不会出现「浏览器里放得下、打出来被 truncate」。
+ *
  * 排版：编号是唯一主角 —— 等宽字体（不同编号位数对齐一致）、特粗字重，
  * 整块在标签内水平垂直居中。两层框都只描线、不用色块填充，
  * 这样黑白标签机也能印出同样的效果。
  */
-import { LABEL_CODE_FONT_PX } from "@/lib/label-size";
+import { LABEL_CODE_FONT_CQW } from "@/lib/label-size";
 
 export interface AssetLabelData {
   id: number;
@@ -36,16 +40,20 @@ interface AssetLabelProps {
   compact?: boolean;
 }
 
-/** 编号样式：等宽 + 特粗 + 字距收紧；字号统一由 label-size.ts 给定 */
-const CODE_CLASS =
+/**
+ * 编号样式：等宽 + 特粗 + 字距收紧；字号按容器宽度自适应（cqw）。
+ * 导出供测试断言契约 —— jsdom 的 CSS 解析器不认识 cqw 单位，渲染后的 DOM
+ * 上读不到该声明（React 序列化时即被丢弃），只能从样式对象本身验证。
+ */
+export const CODE_CLASS =
   "max-w-full truncate font-mono font-black leading-none tracking-tight";
-const CODE_STYLE = { fontSize: `${LABEL_CODE_FONT_PX}px` };
+export const CODE_STYLE = { fontSize: `${LABEL_CODE_FONT_CQW}cqw` };
 
 export function AssetLabel({ label, compact = false }: AssetLabelProps) {
   if (compact) {
     // 打印版：外圈虚线 = 模切/裁切参考线，内圈实线 = 内容框
     return (
-      <div className="flex h-full w-full items-center justify-center overflow-hidden border border-dashed border-black/35 p-[1.5mm] text-center">
+      <div className="flex h-full w-full items-center justify-center overflow-hidden border border-dashed border-black/35 p-[1.5mm] text-center [container-type:inline-size]">
         <div className="flex h-full w-full items-center justify-center overflow-hidden border border-black/45 bg-white px-1.5 text-center">
           <div className={CODE_CLASS} style={CODE_STYLE}>
             {label.assetNo}
@@ -57,7 +65,7 @@ export function AssetLabel({ label, compact = false }: AssetLabelProps) {
 
   // 屏幕预览：与打印版同一尺寸、同一字号，只多圆角与浅阴影
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-white p-[1.5mm] text-center">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-border bg-white p-[1.5mm] text-center [container-type:inline-size]">
       <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-md border-2 border-border bg-white px-1.5 text-center shadow-sm">
         <div className={CODE_CLASS} style={CODE_STYLE}>
           {label.assetNo}
