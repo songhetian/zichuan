@@ -22,7 +22,13 @@ export function resolveSessionMaxAge(remember: boolean): number {
 // 🔒 生产 fail-fast：SESSION_SECRET 缺失时拒绝启动，绝不静默回退——
 // 兜底密钥随仓库公开，生产静默使用 = 任何人可伪造登录态（2026-11-04 审查确认）。
 const DEV_FALLBACK_SECRET = "zichuan-secret-key-change-in-production-min-32-chars!!";
-if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+if (
+  process.env.NODE_ENV === "production" &&
+  !process.env.SESSION_SECRET &&
+  // next build 收集页面数据时也以 production 执行本模块，但构建期不需要真实密钥
+  // （构建上下文无 .env，见 .dockerignore）——只在真正运行时 fail-fast
+  process.env.NEXT_PHASE !== "phase-production-build"
+) {
   throw new Error(
     "[启动校验] 生产环境必须设置 SESSION_SECRET（≥32 字符，勿用示例值）。\n" +
       '生成随机密钥：node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
