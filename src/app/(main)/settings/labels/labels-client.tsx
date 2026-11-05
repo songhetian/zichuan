@@ -244,7 +244,7 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
                 key={m.key}
                 onClick={() => handleModeChange(m.key)}
                 className={`
-                  flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all
+                  flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors
                   ${mode === m.key
                     ? "bg-primary text-primary-foreground shadow-md"
                     : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"

@@ -692,7 +692,7 @@ export function WorkflowsClient({
                 key={tab.key}
                 type="button"
                 onClick={() => switchBizType(tab.key)}
-                className={`group relative flex flex-col items-stretch gap-3 overflow-hidden rounded-xl border p-4 pl-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                className={`group relative flex flex-col items-stretch gap-3 overflow-hidden rounded-xl border p-4 pl-5 text-left transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-md ${
                   missing
                     ? "border-destructive/30 bg-destructive/5"
                     : tone

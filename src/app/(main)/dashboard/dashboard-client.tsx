@@ -120,7 +120,7 @@ function KpiCard({
             </div>
             <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className={`h-full rounded-full transition-all duration-700 ${accentClass}`}
+                className={`h-full rounded-full transition-[width] duration-700 ease-out ${accentClass}`}
                 style={{ width: `${Math.min(share, 100)}%` }}
               />
             </div>

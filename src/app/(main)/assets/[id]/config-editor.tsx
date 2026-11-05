@@ -466,7 +466,7 @@ export function ConfigEditor({
                     key={m.modelId}
                     draggable
                     onDragStart={() => handleDragStart("library", m.modelId)}
-                    className="group flex items-center gap-2 p-2 rounded-md border bg-background hover:border-primary/30 transition-all cursor-grab active:cursor-grabbing"
+                    className="group flex items-center gap-2 p-2 rounded-md border bg-background hover:border-primary/30 transition-colors cursor-grab active:cursor-grabbing"
                   >
                     <GripVertical className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground" />
                     <div className="flex-1 min-w-0">

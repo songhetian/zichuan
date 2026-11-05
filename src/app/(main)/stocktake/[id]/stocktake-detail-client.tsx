@@ -388,7 +388,7 @@ export function StocktakeDetailClient({
           return (
             <div
               key={record.id}
-              className={`relative bg-card rounded-lg border-2 p-4 transition-all hover:border-primary/40 ${
+              className={`relative bg-card rounded-lg border-2 p-4 transition-colors hover:border-primary/40 ${
                 session.status === "OPEN" ? "hover:border-primary" : ""
               }`}
             >

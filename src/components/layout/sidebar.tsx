@@ -129,7 +129,7 @@ export function Sidebar({
       {/* Desktop sidebar */}
       <div
         className={cn(
-          "relative hidden md:flex h-full flex-col border-r border-border bg-sidebar transition-all duration-300",
+          "relative hidden md:flex h-full flex-col border-r border-border bg-sidebar transition-[width] duration-300",
           collapsed ? "w-14" : "w-60"
         )}
       >
@@ -182,7 +182,7 @@ export function Sidebar({
                         <button
                           aria-label={item.label}
                           className={cn(
-                            "flex w-full items-center justify-center rounded-lg p-2 transition-all duration-200",
+                            "flex w-full items-center justify-center rounded-lg p-2 transition-colors duration-200",
                             isParentActive
                               ? "bg-primary/10 text-primary"
                               : "text-foreground/80 hover:bg-secondary hover:text-foreground"
@@ -231,7 +231,7 @@ export function Sidebar({
                         aria-current={active ? "page" : undefined}
                         aria-label={item.label}
                         className={cn(
-                          "flex w-full items-center justify-center rounded-lg p-2 transition-all duration-200",
+                          "flex w-full items-center justify-center rounded-lg p-2 transition-colors duration-200",
                           active
                             ? "bg-primary/10 text-primary"
                             : "text-foreground/80 hover:bg-secondary hover:text-foreground"
@@ -276,7 +276,7 @@ export function Sidebar({
                               onClick={() => toggleExpand(item.href)}
                               aria-expanded={isExpanded}
                               className={cn(
-                                "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
+                                "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-colors duration-200",
                                 isParentActive
                                   ? "bg-primary/[0.07] text-primary"
                                   : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
@@ -329,7 +329,7 @@ export function Sidebar({
                           href={item.href}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "nav-enter group relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
+                            "nav-enter group relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-colors duration-200",
                             active
                               ? "bg-primary/[0.07] text-primary"
                               : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
@@ -422,7 +422,7 @@ export function Sidebar({
                             onClick={() => toggleExpand(item.href)}
                             aria-expanded={isExpanded}
                             className={cn(
-                              "relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
+                              "relative flex w-full items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-colors duration-200",
                               isParentActive
                                 ? "bg-primary/[0.07] text-primary"
                                 : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
@@ -473,7 +473,7 @@ export function Sidebar({
                         href={item.href}
                         onClick={() => {}}
                         className={cn(
-                          "relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-all duration-200",
+                          "relative flex items-center gap-2.5 rounded-lg px-3 py-[9px] text-[13.5px] transition-colors duration-200",
                           active
                             ? "bg-primary/[0.07] text-primary"
                             : "text-foreground/80 hover:bg-secondary/80 hover:text-foreground"
