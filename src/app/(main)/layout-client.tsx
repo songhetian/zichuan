@@ -67,7 +67,9 @@ export default function MainLayoutClient({
           tabIndex={-1}
           className="flex-1 overflow-y-auto p-4 lg:p-6 focus-visible:outline-none"
         >
-          <div className="mx-auto w-full max-w-[1440px]">
+          {/* 2K（2560）下 1440 会在两侧留出 ~440px 死白；1800 在 2K 仍留呼吸感，
+              1920 及以下不触顶等同流式 */}
+          <div className="mx-auto w-full max-w-[1800px]">
             {denied ? <NoAccess /> : children}
           </div>
         </main>

@@ -137,7 +137,10 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-accent aria-selected:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      // cmdk 1.1.1 会把 data-disabled={false} 渲染成属性 data-disabled="false"，
+      // 裸 [data-disabled] 选择器会误匹配 → 所有项永远 pointer-events:none，
+      // 鼠标点击失效只剩键盘可用；必须显式匹配 'true'
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-accent aria-selected:text-accent-foreground data-[disabled='true']:pointer-events-none data-[disabled='true']:opacity-50",
       className
     )}
     {...props}
