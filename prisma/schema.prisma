@@ -192,6 +192,7 @@ model Asset {
   purchaseDate   DateTime? // 采购日期
   warrantyMonths Int? // 保修期（月）
   notes          String?
+  photos         Json? // 现场照片（OSS 对象 key 数组，可选；NULL = 无照片，前端显示类型默认图）
 
   // ---- 审批预占（M5）：提交申请时置 RESERVED，终态释放并恢复 reservedFromStatus ----
   reservedByRequestId Int?             @unique // 预占该资产的申请单

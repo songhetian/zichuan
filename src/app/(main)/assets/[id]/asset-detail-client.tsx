@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/features/page-header";
 import { StatusBadge } from "@/components/features/status-badge";
+import { AssetPhotos } from "@/components/features/asset-photos";
 import { ConfirmDialog } from "@/components/features/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -79,6 +80,7 @@ interface AssetDetailClientProps {
     purchaseDate: Date | null;
     warrantyMonths: number | null;
     notes: string | null;
+    photos: { key: string; url: string }[];
     components: {
       id: number;
       modelId: number;
@@ -400,6 +402,15 @@ export function AssetDetailClient({ asset, componentModels, employees }: AssetDe
                   <InfoItem label="所在位置" value={asset.location ?? "-"} />
                   <InfoItem label="备注" value={asset.notes ?? "-"} />
                 </div>
+              </CardContent>
+            </Card>
+            {/* 现场照片（可选，无照片时显示分类默认图） */}
+            <Card className="md:col-span-2 lg:col-span-3">
+              <CardHeader>
+                <CardTitle>现场照片</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AssetPhotos assetId={asset.id} photos={asset.photos} categoryName={asset.categoryName} />
               </CardContent>
             </Card>
           </div>

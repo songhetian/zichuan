@@ -10,6 +10,7 @@ import { requireAuth } from "@/lib/auth";
 import { AppError } from "@/lib/app-error";
 import { guardPermission, resolveAssetScope } from "@/lib/permissions";
 import { consumeBomStock, INSUFFICIENT_STOCK_PREFIX } from "@/lib/bom-stock";
+import { getOssSignedUrl, normalizePhotoKeys } from "@/lib/oss";
 
 // ============================================================
 // Schema 校验
@@ -72,6 +73,8 @@ type AssetDetail = {
   purchaseDate: Date | null;
   warrantyMonths: number | null;
   notes: string | null;
+  /** 现场照片（签名 URL，过期后刷新详情即得新 URL）；空数组 = 无照片（前端显示类型默认图） */
+  photos: { key: string; url: string }[];
   createdAt: Date;
   components: {
     id: number;
@@ -119,6 +122,7 @@ type PrismaAsset = {
   purchaseDate: Date | null;
   warrantyMonths: number | null;
   notes: string | null;
+  photos?: unknown;
   createdAt: Date;
   components: {
     id: number;
@@ -163,6 +167,7 @@ function formatAsset(
       purchaseDate: null,
       warrantyMonths: null,
       notes: null,
+      photos: [],
       createdAt: new Date(),
       components: [],
       lifecycleLogs: [],
@@ -187,6 +192,7 @@ function formatAsset(
     purchaseDate: asset.purchaseDate ?? null,
     warrantyMonths: asset.warrantyMonths ?? null,
     notes: asset.notes ?? null,
+    photos: normalizePhotoKeys(asset.photos).map((key) => ({ key, url: getOssSignedUrl(key) })),
     createdAt: asset.createdAt,
     components: asset.components.map((c) => ({
       id: c.id,

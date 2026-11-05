@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOssSignedUrl, normalizePhotoKeys, ossConfigured } from "@/lib/oss";
 import {
   judgeDevice,
   type DeviceCheckInput,
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
         brand: true,
         model: true,
         status: true,
+        photos: true,
         employee: { select: { name: true } },
         template: { select: { category: { select: { name: true } } } },
       },
@@ -77,7 +79,10 @@ export async function POST(req: NextRequest) {
             holder: row.employee?.name ?? null,
           }
         : null;
-      return judgeDevice(it, asset);
+      const judged = judgeDevice(it, asset);
+      const photos =
+        row && ossConfigured() ? normalizePhotoKeys(row.photos).map((k) => getOssSignedUrl(k)) : [];
+      return { ...judged, photos };
     });
 
     const hostname = String(body.hostname ?? "").slice(0, 100) || "未知主机";
