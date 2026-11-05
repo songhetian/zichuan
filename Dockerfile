@@ -50,51 +50,20 @@ RUN npm run build
 FROM builder AS db-init
 
 # ============================================================
-# 阶段4: 生产运行
+# 阶段4: 生产运行（自定义 server.ts：启动时挂载 Socket.IO 供实时通知）
+# ⚠️ 不能用 standalone server.js——它不含 server.ts 挂载的 Socket.IO，
+#    浏览器 /api/socket 握手会 404，通知弹窗在生产静默失效（2026-11-06 审查确认）。
+# 复用 builder：全量 node_modules（含 socket.io / tsx）+ 源码 + 构建产物，镜像会大一些。
 # ============================================================
-FROM node:20-alpine AS runner
+FROM builder AS runner
 WORKDIR /app
-
-# 安装 Prisma 运行所需的系统依赖
-RUN apk add --no-cache openssl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-
-# 创建非 root 用户
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-# 复制构建产物
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
-# 复制 Prisma 运行时文件
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-
-# 复制 xlsx 依赖（Server Actions 需要）
-COPY --from=builder /app/node_modules/xlsx ./node_modules/xlsx
-
-# 复制 bcryptjs 依赖（seed.ts 需要）
-COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
-
-# 复制 tsx 依赖（db-init 运行 seed.ts 需要）
-COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
-COPY --from=builder /app/node_modules/@esbuild ./node_modules/@esbuild
-
-# 复制数据库初始化脚本（db-init 容器内运行，避免依赖宿主机 bind mount）
-COPY scripts/docker-init.cjs ./scripts/docker-init.cjs
-
-USER nextjs
-
-EXPOSE 3000
-
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+EXPOSE 3000
+
+# tsx 运行 TS 入口（server.ts → src/lib/socket-server → Socket.IO 挂载）
+CMD ["node", "node_modules/tsx/dist/cli.mjs", "server.ts"]
