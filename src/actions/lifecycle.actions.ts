@@ -7,6 +7,8 @@ import { requireAuth } from "@/lib/auth";
 import { guardPermission } from "@/lib/permissions";
 import { applyComponentAdjustments } from "@/lib/component-adjust";
 import type { AllocationConflict } from "@/lib/allocation-pairing";
+import { Prisma } from "@prisma/client";
+import { AppError } from "@/lib/app-error";
 
 // ============================================================
 // Schema 校验
@@ -124,7 +126,7 @@ export async function allocateAssets(
       const uniqueCategoryIdSet = new Set(categories.filter((c) => c.unique).map((c) => c.id));
       for (const [categoryId, ids] of assetIdsByCategory) {
         if (uniqueCategoryIdSet.has(categoryId) && ids.length > 1) {
-          throw new Error(`UNIQUE_VIOLATION:${categoryNameById.get(categoryId) ?? ""}`);
+          throw new AppError("UNIQUE_VIOLATION", `UNIQUE_VIOLATION:${categoryNameById.get(categoryId) ?? ""}`, categoryNameById.get(categoryId) ?? "");
         }
       }
 
@@ -146,7 +148,7 @@ export async function allocateAssets(
 
       // 如果更新数量不匹配，说明有设备不是闲置状态
       if (updatedCount !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
@@ -163,7 +165,7 @@ export async function allocateAssets(
         });
         if (existingAssets.length > 0) {
           const categoryNames = uniqueCategories.map(c => c.name).join("、");
-          throw new Error(`UNIQUE_VIOLATION:${categoryNames}`);
+          throw new AppError("UNIQUE_VIOLATION", `UNIQUE_VIOLATION:${categoryNames}`, categoryNames);
         }
       }
 
@@ -197,12 +199,13 @@ export async function allocateAssets(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[lifecycle.actions] 动作异常", e);
     if (e instanceof Error) {
-      if (e.message === "STATUS_CONFLICT") {
+      if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
         return { success: false, error: "部分设备不可分配（非闲置状态）" };
       }
-      if (e.message.startsWith("UNIQUE_VIOLATION")) {
-        const categoryNames = e.message.split(":")[1] ?? "";
+      if (e instanceof AppError && e.code === "UNIQUE_VIOLATION") {
+        const categoryNames = e.detail ?? "";
         return { success: false, error: `唯一性约束：员工已拥有该分类（${categoryNames}）下的设备，不能重复分配` };
       }
     }
@@ -346,7 +349,10 @@ export async function allocateAssetsBatch(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // R4 兜底：事务内再确认一次目标员工没有同唯一分类的其他设备（防并发写入）
+      // R4 兜底：事务内再确认一次目标员工没有同唯一分类的其他设备。
+      // 先对目标员工行加 FOR UPDATE 锁：普通 SELECT 在 REPEATABLE READ 下读不到对方
+      // 未提交的写入，两个并发事务会同时通过下方检查从而绕过唯一性（2026-11-04 审查）。
+      await tx.$queryRaw`SELECT id FROM Employee WHERE id IN (${Prisma.join(employeeIds)}) FOR UPDATE`;
       const uniqueCategoryIds = categories.filter((c) => c.unique).map((c) => c.id);
       if (uniqueCategoryIds.length > 0) {
         const offenders = await tx.asset.findMany({
@@ -359,7 +365,7 @@ export async function allocateAssetsBatch(
           select: { id: true },
         });
         if (offenders.length > 0) {
-          throw new Error(`UNIQUE_VIOLATION:${categories.filter((c) => c.unique).map((c) => c.name).join("、")}`);
+          throw new AppError("UNIQUE_VIOLATION", `UNIQUE_VIOLATION:${categories.filter((c) => c.unique).map((c) => c.name).join("、")}`, categories.filter((c) => c.unique).map((c) => c.name).join("、"));
         }
       }
 
@@ -382,7 +388,7 @@ export async function allocateAssetsBatch(
 
       // 有任何一台没被更新（并发抢走 / 状态已变）→ 整批回滚
       if (updatedCount !== pairs.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       const assetStatusMap = new Map(assets.map((a) => [a.id, a.status]));
@@ -414,15 +420,16 @@ export async function allocateAssetsBatch(
 
     return { success: true, data: result };
   } catch (e) {
-    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
+    console.error("[lifecycle.actions] 动作异常", e);
+    if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
       return {
         success: false,
         error: "部分设备已被他人分配或状态已变更，本次分配未生效",
         conflicts: [],
       };
     }
-    if (e instanceof Error && e.message.startsWith("UNIQUE_VIOLATION")) {
-      const names = e.message.split(":")[1] ?? "";
+    if (e instanceof AppError && e.code === "UNIQUE_VIOLATION") {
+      const names = e.detail ?? "";
       return {
         success: false,
         error: `唯一性约束：目标员工已持有该分类（${names}）下的设备，本次分配未生效`,
@@ -488,7 +495,7 @@ export async function returnAssets(
       }
 
       if (updatedCount !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       // 记录生命周期日志
@@ -520,7 +527,8 @@ export async function returnAssets(
 
     return { success: true, data: result };
   } catch (e) {
-    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
+    console.error("[lifecycle.actions] 动作异常", e);
+    if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
       return { success: false, error: "部分设备非在用状态，无法归还" };
     }
     return { success: false, error: "归还失败" };
@@ -589,7 +597,7 @@ export async function transferAssets(
       const uniqueCategoryIdSet = new Set(categories.filter((c) => c.unique).map((c) => c.id));
       for (const [categoryId, ids] of assetIdsByCategory) {
         if (uniqueCategoryIdSet.has(categoryId) && ids.length > 1) {
-          throw new Error(`UNIQUE_VIOLATION:${categoryNameById.get(categoryId) ?? ""}`);
+          throw new AppError("UNIQUE_VIOLATION", `UNIQUE_VIOLATION:${categoryNameById.get(categoryId) ?? ""}`, categoryNameById.get(categoryId) ?? "");
         }
       }
 
@@ -609,7 +617,7 @@ export async function transferAssets(
       }
 
       if (updatedCount !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       // 唯一性校验：检查目标员工是否已拥有该分类下的唯一设备
@@ -626,7 +634,7 @@ export async function transferAssets(
         });
         if (existingAssets.length > 0) {
           const categoryNames = uniqueCategories.map(c => c.name).join("、");
-          throw new Error(`UNIQUE_VIOLATION:${categoryNames}`);
+          throw new AppError("UNIQUE_VIOLATION", `UNIQUE_VIOLATION:${categoryNames}`, categoryNames);
         }
       }
 
@@ -659,12 +667,13 @@ export async function transferAssets(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[lifecycle.actions] 动作异常", e);
     if (e instanceof Error) {
-      if (e.message === "STATUS_CONFLICT") {
+      if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
         return { success: false, error: "部分设备非在用状态，无法调拨" };
       }
-      if (e.message.startsWith("UNIQUE_VIOLATION")) {
-        const categoryNames = e.message.split(":")[1] ?? "";
+      if (e instanceof AppError && e.code === "UNIQUE_VIOLATION") {
+        const categoryNames = e.detail ?? "";
         return { success: false, error: `唯一性约束：目标员工已拥有该分类（${categoryNames}）下的设备，不能调拨` };
       }
     }
@@ -789,6 +798,7 @@ export async function upgradeAssetComponent(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[lifecycle.actions] 动作异常", e);
     if (e instanceof Error && e.message === "STOCK_INSUFFICIENT") {
       return { success: false, error: "新配件库存不足" };
     }
@@ -837,7 +847,7 @@ export async function scrapAssets(
       });
 
       if (updateResult.count !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       await tx.lifecycleLog.createMany({
@@ -868,7 +878,8 @@ export async function scrapAssets(
 
     return { success: true, data: result };
   } catch (e) {
-    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
+    console.error("[lifecycle.actions] 动作异常", e);
+    if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
       return { success: false, error: "部分设备状态不允许报废（已报废或已被申请预占）" };
     }
     return { success: false, error: "报废失败" };
@@ -919,7 +930,7 @@ export async function maintenanceStart(
       });
 
       if (updateResult.count !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       await tx.lifecycleLog.createMany({
@@ -950,7 +961,8 @@ export async function maintenanceStart(
 
     return { success: true, data: result };
   } catch (e) {
-    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
+    console.error("[lifecycle.actions] 动作异常", e);
+    if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
       return { success: false, error: "部分设备状态不允许送修（已报废、维修中或已被申请预占）" };
     }
     return { success: false, error: "送修失败" };
@@ -1014,7 +1026,7 @@ export async function maintenanceComplete(
       }
 
       if (updatedCount !== assetIds.length) {
-        throw new Error("STATUS_CONFLICT");
+        throw new AppError("STATUS_CONFLICT");
       }
 
       await tx.lifecycleLog.createMany({
@@ -1045,7 +1057,8 @@ export async function maintenanceComplete(
 
     return { success: true, data: result };
   } catch (e) {
-    if (e instanceof Error && e.message === "STATUS_CONFLICT") {
+    console.error("[lifecycle.actions] 动作异常", e);
+    if (e instanceof AppError && e.code === "STATUS_CONFLICT") {
       return { success: false, error: "部分设备非维修中状态，无法标记完成" };
     }
     return { success: false, error: "维修完成操作失败" };
@@ -1112,6 +1125,7 @@ export async function adjustAssetComponents(
 
     return { success: true, data: { assetId } };
   } catch (e) {
+    console.error("[lifecycle.actions] 动作异常", e);
     if (e instanceof Error) {
       if (e.message === "STOCK_INSUFFICIENT") {
         return { success: false, error: "库存不足" };

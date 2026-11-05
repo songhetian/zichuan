@@ -390,12 +390,14 @@ export async function importEmployeesFromExcel(
         });
         importedCount++;
       } catch (e) {
+        console.error("[excel.actions] 动作异常", e);
         errors.push(`创建失败 ${employeeNo}`);
       }
     }
 
     return { success: true, data: { importedCount, errors } };
   } catch (e) {
+    console.error("[excel.actions] 动作异常", e);
     return { success: false, error: "Excel 文件解析失败" };
   }
 }
@@ -807,6 +809,7 @@ export async function importAssetsFromExcel(
 
     return { success: true, data: { importedCount, errors } };
   } catch (e) {
+    console.error("[excel.actions] 动作异常", e);
     return { success: false, error: "Excel 文件解析失败" };
   }
 }
@@ -856,12 +859,14 @@ export async function importComponentModelsFromExcel(
         });
         importedCount++;
       } catch (e) {
+        console.error("[excel.actions] 动作异常", e);
         errors.push(`创建失败 ${name}`);
       }
     }
 
     return { success: true, data: { importedCount, errors } };
   } catch (e) {
+    console.error("[excel.actions] 动作异常", e);
     return { success: false, error: "Excel 文件解析失败" };
   }
 }

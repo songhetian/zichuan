@@ -564,6 +564,7 @@ export async function submitApprovalRequest(input: {
       return request;
     });
   } catch (e) {
+    console.error("[approval.actions] 动作异常", e);
     if (e instanceof Error && e.message === "ASSET_RESERVED") {
       return { success: false, error: "该设备已被其他申请预占" };
     }
@@ -1436,6 +1437,7 @@ export async function approveTask(input: {
               },
             });
           } catch (e) {
+            console.error("[approval.actions] 动作异常", e);
             await tx.approvalLog.create({
               data: {
                 requestId: request.id,
@@ -1489,6 +1491,7 @@ export async function approveTask(input: {
               await createNotifications(tx, handoverNotifs);
             }
           } catch (e) {
+            console.error("[approval.actions] 动作异常", e);
             await tx.approvalLog.create({
               data: {
                 requestId: request.id,

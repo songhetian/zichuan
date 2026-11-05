@@ -142,6 +142,7 @@ export async function executeApprovedChange(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[approval-execute.actions] 动作异常", e);
     const errMap: Record<string, string> = {
       NOT_EXECUTABLE: "申请单不满足执行条件或已执行",
       BAD_PAYLOAD: "申请内容格式错误",
@@ -541,6 +542,7 @@ export async function executeReplaceChange(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[approval-execute.actions] 动作异常", e);
     const errMap: Record<string, string> = {
       NOT_EXECUTABLE: "申请单不满足执行条件或已执行",
       BAD_PAYLOAD: "申请内容格式错误",
@@ -689,6 +691,7 @@ export async function executeRepairChange(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[approval-execute.actions] 动作异常", e);
     const errMap: Record<string, string> = {
       NOT_EXECUTABLE: "申请单不满足执行条件或已执行",
       BAD_PAYLOAD: "申请内容格式错误",
@@ -776,6 +779,7 @@ export async function confirmHandover(
 
     return { success: true, data: result };
   } catch (e) {
+    console.error("[approval-execute.actions] 动作异常", e);
     if (e instanceof Error && e.message === "NOT_EXECUTABLE") {
       return { success: false, error: "交接单不满足对账条件或已回收" };
     }

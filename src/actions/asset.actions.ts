@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { generateAssetNo } from "@/lib/asset-numbering";
 import { computeAssetCapacities } from "@/lib/asset-capacity";
 import { requireAuth } from "@/lib/auth";
+import { AppError } from "@/lib/app-error";
 import { guardPermission, resolveAssetScope } from "@/lib/permissions";
 import { consumeBomStock, INSUFFICIENT_STOCK_PREFIX } from "@/lib/bom-stock";
 
@@ -280,7 +281,7 @@ export async function createAsset(
           },
         });
         if (quantity > 1 || held > 0) {
-          throw new Error(`UNIQUE_VIOLATION:${template.category.name}`);
+          throw new AppError("UNIQUE_VIOLATION", `UNIQUE_VIOLATION:${template.category.name}`, template.category.name);
         }
       }
 
@@ -363,12 +364,13 @@ export async function createAsset(
 
     return { success: true, data: assets.map((asset) => formatAsset(asset)) };
   } catch (e) {
+    console.error("[asset.actions] 动作异常", e);
     if (e instanceof Error) {
       if (e.message.startsWith(INSUFFICIENT_STOCK_PREFIX)) {
         return { success: false, error: e.message.slice(INSUFFICIENT_STOCK_PREFIX.length) };
       }
-      if (e.message.startsWith("UNIQUE_VIOLATION")) {
-        const categoryNames = e.message.split(":")[1] ?? "";
+      if (e instanceof AppError && e.code === "UNIQUE_VIOLATION") {
+        const categoryNames = e.detail ?? "";
         return {
           success: false,
           error: `唯一性约束：员工已拥有该分类（${categoryNames}）下的设备，不能重复建档分配`,
@@ -488,6 +490,7 @@ export async function getAssets(
 
     return { success: true, data: filtered };
   } catch (e) {
+    console.error("[asset.actions] 动作异常", e);
     return { success: false, error: "查询设备列表失败，请稍后重试" };
   }
 }
@@ -539,6 +542,7 @@ export async function getAssetById(
 
     return { success: true, data: formatAsset(asset, employeeNames) };
   } catch (e) {
+    console.error("[asset.actions] 动作异常", e);
     return { success: false, error: "查询设备详情失败，请稍后重试" };
   }
 }
@@ -597,6 +601,7 @@ export async function updateAsset(
 
     return { success: true, data: formatAsset(asset) };
   } catch (e) {
+    console.error("[asset.actions] 动作异常", e);
     if (e instanceof Error) {
       if (e.message.includes("Record to update not found")) {
         return { success: false, error: "设备不存在或已被删除" };
@@ -627,6 +632,7 @@ export async function deleteAsset(
     await prisma.asset.delete({ where: { id } });
     return { success: true, data: { id } };
   } catch (e) {
+    console.error("[asset.actions] 动作异常", e);
     if (e instanceof Error && e.message.includes("Foreign key constraint")) {
       return { success: false, error: "该设备有关联数据，无法删除" };
     }

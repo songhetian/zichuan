@@ -82,6 +82,7 @@ export async function login(
       },
     };
   } catch (e) {
+    console.error("[auth.actions] 动作异常", e);
     return { success: false, error: "登录失败，请稍后重试" };
   }
 }
@@ -128,6 +129,7 @@ export async function changePassword(
 
     return { success: true, data: { success: true } };
   } catch (e) {
+    console.error("[auth.actions] 动作异常", e);
     return { success: false, error: "修改密码失败，请稍后重试" };
   }
 }
@@ -168,6 +170,7 @@ export async function forceChangePassword(
 
     return { success: true, data: { success: true } };
   } catch (e) {
+    console.error("[auth.actions] 动作异常", e);
     return { success: false, error: "修改密码失败，请稍后重试" };
   }
 }

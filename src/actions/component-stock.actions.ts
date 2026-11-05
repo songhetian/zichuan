@@ -108,6 +108,7 @@ export async function purchaseStockIn(
 
     return { success: true, data: { modelId, quantity: stock?.quantity ?? quantity } };
   } catch (e) {
+    console.error("[component-stock.actions] 动作异常", e);
     return { success: false, error: "入库失败" };
   }
 }
@@ -152,6 +153,7 @@ export async function upgradeReturnStockIn(
     const stock = await prisma.componentStock.findUnique({ where: { modelId } });
     return { success: true, data: { modelId, quantity: stock?.quantity ?? quantity } };
   } catch (e) {
+    console.error("[component-stock.actions] 动作异常", e);
     return { success: false, error: "退回入库失败" };
   }
 }
@@ -210,6 +212,7 @@ export async function assetBuildStockOut(
 
     return { success: true, data: { modelId, quantity: result } };
   } catch (e) {
+    console.error("[component-stock.actions] 动作异常", e);
     if (e instanceof Error && e.message === "INSUFFICIENT_STOCK") {
       return { success: false, error: "库存不足" };
     }
@@ -267,6 +270,7 @@ export async function upgradeUseStockOut(
 
     return { success: true, data: { modelId, quantity: result } };
   } catch (e) {
+    console.error("[component-stock.actions] 动作异常", e);
     if (e instanceof Error && e.message === "INSUFFICIENT_STOCK") {
       return { success: false, error: "库存不足" };
     }
@@ -335,6 +339,7 @@ export async function batchStockOut(
 
     return { success: true, data: { success: true } };
   } catch (e) {
+    console.error("[component-stock.actions] 动作异常", e);
     if (e instanceof Error && e.message === "INSUFFICIENT_STOCK") {
       return { success: false, error: "库存不足，操作已全部回滚" };
     }

@@ -301,6 +301,7 @@ export async function setEmployeeDevice(
     }
     return { success: true, data: { employeeId } };
   } catch (e) {
+    console.error("[department-employee.actions] 动作异常", e);
     return { success: false, error: "操作失败" };
   }
 }
@@ -351,6 +352,7 @@ export async function markEmployeeDepart(
     });
     return { success: true, data: { id } };
   } catch (e) {
+    console.error("[department-employee.actions] 动作异常", e);
     return { success: false, error: "离职处理失败" };
   }
 }

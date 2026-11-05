@@ -4,9 +4,15 @@ import { getIronSession } from "iron-session";
 import type { SessionData } from "@/lib/auth";
 
 const SESSION_COOKIE = "zichuan_session";
-const SESSION_SECRET =
-  process.env.SESSION_SECRET ||
-  "zichuan-secret-key-change-in-production-min-32-chars!!";
+// 🔒 生产 fail-fast（与 lib/auth.ts 同口径）：SESSION_SECRET 缺失时宁可中间件全挂
+// 也不能用随仓库公开的兜底密钥签会话——否则登录态可被伪造。
+const DEV_FALLBACK_SECRET = "zichuan-secret-key-change-in-production-min-32-chars!!";
+if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+  throw new Error(
+    "[启动校验] 生产环境必须设置 SESSION_SECRET（≥32 字符，勿用示例值）"
+  );
+}
+const SESSION_SECRET = process.env.SESSION_SECRET || DEV_FALLBACK_SECRET;
 
 const sessionOptions = {
   password: SESSION_SECRET,

@@ -464,6 +464,7 @@ export async function importAssetsAuto(
         templateIsNew: result.templateIsNew,
       });
     } catch (e) {
+      console.error("[auto-import.actions] 动作异常", e);
       const message = e instanceof Error ? e.message : "未知错误";
       errors.push(`第${rowNum}行 (${row.deviceName}): ${cleanErrorMessage(message)}`);
     }
@@ -598,6 +599,7 @@ export async function importAssetsFromExcelAuto(
     }
     return result;
   } catch (e) {
+    console.error("[auto-import.actions] 动作异常", e);
     const message = e instanceof Error ? e.message : "Excel文件解析失败";
     return { success: false, error: cleanErrorMessage(message) };
   }
