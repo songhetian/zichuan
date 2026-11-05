@@ -228,6 +228,9 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
 
   return (
     <div className="space-y-6">
+      {/* 打印纸张：A4 纵向 + 10mm 页边距，保证 2 × 80mm 的标签排得下 */}
+      <style>{`@page { size: A4 portrait; margin: 10mm; }`}</style>
+
       <PageHeader title="标签打印" description="选择设备并生成标签，支持打印或导出 PDF" />
 
       {/* 操作区域 - 打印时隐藏 */}
@@ -440,20 +443,16 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
               共 {labels.length} 个标签 · 80 × 40 mm
             </p>
           </div>
-          <div id="label-print-area" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:gap-0">
+          <div
+            id="label-print-area"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 print:grid-cols-2 print:gap-[2mm]"
+          >
             {labels.map((label) => (
               <div
                 key={label.assetNo}
-                className="print:break-inside-avoid print:m-0 print:p-0"
+                className="aspect-[2/1] w-full print:aspect-auto print:h-[40mm] print:w-[80mm] print:break-inside-avoid"
               >
-                {/* 屏幕预览：固定 2:1 比例，模拟真实标签尺寸 */}
-                <div className="print:hidden aspect-[2/1] w-full">
-                  <LabelContent label={label} />
-                </div>
-                {/* 打印样式：80mm × 40mm */}
-                <div className="hidden print:block" style={{ width: "80mm", height: "40mm", boxSizing: "border-box" }}>
-                  <LabelContent label={label} compact />
-                </div>
+                <LabelContent label={label} />
               </div>
             ))}
           </div>
@@ -467,76 +466,31 @@ export function LabelsClient({ assets, employees, departments }: LabelsClientPro
 // Label Content Component
 // ============================================================
 
-function LabelContent({ label, compact = false }: { label: LabelData; compact?: boolean }) {
-  if (compact) {
-    return (
-      <div className="flex h-full w-full overflow-hidden" style={{ boxSizing: "border-box" }}>
-        {/* 左侧竖条 */}
-        <div className="w-1.5 bg-primary shrink-0" />
-
-        {/* 右侧内容 */}
-        <div className="flex-1 flex flex-col justify-center px-2 py-1 overflow-hidden">
-          {/* 编号：最大最醒目 */}
-          <div className="font-mono font-black text-[18px] leading-none tracking-tight text-foreground truncate">
-            {label.assetNo}
-          </div>
-
-          {/* 设备名：第二层级 */}
-          <div className="text-[11px] font-medium text-foreground/80 truncate mt-1">
-            {label.name}
-          </div>
-
-          {/* 底部分隔线 + 人名部门 */}
-          <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-border/60">
-            <span className="text-[9px] text-muted-foreground truncate">
-              {label.employeeName || "未分配"}
-            </span>
-            {label.departmentName && (
-              <>
-                <span className="text-[8px] text-muted-foreground/40">·</span>
-                <span className="text-[9px] text-muted-foreground truncate">
-                  {label.departmentName}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+function LabelContent({ label }: { label: LabelData }) {
   return (
-    <div className="flex h-full w-full rounded-md overflow-hidden border border-border/80 shadow-sm bg-card">
-      {/* 左侧竖条 */}
-      <div className="w-2 bg-primary shrink-0" />
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-md border border-foreground/25 bg-card px-5">
+      {/* 四角裁切标记：贴着 80×40mm 实际边缘，打印后按角裁切即可 */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1 top-1 h-3 w-3 border-l-2 border-t-2 border-primary"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute right-1 top-1 h-3 w-3 border-r-2 border-t-2 border-primary"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute bottom-1 left-1 h-3 w-3 border-b-2 border-l-2 border-primary"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute bottom-1 right-1 h-3 w-3 border-b-2 border-r-2 border-primary"
+      />
 
-      {/* 右侧内容 */}
-      <div className="flex-1 flex flex-col justify-center px-4 py-3 overflow-hidden">
-        {/* 编号：最大最醒目 */}
-        <div className="font-mono font-black text-2xl tracking-tight text-foreground truncate">
-          {label.assetNo}
-        </div>
-
-        {/* 设备名：第二层级 */}
-        <div className="text-sm font-medium text-foreground/80 truncate mt-1">
-          {label.name}
-        </div>
-
-        {/* 底部分隔线 + 人名部门 */}
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/60">
-          <span className="text-xs text-muted-foreground truncate">
-            {label.employeeName || "未分配"}
-          </span>
-          {label.departmentName && (
-            <>
-              <span className="text-xs text-muted-foreground/30">·</span>
-              <span className="text-xs text-muted-foreground truncate">
-                {label.departmentName}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
+      {/* 正文只剩编号，其余信息交给扫码/系统查询 */}
+      <span className="w-full truncate text-center font-mono text-[22px] font-black leading-none tracking-tight text-foreground sm:text-[28px]">
+        {label.assetNo}
+      </span>
     </div>
   );
 }

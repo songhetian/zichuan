@@ -107,7 +107,7 @@ function KpiCard({
           <span className="text-xs font-medium tracking-wide text-muted-foreground">{label}</span>
         </div>
         <div className="mt-3 flex items-baseline gap-2">
-          <span className={`text-[34px] font-bold leading-none tracking-tight tabular-nums ${valueClass}`}>
+          <span className={`text-4xl font-bold leading-none tracking-tight tabular-nums ${valueClass}`}>
             {animated}
           </span>
           <span className="text-xs text-muted-foreground">{hint}</span>
@@ -195,7 +195,7 @@ function PieChart({ data }: { data: DashboardData }) {
             彻底避免被扇区遮挡；颜色走设计 token，自动适配亮/暗主题并保证对比度 */}
         <div className="pointer-events-none absolute left-1/2 top-[46%] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
           <span className="text-2xl font-bold tabular-nums leading-none text-foreground">{total}</span>
-          <span className="mt-1 text-[11px] leading-none text-muted-foreground">设备总数 · 台</span>
+          <span className="mt-1 text-2xs leading-none text-muted-foreground">设备总数 · 台</span>
         </div>
       </div>
       {/* 状态明细：网格化布局，突出数值与占比的层次关系 */}

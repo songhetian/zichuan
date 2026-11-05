@@ -516,7 +516,7 @@ export function AssetLifecycleClient({ initial }: AssetLifecycleClientProps) {
               {/* 头部：单号 + 状态徽标 */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold leading-snug">{selectedReq.title}</p>
+                  <p className="text-base font-semibold leading-snug">{selectedReq.title}</p>
                   <p className="mt-0.5 font-mono text-xs text-muted-foreground">
                     {selectedReq.requestNo}
                   </p>

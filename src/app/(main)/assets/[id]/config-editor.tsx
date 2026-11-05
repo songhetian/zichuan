@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DIALOG_PANEL,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -289,7 +290,7 @@ export function ConfigEditor({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className={`max-w-4xl ${DIALOG_PANEL}`}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5 text-primary" />
@@ -397,7 +398,7 @@ export function ConfigEditor({
                           <div className="flex flex-col items-center min-w-[40px]">
                             <span className="text-sm font-mono leading-tight">×{c.quantity}</span>
                             {qtyChanged && origQty != null && (
-                              <span className="text-[10px] text-muted-foreground line-through leading-tight">
+                              <span className="text-2xs text-muted-foreground line-through leading-tight">
                                 原 ×{origQty}
                               </span>
                             )}
@@ -512,12 +513,12 @@ export function ConfigEditor({
                 {addCount > 0 && (
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-success" />
-                    <span className="text-[11px] text-success">+{addCount}</span>
+                    <span className="text-2xs text-success">+{addCount}</span>
                     {removeCount > 0 && (
                       <>
                         <span className="text-muted-foreground/30">|</span>
                         <span className="w-2 h-2 rounded-full bg-destructive" />
-                        <span className="text-[11px] text-destructive">-{removeCount}</span>
+                        <span className="text-2xs text-destructive">-{removeCount}</span>
                       </>
                     )}
                   </div>
@@ -530,7 +531,7 @@ export function ConfigEditor({
                   <div key={category}>
                     <div className="flex items-center gap-1.5 mb-1">
                       <div className="h-px flex-1 bg-border" />
-                      <span className="text-[11px] text-muted-foreground px-1.5 py-0.5 bg-muted/50 rounded">{category}</span>
+                      <span className="text-2xs text-muted-foreground px-1.5 py-0.5 bg-muted/50 rounded">{category}</span>
                       <div className="h-px flex-1 bg-border" />
                     </div>
                     <div className="space-y-1">
@@ -553,24 +554,24 @@ export function ConfigEditor({
                               <div className="flex items-center gap-1.5">
                                 <span className="text-xs font-medium truncate">{item.name}</span>
                                 {item.isNew && (
-                                  <span className="text-[10px] px-1 py-0 rounded bg-success/20 text-success font-medium">
+                                  <span className="text-2xs px-1 py-0 rounded bg-success/20 text-success font-medium">
                                   新
                                 </span>
                                 )}
                                 {item.isRemoved && (
-                                  <span className="text-[10px] px-1 py-0 rounded bg-destructive/20 text-destructive font-medium">
+                                  <span className="text-2xs px-1 py-0 rounded bg-destructive/20 text-destructive font-medium">
                                   撤
                                 </span>
                                 )}
                               </div>
                               {item.brand && (
-                                <span className="text-[11px] text-muted-foreground">{item.brand}</span>
+                                <span className="text-2xs text-muted-foreground">{item.brand}</span>
                               )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
                             {!item.isNew && !item.isRemoved && (
-                              <span className="text-[11px] text-muted-foreground font-mono">
+                              <span className="text-2xs text-muted-foreground font-mono">
                                 ×{item.oldQty}
                                 <span className="mx-1">→</span>
                                 ×{item.newQty}

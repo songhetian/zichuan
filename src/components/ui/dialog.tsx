@@ -95,6 +95,15 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
+/**
+ * 大弹窗统一骨架（2026-11-04 收敛，替换此前 80/85/88/90vh × 两种滚动策略的漂移）：
+ * DialogContent 挂 DIALOG_PANEL（header/footer 固定），内容区自带 flex-1 + overflow-y-auto，
+ * 或用 <div className={DIALOG_BODY}> 包住中部内容；DialogFooter 留在外层即可钉底。
+ */
+export const DIALOG_PANEL = "flex max-h-[85vh] flex-col overflow-hidden";
+/** 大弹窗内容区（配合 DIALOG_PANEL）：撑满剩余高度并独立滚动 */
+export const DIALOG_BODY = "min-h-0 flex-1 overflow-y-auto";
+
 export {
   Dialog, DialogPortal, DialogOverlay, DialogClose, DialogTrigger,
   DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,

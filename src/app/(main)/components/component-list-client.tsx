@@ -92,7 +92,7 @@ function createColumns(
         return (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-destructive font-medium">{stock}</span>
-            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 leading-normal">
+            <Badge variant="destructive" className="text-2xs px-1.5 py-0 leading-normal">
               低库存
             </Badge>
           </span>

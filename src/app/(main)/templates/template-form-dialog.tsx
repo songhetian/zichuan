@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DIALOG_PANEL,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -72,7 +73,7 @@ interface TemplateFormDialogProps {
 function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
     <div className="flex items-baseline gap-2">
-      <h3 className="text-[13px] font-semibold tracking-tight text-foreground">{children}</h3>
+      <h3 className="text-xs font-semibold tracking-tight text-foreground">{children}</h3>
       {hint && <span className="text-xs font-normal text-muted-foreground">{hint}</span>}
     </div>
   );
@@ -197,7 +198,7 @@ export function TemplateFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={requestClose}>
-      <DialogContent className="w-[calc(100%-2rem)] max-w-4xl max-h-[88vh] flex flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className={`w-[calc(100%-2rem)] max-w-4xl ${DIALOG_PANEL} gap-0 p-0`}>
         <form
           onSubmit={form.handleSubmit(handleSubmit)}
           onKeyDown={(e) => {
@@ -211,7 +212,7 @@ export function TemplateFormDialog({
         >
           <DialogHeader className="mb-0 border-b border-border px-7 pb-5 pt-6">
             <DialogTitle className="text-lg">{isCreate ? "新建设备模板" : "编辑设备模板"}</DialogTitle>
-            <DialogDescription className="text-[13px]">
+            <DialogDescription className="text-xs">
               {isCreate ? "填写模板基本信息，并按需配置配件清单" : "修改模板信息及配件配置"}
             </DialogDescription>
           </DialogHeader>

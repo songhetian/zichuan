@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DIALOG_PANEL,
+  DIALOG_BODY,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -443,7 +445,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                   <span className={cn("w-1.5 h-1.5 rounded-full", getCategoryDotClass(cat.name))} />
                   {cat.name}
                   {count > 0 && (
-                    <span className={cn("text-[10px]", active ? "text-primary/70" : "text-muted-foreground/70")}>
+                    <span className={cn("text-2xs", active ? "text-primary/70" : "text-muted-foreground/70")}>
                       {count}
                     </span>
                   )}
@@ -470,7 +472,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 <span className={cn("w-1 h-1 rounded-full", getCategoryDotClass(model.categoryName))} />
                 <span className="truncate max-w-[120px]">{model.name}</span>
                 {model.brand && (
-                  <span className="text-muted-foreground/70 text-[10px]">{model.brand}</span>
+                  <span className="text-muted-foreground/70 text-2xs">{model.brand}</span>
                 )}
               </button>
             ))}
@@ -530,7 +532,7 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 <div className="flex items-center gap-2">
                   <span className="font-normal text-sm truncate">{c.name}</span>
                   {c.categoryName && (
-                    <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0">
+                    <span className="text-2xs text-muted-foreground bg-secondary px-1.5 py-0.5 rounded shrink-0">
                       {c.categoryName}
                     </span>
                   )}
@@ -635,12 +637,13 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
 
       {/* ===== 批量添加对话框（带搜索 + 分类筛选）===== */}
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent className="max-w-xl max-h-[80vh] flex flex-col">
+        <DialogContent className={`max-w-xl ${DIALOG_PANEL}`}>
           <DialogHeader>
             <DialogTitle>批量添加配件</DialogTitle>
             <DialogDescription>勾选要添加的配件，点击确认后将以数量 1 添加到清单中</DialogDescription>
           </DialogHeader>
 
+          <div className={DIALOG_BODY}>
           {/* 搜索 + 分类筛选 */}
           <div className="space-y-2">
             <div className="relative">
@@ -727,6 +730,8 @@ export function BomTable({ modelOptions, templates, categories, value, onChange 
                 {batchSearch.trim() ? "无匹配的配件" : "该分类下暂无配件"}
               </div>
             )}
+          </div>
+
           </div>
 
           <DialogFooter>

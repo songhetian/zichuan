@@ -182,7 +182,7 @@ function RowActions({ template, categories, componentModels, allTemplates, compo
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="h-3.5 w-[3px] shrink-0 rounded-full bg-primary" aria-hidden />
-                  <span className="text-[13px] font-medium text-foreground">配件清单</span>
+                  <span className="text-xs font-medium text-foreground">配件清单</span>
                 </div>
                 {template.components.length > 0 && (
                   <span className="text-xs text-muted-foreground">

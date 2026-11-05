@@ -1496,7 +1496,7 @@ export function EmployeeListClient({
           if (!v && !scopeSaving) setScopeEdit(null);
         }}
       >
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>数据范围设置</DialogTitle>
             <DialogDescription>配置该账号可见的部门数据范围</DialogDescription>

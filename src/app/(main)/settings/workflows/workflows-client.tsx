@@ -719,7 +719,7 @@ export function WorkflowsClient({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{tab.label}</p>
                       <span
-                        className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-px text-[11px] font-normal ${EXEC_META[tab.exec].cls}`}
+                        className={`mt-0.5 inline-flex items-center rounded-full border px-1.5 py-px text-2xs font-normal ${EXEC_META[tab.exec].cls}`}
                       >
                         {EXEC_META[tab.exec].label}
                       </span>
@@ -1000,20 +1000,20 @@ export function WorkflowsClient({
                               {node.name}{" "}
                             </p>
                             <div className="mt-1 flex flex-wrap gap-1">
-                              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground">
+                              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-4 text-muted-foreground">
                                 {ASSIGNEE_LABEL[node.assigneeType] ?? node.assigneeType}
                                 {node.assigneeType === "ROLE" && node.assigneeRole
                                   ? `（${ROLE_LABEL[node.assigneeRole] ?? node.assigneeRole}）`
                                   : ""}
                               </span>
-                              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground">
+                              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-4 text-muted-foreground">
                                 {node.ccRules ? (
                                   `抄送规则（${(node.ccRules as CcRule[]).length}）`
                                 ) : (
                                   CC_LABEL[node.ccType] ?? node.ccType
                                 )}
                               </span>
-                              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground">
+                              <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 py-0.5 text-2xs leading-4 text-muted-foreground">
                                 {MULTI_LABEL[node.multiMode] ?? node.multiMode}
                               </span>
                             </div>

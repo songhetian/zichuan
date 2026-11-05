@@ -100,6 +100,10 @@ const config: Config = {
           'active-foreground': 'hsl(var(--sidebar-active-fg))',
         },
       },
+      fontSize: {
+        // 超小号元数据文字（角标/表格 meta/侧栏分组标题），统一此前散落的 text-[10px]/[11px]
+        '2xs': ['11px', { lineHeight: '1rem' }],
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',

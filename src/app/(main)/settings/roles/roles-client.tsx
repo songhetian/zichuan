@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DIALOG_PANEL,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -292,7 +293,7 @@ export function RolesClient({ initialRoles, modules }: Props) {
 
       <Dialog open={editing !== null} onOpenChange={(v) => { if (!v) closeEdit(); }}>
         {/* Radix 需要可访问描述；此弹窗无副标题，显式置 undefined 关闭告警 */}
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col" aria-describedby={undefined}>
+        <DialogContent className={`max-w-lg ${DIALOG_PANEL}`} aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>编辑权限：{editing?.name}</DialogTitle>
           </DialogHeader>

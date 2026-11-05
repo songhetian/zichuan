@@ -145,7 +145,7 @@ export function CommandPalette() {
       >
         <Search className="h-4 w-4" />
         <span className="hidden lg:inline">搜索...</span>
-        <kbd className="hidden rounded border border-border bg-muted px-1 text-[10px] font-medium text-muted-foreground lg:inline">Ctrl K</kbd>
+        <kbd className="hidden rounded border border-border bg-muted px-1 text-2xs font-medium text-muted-foreground lg:inline">Ctrl K</kbd>
       </Button>
       <CommandDialog open={open} onOpenChange={handleOpenChange} shouldFilter={false}>
         <CommandInput
@@ -222,10 +222,7 @@ export function CommandPalette() {
                   <ClipboardCheck className="mr-2 h-4 w-4" />
                   库存盘点
                 </CommandItem>
-                <CommandItem value="nav-stats" onSelect={() => handleNavigate("/stats")}>
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  统计报表
-                </CommandItem>
+
                 <CommandItem value="nav-logs" onSelect={() => handleNavigate("/logs")}>
                   <FileText className="mr-2 h-4 w-4" />
                   系统日志

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Dialog,
+  DIALOG_PANEL,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -76,7 +77,7 @@ export function ExportPreview({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className={`max-w-4xl ${DIALOG_PANEL}`}>
         <DialogHeader>
           <DialogTitle>导出预览</DialogTitle>
           <DialogDescription>

@@ -143,7 +143,25 @@ const CATEGORY_DOT: Record<string, string> = {
   鼠标: "bg-cat-fuchsia",
 };
 
+const CATEGORY_COLOR_POOL = [
+  "bg-cat-indigo", "bg-cat-violet", "bg-cat-blue", "bg-cat-emerald", "bg-cat-sky",
+  "bg-cat-rose", "bg-cat-cyan", "bg-cat-teal", "bg-cat-purple", "bg-cat-pink", "bg-cat-fuchsia",
+];
+
+/**
+ * 未收录名称的确定性取色（FNV-1a）：同名恒同色，跨刷新/跨页面稳定。
+ * 资产分类（台式机/笔记本…）等用户自定义名称由此兜底，不再退化为灰点。
+ */
+function hashCategoryColor(name: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return CATEGORY_COLOR_POOL[h % CATEGORY_COLOR_POOL.length];
+}
+
 export function categoryDotClass(name?: string): string {
   if (!name) return TONE_DOT.neutral;
-  return CATEGORY_DOT[name] ?? TONE_DOT.neutral;
+  return CATEGORY_DOT[name] ?? hashCategoryColor(name);
 }

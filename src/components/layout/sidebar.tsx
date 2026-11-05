@@ -157,10 +157,10 @@ export function Sidebar({
           </div>
           {!collapsed && (
             <div className="ml-3 min-w-0">
-              <p className="truncate font-display text-[15px] leading-tight tracking-tight text-foreground">
+              <p className="truncate font-display text-base leading-tight tracking-tight text-foreground">
                 资产管理系统
               </p>
-              <p className="text-[10px] font-normal uppercase tracking-[0.18em] text-muted-foreground/60">
+              <p className="text-2xs font-normal uppercase tracking-[0.18em] text-muted-foreground/60">
                 Asset Center
               </p>
             </div>
@@ -192,7 +192,7 @@ export function Sidebar({
                         </button>
                       </PopoverTrigger>
                       <PopoverContent side="right" align="start" className="w-48 p-2">
-                        <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+                        <p className="px-2 py-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground/60">
                           {item.label}
                         </p>
                         <div className="flex flex-col gap-0.5">
@@ -257,7 +257,7 @@ export function Sidebar({
                     title={section}
                   >
                     <span className="h-[3px] w-[3px] rounded-full bg-primary/50" />
-                    <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
+                    <span className="text-2xs font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
                       {section}
                     </span>
                     <span className="pointer-events-none h-px flex-1 bg-gradient-to-r from-border/80 to-transparent" />
@@ -395,7 +395,7 @@ export function Sidebar({
             <Package className="h-5 w-5" />
           </div>
           <div className="ml-3 min-w-0">
-            <p className="truncate font-display text-[15px] font-semibold leading-tight text-foreground">
+            <p className="truncate font-display text-base font-semibold leading-tight text-foreground">
               资产管理系统
             </p>
           </div>
@@ -406,7 +406,7 @@ export function Sidebar({
           <nav className="sidebar-nav flex flex-col gap-0.5">
             {groups.map(({ section, items }) => (
               <div key={section} className="flex flex-col">
-                <p className="mt-1 first:mt-0 mb-1 flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
+                <p className="mt-1 first:mt-0 mb-1 flex items-center gap-2 px-2.5 py-1.5 text-2xs font-medium uppercase tracking-[0.16em] text-muted-foreground/55">
                   <span className="h-[3px] w-[3px] rounded-full bg-primary/50" />
                   {section}
                 </p>
