@@ -4,6 +4,10 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
+# Prisma 引擎（libquery_engine）下载走国内镜像：
+# 默认的 binaries.prisma.sh 国内服务器不可达，构建会在 npx prisma generate 卡死
+ENV PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma
+
 # 安装 Prisma 运行所需的系统依赖
 RUN apk add --no-cache openssl
 
@@ -18,6 +22,9 @@ RUN npm install --ignore-scripts && \
 # ============================================================
 FROM node:20-alpine AS builder
 WORKDIR /app
+
+# 同 deps：build 阶段的 prisma generate 也不回源官方（ engines 已随 node_modules 复制过来，仅兜底）
+ENV PRISMA_ENGINES_MIRROR=https://registry.npmmirror.com/-/binary/prisma
 
 # 安装 Prisma 运行所需的系统依赖
 RUN apk add --no-cache openssl
