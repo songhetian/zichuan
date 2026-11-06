@@ -1498,15 +1498,16 @@ func runGUI(cfg *appConfig) {
 	MainWindow{
 		AssignTo: &mw.MainWindow,
 		Title:    "现场设备登记",
-		MinSize:  Size{Width: 620, Height: 700},
-		Size:     Size{Width: 660, Height: 760},
+		MinSize:  Size{Width: 620, Height: 760},
+		Size:     Size{Width: 660, Height: 920},
 		Font:     Font{Family: "Microsoft YaHei UI", PointSize: 10},
 		Layout:   VBox{Margins: Margins{Left: 16, Top: 12, Right: 16, Bottom: 12}, Spacing: 8},
 		Children: []Widget{
 			GroupBox{Title: "本机配置（自动采集）", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8},
 			}, Children: []Widget{
-				TextEdit{AssignTo: &mw.infoText, ReadOnly: true, MaxSize: Size{Height: 160}},
+				// MinSize 保底约 9 行：配置区不能被其他区域挤压到只剩两三行
+				TextEdit{AssignTo: &mw.infoText, ReadOnly: true, MinSize: Size{Height: 165}, MaxSize: Size{Height: 220}},
 			}},
 			// 操作提示放在输入框上方，员工填表前就能看到连接状态和操作反馈
 			Label{AssignTo: &mw.statusLabel, Text: connDesc},
@@ -1560,7 +1561,7 @@ func runGUI(cfg *appConfig) {
 			GroupBox{Title: "结果", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8},
 			}, Children: []Widget{
-				TextEdit{AssignTo: &mw.outText, ReadOnly: true, VScroll: true},
+				TextEdit{AssignTo: &mw.outText, ReadOnly: true, VScroll: true, MinSize: Size{Height: 120}},
 			}},
 		},
 	}.Create()
