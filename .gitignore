@@ -61,3 +61,4 @@ docs/**
 
 # Go 构建产物（现场登记工具，exe 本地分发不进仓库）
 tools/device-register/*.exe
+.playwright-cli/*

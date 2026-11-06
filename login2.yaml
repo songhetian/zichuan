@@ -1,0 +1,22 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - heading "资产管理系统" [level=1] [ref=e11]
+      - paragraph [ref=e12]: 请输入账号密码登录
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - text: 工号
+        - textbox "工号" [ref=e16]:
+          - /placeholder: 请输入工号
+      - generic [ref=e17]:
+        - text: 密码
+        - textbox "密码" [ref=e18]:
+          - /placeholder: 请输入密码
+      - generic [ref=e20] [cursor=pointer]:
+        - checkbox "记住我（30 天内免登录）" [ref=e21]
+        - checkbox [aria-hidden]
+        - text: 记住我（30 天内免登录）
+      - button "登录" [ref=e22] [cursor=pointer]
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e23]
