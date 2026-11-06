@@ -15,7 +15,8 @@ import {
  *
  * 安全口径：
  *  - 可选令牌闸门：设置 DEVICE_CHECK_TOKEN 后必须携带同值请求头 x-device-token；
- *  - multipart: assetNo（必填）、hostname（可选，写日志）、file（单张）；
+ *  - multipart: assetNo（必填）、kind（host/monitor，标记主机/显示器照片）、
+ *    hostname（可选，写日志）、file（单张）；
  *  - 与 uploadAssetPhoto 同限制：单张 ≤5MB，仅 JPG/PNG/WebP，每台 ≤6 张；
  *  - 每次调用写 SystemLog（operator = 现场主机名）。
  */
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   const assetNo = String(form.get("assetNo") ?? "").trim().toUpperCase();
+  const kind = String(form.get("kind") ?? "").trim(); // host / monitor（缺省 = 未标记）
   const hostname = String(form.get("hostname") ?? "").slice(0, 100) || "未知主机";
   const file = form.get("file");
 
@@ -97,7 +99,7 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const key = ossAssetKey(asset.assetNo, ext);
+    const key = ossAssetKey(asset.assetNo, ext, kind);
     await putOssObject(key, buffer, file.type);
 
     keys.push(key);

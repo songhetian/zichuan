@@ -40,6 +40,14 @@ function defaultImageFor(categoryName: string): string {
   return "/asset-defaults/generic.svg";
 }
 
+/** 从对象 key 文件名解析现场登记标记（host- / monitor- 前缀；网页端上传的照片无前缀） */
+function photoKindLabel(key: string): string | null {
+  const name = key.split("/").pop() ?? "";
+  if (name.startsWith("host-")) return "主机";
+  if (name.startsWith("monitor-")) return "显示器";
+  return null;
+}
+
 /**
  * 资产现场照片墙（可选增强）：
  * - 无照片时展示分类默认图；上传/删除需「资产管理」权限（服务端校验）；
@@ -133,25 +141,35 @@ export function AssetPhotos({ assetId, photos: initialPhotos, categoryName }: As
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {photos.map((p, i) => (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => setPreview(p)}
-              className="focus-visible:ring-ring overflow-hidden rounded-lg border border-border/80 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2"
-              aria-label={`查看第 ${i + 1} 张照片`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt={`设备照片 ${i + 1}`} className="h-28 w-full object-cover" loading="lazy" />
-            </button>
-          ))}
+          {photos.map((p, i) => {
+            const kind = photoKindLabel(p.key);
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => setPreview(p)}
+                className="focus-visible:ring-ring relative overflow-hidden rounded-lg border border-border/80 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2"
+                aria-label={`查看第 ${i + 1} 张照片${kind ? `（${kind}）` : ""}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={`设备照片 ${i + 1}`} className="h-28 w-full object-cover" loading="lazy" />
+                {kind && (
+                  <span className="absolute bottom-1 left-1 rounded bg-background/85 px-1.5 py-0.5 text-2xs text-foreground">
+                    {kind}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
       <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
         <DialogContent className="sm:max-w-xl" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>现场照片</DialogTitle>
+            <DialogTitle>
+              {preview ? `现场照片${photoKindLabel(preview.key) ? `（${photoKindLabel(preview.key)}）` : ""}` : "现场照片"}
+            </DialogTitle>
             <DialogDescription>可放大查看细节，也可删除后重新上传。</DialogDescription>
           </DialogHeader>
           {preview && (

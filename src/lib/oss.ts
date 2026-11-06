@@ -26,10 +26,12 @@ export function ossConfigured(): boolean {
   return Boolean(endpoint && bucket && accessKeyId && accessKeySecret);
 }
 
-/** 资产照片的对象 key：{dir}/assets/{assetNo}/{ts}-{rand}.{ext}（随机后缀防猜测） */
-export function ossAssetKey(assetNo: string, ext: string): string {
+/** 资产照片的对象 key：{dir}/assets/{assetNo}/[kind-]{ts}-{rand}.{ext}（随机后缀防猜测）
+ *  kind：现场登记工具传入 host/monitor 标记照片归属，网页端上传不传 */
+export function ossAssetKey(assetNo: string, ext: string, kind?: string): string {
   const rand = crypto.randomBytes(6).toString("hex");
-  return `${OSS_DIR}/assets/${assetNo}/${Date.now()}-${rand}.${ext}`;
+  const prefix = kind === "host" || kind === "monitor" ? `${kind}-` : "";
+  return `${OSS_DIR}/assets/${assetNo}/${prefix}${Date.now()}-${rand}.${ext}`;
 }
 
 function hmacSha1(data: string): string {

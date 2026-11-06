@@ -1466,18 +1466,20 @@ type mainWindow struct {
 	hostNoEdit  *walk.LineEdit
 	monCombo    *walk.ComboBox
 	monNoEdit   *walk.LineEdit
-	statusLabel *walk.Label
-	regBtn      *walk.PushButton
-	testBtn     *walk.PushButton
-	copyBtn     *walk.PushButton
-	photoBtn    *walk.PushButton
+	statusLabel  *walk.Label
+	regBtn       *walk.PushButton
+	testBtn      *walk.PushButton
+	copyBtn      *walk.PushButton
+	hostPhotoBtn *walk.PushButton
+	monPhotoBtn  *walk.PushButton
 
-	hw          *hwInfo
-	detErr      error
-	lastCodes   string // 最近一次登记成功的设备编号（供「复制编号」）
-	lastAssetNo string // 最近一次登记成功的设备（供「上传照片」挂照片）
-	monItems    []monitorInfo
-	cfg         *appConfig
+	hw              *hwInfo
+	detErr          error
+	lastCodes       string // 最近一次登记成功的设备编号（供「复制编号」）
+	lastHostAssetNo string // 最近登记成功的主机编号（供「主机照片」）
+	lastMonAssetNo  string // 最近登记成功的显示器编号（供「显示器照片」）
+	monItems        []monitorInfo
+	cfg             *appConfig
 }
 
 func runGUI(cfg *appConfig) {
@@ -1492,8 +1494,8 @@ func runGUI(cfg *appConfig) {
 	MainWindow{
 		AssignTo: &mw.MainWindow,
 		Title:    "现场设备登记",
-		MinSize:  Size{Width: 620, Height: 660},
-		Size:     Size{Width: 660, Height: 720},
+		MinSize:  Size{Width: 620, Height: 700},
+		Size:     Size{Width: 660, Height: 760},
 		Font:     Font{Family: "Microsoft YaHei UI", PointSize: 10},
 		Layout:   VBox{Margins: Margins{Left: 16, Top: 12, Right: 16, Bottom: 12}, Spacing: 8},
 		Children: []Widget{
@@ -1534,10 +1536,14 @@ func runGUI(cfg *appConfig) {
 				PushButton{AssignTo: &mw.regBtn, Text: "登记入库", MinSize: Size{Width: 130, Height: 34}, OnClicked: mw.onRegister},
 				PushButton{AssignTo: &mw.testBtn, Text: "测试连接", MinSize: Size{Height: 34}, OnClicked: mw.onTestDB},
 				PushButton{AssignTo: &mw.copyBtn, Text: "复制编号", MinSize: Size{Height: 34}, OnClicked: mw.onCopyCodes},
-				// 照片走服务器转存 OSS，直连数据库模式没有这个通道，只在接口模式显示
-				PushButton{AssignTo: &mw.photoBtn, Text: "上传照片", MinSize: Size{Height: 34}, Visible: cfg.apiMode(), OnClicked: mw.onUploadPhoto},
 				HSpacer{},
 				Label{AssignTo: &mw.statusLabel, Text: connDesc},
+			}},
+			// 照片走服务器转存 OSS，直连数据库模式没有这个通道，只在接口模式显示
+			Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Visible: cfg.apiMode(), Children: []Widget{
+				PushButton{AssignTo: &mw.hostPhotoBtn, Text: "主机照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("host") }},
+				PushButton{AssignTo: &mw.monPhotoBtn, Text: "显示器照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("monitor") }},
+				Label{Text: "选一张现场照片，标记是主机还是显示器", TextColor: walk.RGB(120, 120, 120)},
 			}},
 			GroupBox{Title: "结果", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8},
@@ -1734,16 +1740,24 @@ func (mw *mainWindow) onRegister() {
 				b.WriteString("  存在待处理项，请按上方说明处理\n")
 			}
 			mw.lastCodes = strings.TrimRight(plain.String(), "\n")
-			// 照片挂到第一条成功登记的设备（主机优先，其次显示器）
-			mw.lastAssetNo = ""
+			// 照片分别挂主机/显示器：按 kind 记各自的编号
+			mw.lastHostAssetNo, mw.lastMonAssetNo = "", ""
 			for _, it := range out.Items {
-				if it.AssetNo != "" {
-					mw.lastAssetNo = it.AssetNo
-					break
+				if it.AssetNo == "" {
+					continue
+				}
+				if it.Kind == "显示器" {
+					mw.lastMonAssetNo = it.AssetNo
+				} else if mw.lastHostAssetNo == "" {
+					mw.lastHostAssetNo = it.AssetNo
 				}
 			}
-			if out.OK && mw.cfg.apiMode() && mw.lastAssetNo != "" {
-				b.WriteString("  现场有拍照的话，可点「上传照片」挂到 " + mw.lastAssetNo + "\n")
+			if out.OK && mw.cfg.apiMode() {
+				if mw.lastHostAssetNo != "" && mw.lastMonAssetNo != "" {
+					b.WriteString("  现场有拍照的话，分别点「主机照片」「显示器照片」挂到对应设备\n")
+				} else if mw.lastHostAssetNo != "" {
+					b.WriteString("  现场有拍照的话，点「主机照片」挂到 " + mw.lastHostAssetNo + "\n")
+				}
 			}
 			mw.setOut(b.String())
 		})
@@ -1772,18 +1786,25 @@ func (mw *mainWindow) onCopyCodes() {
 
 // ────────────── 照片上传（仅接口模式；服务端转存 OSS 并挂到资产） ──────────────
 
-// onUploadPhoto 选一张现场照片，传到服务器挂到最近登记成功的设备上。
+// onUploadPhoto 选一张现场照片上传，kind 标记是主机还是显示器的照片。
+// 照片 key 会带 host-/monitor- 前缀，网页端照片墙据此显示归属角标。
 // 用 AppendText 追加结果，不覆盖上方登记结果里的设备编号。
-func (mw *mainWindow) onUploadPhoto() {
+func (mw *mainWindow) onUploadPhoto(kind string) {
 	if !mw.cfg.apiMode() {
 		return
 	}
-	if mw.lastAssetNo == "" {
-		mw.setOut("还没有可挂照片的设备——请先「登记入库」成功（或在主机编号里填已有编号登记）。\n")
+	kindCN := "主机"
+	assetNo := mw.lastHostAssetNo
+	if kind == "monitor" {
+		kindCN = "显示器"
+		assetNo = mw.lastMonAssetNo
+	}
+	if assetNo == "" {
+		mw.setOut("还没有可挂照片的" + kindCN + "——请先「登记入库」成功（主机可在编号框填已有编号登记）。\n")
 		return
 	}
 	dlg := walk.FileDialog{
-		Title:  "选择现场照片",
+		Title:  "选择" + kindCN + "的现场照片",
 		Filter: "图片文件 (*.jpg;*.jpeg;*.png;*.webp)|*.jpg;*.jpeg;*.png;*.webp",
 	}
 	ok, err := dlg.ShowOpen(mw.MainWindow)
@@ -1803,24 +1824,25 @@ func (mw *mainWindow) onUploadPhoto() {
 		mw.outText.AppendText(crlf("✗ 照片超过 5MB，请压缩后再传。\n"))
 		return
 	}
-	assetNo := mw.lastAssetNo
-	mw.photoBtn.SetEnabled(false)
-	mw.outText.AppendText(crlf("正在上传照片到 "+assetNo+" ……\n"))
+	mw.hostPhotoBtn.SetEnabled(false)
+	mw.monPhotoBtn.SetEnabled(false)
+	mw.outText.AppendText(crlf("正在上传" + kindCN + "照片到 " + assetNo + " ……\n"))
 	go func() {
-		errUp := apiUploadPhoto(mw.cfg, assetNo, filepath.Base(path), data)
+		errUp := apiUploadPhoto(mw.cfg, assetNo, kind, filepath.Base(path), data)
 		mw.Synchronize(func() {
-			mw.photoBtn.SetEnabled(true)
+			mw.hostPhotoBtn.SetEnabled(true)
+			mw.monPhotoBtn.SetEnabled(true)
 			if errUp != nil {
-				mw.outText.AppendText(crlf("✗ 照片上传失败：" + shortErr(errUp) + "\n"))
+				mw.outText.AppendText(crlf("✗ " + kindCN + "照片上传失败：" + shortErr(errUp) + "\n"))
 				return
 			}
-			mw.outText.AppendText(crlf("✓ 照片已挂到 " + assetNo + "（网页端该设备详情页可查看）\n"))
+			mw.outText.AppendText(crlf("✓ " + kindCN + "照片已挂到 " + assetNo + "（网页端该设备详情页可查看）\n"))
 		})
 	}()
 }
 
 // apiUploadPhoto multipart 上传一张现场照片到 /api/device-register/photo
-func apiUploadPhoto(cfg *appConfig, assetNo, fileName string, data []byte) error {
+func apiUploadPhoto(cfg *appConfig, assetNo, kind, fileName string, data []byte) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	fw, err := w.CreateFormFile("file", fileName)
@@ -1831,6 +1853,7 @@ func apiUploadPhoto(cfg *appConfig, assetNo, fileName string, data []byte) error
 		return wrap("写入照片数据失败", err)
 	}
 	_ = w.WriteField("assetNo", assetNo)
+	_ = w.WriteField("kind", kind)
 	_ = w.WriteField("hostname", hostname())
 	if err := w.Close(); err != nil {
 		return wrap("构造上传请求失败", err)
