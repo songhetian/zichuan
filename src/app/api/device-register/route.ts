@@ -172,14 +172,14 @@ export async function POST(req: NextRequest) {
       }
       if (!employee) {
         // 工号同时是登录账号（Admin.username = 工号），删员工不删账号（孤儿账号保留）。
-        // 生成必须把 Admin 已占用的 EMP 号一并计入，否则撞唯一约束整单 500。
-        const [allNos, adminNos] = await Promise.all([
+        // 生成必须把 Admin 已占用的号一并计入，否则撞唯一约束整单 500。
+        const [allNos, adminUsernames] = await Promise.all([
           tx.employee.findMany({ select: { employeeNo: true } }),
-          tx.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+          tx.admin.findMany({ select: { username: true } }),
         ]);
-        const employeeNo = generateEmployeeNo([
+        const employeeNo = generateEmployeeNo(employeeName, [
           ...allNos.map((e) => e.employeeNo),
-          ...adminNos.map((a) => a.username),
+          ...adminUsernames.map((a) => a.username),
         ]);
         employee = await tx.employee.create({
           data: { employeeNo, name: employeeName, departmentId: department.id },

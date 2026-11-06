@@ -34,12 +34,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf16"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
 	"github.com/lxn/win"
+	"github.com/mozillazg/go-pinyin"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -768,7 +770,6 @@ func modelMatches(a, b string) bool {
 // ────────────── 直连数据库登记（与 /api/device-register 同口径） ──────────────
 
 const DIRECT_TEMPLATE_NAME = "现场直录"
-const EMPLOYEE_NO_PREFIX = "EMP"
 
 var fallbackCodes = map[string]string{"笔记本": "LP", "台式机": "DN", "显示器": "XS"}
 
@@ -887,7 +888,7 @@ func registerAll(db *sql.DB, in registerInput) (*registerOutput, error) {
 		"SELECT id, employeeNo FROM Employee WHERE name = ? AND status = 'ACTIVE' ORDER BY id ASC LIMIT 1",
 		in.EmployeeName).Scan(&empID, &empNo)
 	if err == sql.ErrNoRows {
-		empNo, err = nextEmployeeNo(tx)
+		empNo, err = nextEmployeeNo(tx, in.EmployeeName)
 		if err != nil {
 			return nil, err
 		}
@@ -1160,22 +1161,75 @@ func ensureDirectTemplate(q queryer, categoryID int64) (idRow, error) {
 
 type idRow struct{ id int64 }
 
-func nextEmployeeNo(q queryer) (string, error) {
-	rows, err := q.Query("SELECT employeeNo FROM Employee WHERE employeeNo LIKE ?", EMPLOYEE_NO_PREFIX+"%")
-	if err != nil {
-		return "", wrap("查询工号失败", err)
+// ── 工号生成：姓名拼音首字母（≤4 位小写）+ 4 位随机，与网页端 src/lib/employee-no.ts 同规则 ──
+
+const employeeNoRandomChars = "abcdefghjkmnpqrstuvwxyz23456789" // 剔除易混淆的 0/o/1/l/i
+
+func randChars(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = employeeNoRandomChars[rand.Intn(len(employeeNoRandomChars))]
 	}
-	defer rows.Close()
-	max := 0
-	for rows.Next() {
-		var no string
-		if err := rows.Scan(&no); err == nil && strings.HasPrefix(no, EMPLOYEE_NO_PREFIX) {
-			if n, e := strconv.Atoi(no[len(EMPLOYEE_NO_PREFIX):]); e == nil && n > max {
-				max = n
+	return string(b)
+}
+
+// nameInitials 姓名拼音首字母（小写、只留字母、最多 4 位）。
+// ASCII 字母直接取用，汉字走 go-pinyin，其余字符（·/数字/空格）跳过。
+func nameInitials(name string) string {
+	args := pinyin.NewArgs()
+	args.Style = pinyin.FirstLetter
+	var b strings.Builder
+	for _, r := range name {
+		if b.Len() >= 4 {
+			break
+		}
+		c := unicode.ToLower(r)
+		if c >= 'a' && c <= 'z' {
+			b.WriteRune(c)
+			continue
+		}
+		rows := pinyin.Pinyin(string(r), args)
+		if len(rows) > 0 && len(rows[0]) > 0 {
+			for _, x := range strings.ToLower(rows[0][0]) {
+				if x >= 'a' && x <= 'z' && b.Len() < 4 {
+					b.WriteRune(x)
+					break
+				}
 			}
 		}
 	}
-	return fmt.Sprintf("%s%04d", EMPLOYEE_NO_PREFIX, max+1), nil
+	return b.String()
+}
+
+// nextEmployeeNo 生成不冲突的新工号（如 张三 → zsk3f9）。
+// 工号同时是登录账号（Admin.username = 工号），删员工不删账号（孤儿占号），
+// 两处唯一约束都要避开，否则插入即冲突整个事务回滚。
+func nextEmployeeNo(q queryer, name string) (string, error) {
+	taken := map[string]bool{}
+	for _, qText := range []string{"SELECT employeeNo FROM Employee", "SELECT username FROM Admin"} {
+		rows, err := q.Query(qText)
+		if err != nil {
+			return "", wrap("查询工号占用失败", err)
+		}
+		for rows.Next() {
+			var no string
+			if err := rows.Scan(&no); err == nil {
+				taken[no] = true
+			}
+		}
+		rows.Close()
+	}
+	prefix := nameInitials(name)
+	for len(prefix) < 2 { // 单字名/纯外文/空名兜底，保证最小长度
+		prefix += randChars(1)
+	}
+	for i := 0; i < 10; i++ {
+		no := prefix + randChars(4)
+		if !taken[no] {
+			return no, nil
+		}
+	}
+	return prefix + randChars(8), nil
 }
 
 type registerOneArgs struct {

@@ -104,12 +104,14 @@ export async function bootstrapOrgData(
 
       let headId: number | null = null;
       for (let i = 0; i < spec.employeeCount; i++) {
-        const employeeNo = generateEmployeeNo(existingNos);
+        const empName = randomName(usedNames);
+        usedNames.add(empName);
+        const employeeNo = generateEmployeeNo(empName, existingNos);
         existingNos.push(employeeNo);
         const emp: Employee = await tx.employee.create({
           data: {
             employeeNo,
-            name: randomName(usedNames),
+            name: empName,
             departmentId: dept.id,
             phone: randomPhone(),
             managerId: headId,

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
+import { generateEmployeeNo } from "@/lib/employee-no";
 import { consumeBomStock, INSUFFICIENT_STOCK_PREFIX } from "@/lib/bom-stock";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
@@ -471,18 +472,15 @@ async function getOrCreateAssignEmployee(
   const existing = await tx.employee.findFirst({ where: { name, departmentId } });
   if (existing) return existing.id;
 
-  // 生成不冲突的自增工号 EMP####
-  const base = await tx.employee.count();
-  let employeeNo = "";
-  for (let i = 0; i < 10000; i++) {
-    const candidate = `EMP${String(base + 1 + i).padStart(4, "0")}`;
-    const dup = await tx.employee.findUnique({ where: { employeeNo: candidate } });
-    if (!dup) {
-      employeeNo = candidate;
-      break;
-    }
-  }
-  if (!employeeNo) employeeNo = `EMP${Date.now().toString().slice(-8)}`;
+  // 工号同时是登录账号，删员工不删账号（孤儿占号）→ 两处唯一约束都要避开
+  const [nos, adminUsernames] = await Promise.all([
+    tx.employee.findMany({ select: { employeeNo: true } }),
+    tx.admin.findMany({ select: { username: true } }),
+  ]);
+  const employeeNo = generateEmployeeNo(name, [
+    ...nos.map((e) => e.employeeNo),
+    ...adminUsernames.map((a) => a.username),
+  ]);
 
   const emp = await tx.employee.create({
     data: { employeeNo, name, departmentId },

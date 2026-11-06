@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth";
 import { guardPermission } from "@/lib/permissions";
 import { cleanErrorMessage } from "@/lib/sanitize-error";
 import { generateAssetNo } from "@/lib/asset-numbering";
+import { generateEmployeeNo } from "@/lib/employee-no";
 import { BOM_SUFFIX_SEPARATOR, bomFingerprint } from "@/lib/template-normalize";
 import { COMPONENT_LAYER_CATEGORIES } from "@/lib/constants";
 import type { Prisma } from "@prisma/client";
@@ -303,9 +304,15 @@ async function getOrCreateEmployee(
   });
   if (existing) return existing.id;
 
-  const prefix = "EMP";
-  const count = await tx.employee.count();
-  const employeeNo = `${prefix}${String(count + 1).padStart(4, "0")}`;
+  // 工号同时是登录账号，删员工不删账号（孤儿占号）→ 两处唯一约束都要避开
+  const [nos, adminUsernames] = await Promise.all([
+    tx.employee.findMany({ select: { employeeNo: true } }),
+    tx.admin.findMany({ select: { username: true } }),
+  ]);
+  const employeeNo = generateEmployeeNo(name, [
+    ...nos.map((e) => e.employeeNo),
+    ...adminUsernames.map((a) => a.username),
+  ]);
 
   const created = await tx.employee.create({
     data: {

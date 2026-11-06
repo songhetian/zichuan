@@ -115,17 +115,17 @@ export async function createEmployee(
       effectiveRoleId = empRole?.id ?? null;
     }
 
-    // 未提供工号时自动生成（EMP + 4 位序号）
+    // 未提供工号时自动生成（姓名拼音首字母 + 4 位随机，如 zsk3f9）
     let employeeNo = inputNo;
     if (!employeeNo) {
-      // 工号同时是登录账号，删员工不删账号 → 必须避开 Admin 已占用的 EMP 号
-      const [existingNos, adminNos] = await Promise.all([
+      // 工号同时是登录账号，删员工不删账号 → 必须避开 Admin 已占用的号
+      const [existingNos, adminUsernames] = await Promise.all([
         prisma.employee.findMany({ select: { employeeNo: true } }),
-        prisma.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+        prisma.admin.findMany({ select: { username: true } }),
       ]);
-      employeeNo = generateEmployeeNo([
+      employeeNo = generateEmployeeNo(name, [
         ...existingNos.map((e) => e.employeeNo),
-        ...adminNos.map((a) => a.username),
+        ...adminUsernames.map((a) => a.username),
       ]);
     }
 
@@ -237,7 +237,7 @@ export async function createEmployeesBatch(
           while (usedNames.has(name)) name = randomName();
           usedNames.add(name);
 
-          const employeeNo = generateEmployeeNo(usedNos);
+          const employeeNo = generateEmployeeNo(name, usedNos);
           usedNos.push(employeeNo);
 
           const emp = await tx.employee.create({
