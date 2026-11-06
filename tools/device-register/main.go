@@ -22,9 +22,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"math"
 	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"os"
@@ -39,6 +39,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
+	"github.com/lxn/win"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -1459,22 +1460,22 @@ func hostname() string {
 
 type mainWindow struct {
 	*walk.MainWindow
-	infoText    *walk.TextEdit
-	outText     *walk.TextEdit
-	deptEdit    *walk.LineEdit
-	nameEdit    *walk.LineEdit
-	modelEdit   *walk.LineEdit
-	hostNoEdit  *walk.LineEdit
-	monCombo    *walk.ComboBox
-	monNoEdit   *walk.LineEdit
+	infoText     *walk.TextEdit
+	outText      *walk.TextEdit
+	deptEdit     *walk.LineEdit
+	nameEdit     *walk.LineEdit
+	modelEdit    *walk.LineEdit
+	hostNoEdit   *walk.LineEdit
+	monCombo     *walk.ComboBox
+	monNoEdit    *walk.LineEdit
 	statusLabel  *walk.Label
 	regBtn       *walk.PushButton
 	testBtn      *walk.PushButton
 	copyBtn      *walk.PushButton
-	hostPhotoBtn  *walk.PushButton
-	monPhotoBtn   *walk.PushButton
-	photoView     *walk.ImageView
-	lastPhotoBmp  *walk.Bitmap
+	hostPhotoBtn *walk.PushButton
+	monPhotoBtn  *walk.PushButton
+	photoView    *walk.ImageView
+	lastPhotoBmp *walk.Bitmap
 
 	hw              *hwInfo
 	detErr          error
@@ -1507,6 +1508,8 @@ func runGUI(cfg *appConfig) {
 			}, Children: []Widget{
 				TextEdit{AssignTo: &mw.infoText, ReadOnly: true, MaxSize: Size{Height: 160}},
 			}},
+			// 操作提示放在输入框上方，员工填表前就能看到连接状态和操作反馈
+			Label{AssignTo: &mw.statusLabel, Text: connDesc},
 			GroupBox{Title: "登记信息", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8}, Spacing: 6,
 			}, Children: []Widget{
@@ -1540,16 +1543,19 @@ func runGUI(cfg *appConfig) {
 				PushButton{AssignTo: &mw.testBtn, Text: "测试连接", MinSize: Size{Height: 34}, OnClicked: mw.onTestDB},
 				PushButton{AssignTo: &mw.copyBtn, Text: "复制编号", MinSize: Size{Height: 34}, OnClicked: mw.onCopyCodes},
 				HSpacer{},
-				Label{AssignTo: &mw.statusLabel, Text: connDesc},
 			}},
 			// 照片走服务器转存 OSS，直连数据库模式没有这个通道，只在接口模式显示
 			Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Visible: cfg.apiMode(), Children: []Widget{
-				PushButton{AssignTo: &mw.hostPhotoBtn, Text: "主机照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("host") }},
-				PushButton{AssignTo: &mw.monPhotoBtn, Text: "显示器照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("monitor") }},
-				Label{Text: "选一张现场照片，标记是主机还是显示器", TextColor: walk.RGB(120, 120, 120)},
-				HSpacer{},
-				// 选图后在这里预览，确认没选错（webp 因系统解码不支持，不显示缩略图）
-				ImageView{AssignTo: &mw.photoView, Mode: ImageViewModeZoom, MinSize: Size{Width: 132, Height: 88}},
+				Composite{Layout: VBox{MarginsZero: true, Spacing: 6}, Children: []Widget{
+					Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Children: []Widget{
+						PushButton{AssignTo: &mw.hostPhotoBtn, Text: "主机照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("host") }},
+						PushButton{AssignTo: &mw.monPhotoBtn, Text: "显示器照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("monitor") }},
+						Label{Text: "选一张现场照片，标记是主机还是显示器；点预览图可放大核对", TextColor: walk.RGB(120, 120, 120)},
+					}},
+					// 选图后在这里预览（变大方便核对），点图片可放大确认没选错
+					ImageView{AssignTo: &mw.photoView, Mode: ImageViewModeZoom, MinSize: Size{Width: 260, Height: 172}},
+				}},
+				VSpacer{},
 			}},
 			GroupBox{Title: "结果", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8},
@@ -1558,6 +1564,14 @@ func runGUI(cfg *appConfig) {
 			}},
 		},
 	}.Create()
+
+	// 预览图可点击：弹出大图核对照片归属（webp 因系统解码不支持时不显示，也不弹）
+	mw.photoView.SetCursor(walk.CursorHand())
+	mw.photoView.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
+		if button == walk.LeftButton {
+			mw.showPhotoZoom()
+		}
+	})
 
 	mw.setOut("等待登记……\n")
 	mw.setInfo("正在采集本机配置……")
@@ -1776,6 +1790,40 @@ func (mw *mainWindow) setInfo(s string) { mw.infoText.SetText(crlf(s)) }
 func (mw *mainWindow) setOut(s string) { mw.outText.SetText(crlf(s)) }
 
 func crlf(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
+
+// showPhotoZoom 点击预览缩略图后弹出的大图窗口，图片按窗口缩放显示
+func (mw *mainWindow) showPhotoZoom() {
+	if mw.lastPhotoBmp == nil {
+		return
+	}
+	var dlgWalk *walk.Dialog
+	w := int(win.GetSystemMetrics(win.SM_CXFULLSCREEN)) * 8 / 10
+	h := int(win.GetSystemMetrics(win.SM_CYFULLSCREEN)) * 8 / 10
+	if w < 480 {
+		w = 480
+	}
+	if h < 360 {
+		h = 360
+	}
+	dlg := Dialog{
+		AssignTo: &dlgWalk,
+		Title:    "照片放大预览（点「关闭」或窗口 × 返回）",
+		MinSize:  Size{Width: w, Height: h},
+		Layout:   VBox{Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}},
+		Children: []Widget{
+			ImageView{Image: mw.lastPhotoBmp, Mode: ImageViewModeZoom},
+			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
+				HSpacer{},
+				PushButton{Text: "关闭", OnClicked: func() { dlgWalk.Cancel() }},
+			}},
+		},
+	}
+	if err := dlg.Create(mw.MainWindow); err != nil {
+		mw.setOut("放大预览失败：" + shortErr(err) + "\n")
+		return
+	}
+	dlgWalk.Run()
+}
 
 // onCopyCodes 把最近登记成功的设备编号复制到剪贴板
 func (mw *mainWindow) onCopyCodes() {
