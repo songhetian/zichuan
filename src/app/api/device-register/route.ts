@@ -171,8 +171,16 @@ export async function POST(req: NextRequest) {
         }
       }
       if (!employee) {
-        const allNos = await tx.employee.findMany({ select: { employeeNo: true } });
-        const employeeNo = generateEmployeeNo(allNos.map((e) => e.employeeNo));
+        // 工号同时是登录账号（Admin.username = 工号），删员工不删账号（孤儿账号保留）。
+        // 生成必须把 Admin 已占用的 EMP 号一并计入，否则撞唯一约束整单 500。
+        const [allNos, adminNos] = await Promise.all([
+          tx.employee.findMany({ select: { employeeNo: true } }),
+          tx.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+        ]);
+        const employeeNo = generateEmployeeNo([
+          ...allNos.map((e) => e.employeeNo),
+          ...adminNos.map((a) => a.username),
+        ]);
         employee = await tx.employee.create({
           data: { employeeNo, name: employeeName, departmentId: department.id },
           select: { id: true, name: true, employeeNo: true, departmentId: true },
@@ -361,7 +369,8 @@ export async function POST(req: NextRequest) {
         employee: { name: emp.name, employeeNo: emp.employeeNo, action: empAction, note: empNote },
         devices,
       };
-    });
+      // 登记事务重（建部门/员工/账号/设备+分配），默认 maxWait 2s 太紧会报 P2028
+    }, { maxWait: 10_000, timeout: 30_000 });
 
     const summary = payload.devices.map((d) => `${d.assetNo ?? "-"}[${d.action}]`).join(", ");
     await prisma.systemLog

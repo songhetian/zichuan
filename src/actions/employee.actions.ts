@@ -118,8 +118,15 @@ export async function createEmployee(
     // 未提供工号时自动生成（EMP + 4 位序号）
     let employeeNo = inputNo;
     if (!employeeNo) {
-      const existingNos = await prisma.employee.findMany({ select: { employeeNo: true } });
-      employeeNo = generateEmployeeNo(existingNos.map((e) => e.employeeNo));
+      // 工号同时是登录账号，删员工不删账号 → 必须避开 Admin 已占用的 EMP 号
+      const [existingNos, adminNos] = await Promise.all([
+        prisma.employee.findMany({ select: { employeeNo: true } }),
+        prisma.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+      ]);
+      employeeNo = generateEmployeeNo([
+        ...existingNos.map((e) => e.employeeNo),
+        ...adminNos.map((a) => a.username),
+      ]);
     }
 
     // 登录名=工号，占用则不可重复建账号
@@ -205,9 +212,16 @@ export async function createEmployeesBatch(
       effectiveRoleId = empRole?.id ?? null;
     }
 
-    // 工号：现有最大序号查一次，循环内本地递增（避免 N 次全表查询）
-    const existingNos = await prisma.employee.findMany({ select: { employeeNo: true } });
-    const usedNos = existingNos.map((e) => e.employeeNo);
+    // 工号：现有最大序号查一次，循环内本地递增（避免 N 次全表查询）。
+    // 同样要避开 Admin 孤儿账号占用的号（删员工不删账号）。
+    const [existingNos, existingAdminNos] = await Promise.all([
+      prisma.employee.findMany({ select: { employeeNo: true } }),
+      prisma.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+    ]);
+    const usedNos = [
+      ...existingNos.map((e) => e.employeeNo),
+      ...existingAdminNos.map((a) => a.username),
+    ];
 
     // 姓名：部门名-随机4位数字，同批内去重
     const usedNames = new Set<string>();

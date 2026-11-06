@@ -161,8 +161,15 @@ export async function createDepartmentEmployee(
 
   let employeeNo = inputNo;
   if (!employeeNo) {
-    const existingNos = await prisma.employee.findMany({ select: { employeeNo: true } });
-    employeeNo = generateEmployeeNo(existingNos.map((e) => e.employeeNo));
+    // 工号同时是登录账号，删员工不删账号 → 必须避开 Admin 已占用的 EMP 号
+    const [existingNos, adminNos] = await Promise.all([
+      prisma.employee.findMany({ select: { employeeNo: true } }),
+      prisma.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+    ]);
+    employeeNo = generateEmployeeNo([
+      ...existingNos.map((e) => e.employeeNo),
+      ...adminNos.map((a) => a.username),
+    ]);
   }
 
   try {
