@@ -26,6 +26,7 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
+	"net/textproto"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1470,8 +1471,10 @@ type mainWindow struct {
 	regBtn       *walk.PushButton
 	testBtn      *walk.PushButton
 	copyBtn      *walk.PushButton
-	hostPhotoBtn *walk.PushButton
-	monPhotoBtn  *walk.PushButton
+	hostPhotoBtn  *walk.PushButton
+	monPhotoBtn   *walk.PushButton
+	photoView     *walk.ImageView
+	lastPhotoBmp  *walk.Bitmap
 
 	hw              *hwInfo
 	detErr          error
@@ -1544,6 +1547,9 @@ func runGUI(cfg *appConfig) {
 				PushButton{AssignTo: &mw.hostPhotoBtn, Text: "主机照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("host") }},
 				PushButton{AssignTo: &mw.monPhotoBtn, Text: "显示器照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("monitor") }},
 				Label{Text: "选一张现场照片，标记是主机还是显示器", TextColor: walk.RGB(120, 120, 120)},
+				HSpacer{},
+				// 选图后在这里预览，确认没选错（webp 因系统解码不支持，不显示缩略图）
+				ImageView{AssignTo: &mw.photoView, Mode: ImageViewModeZoom, MinSize: Size{Width: 132, Height: 88}},
 			}},
 			GroupBox{Title: "结果", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8},
@@ -1831,6 +1837,14 @@ func (mw *mainWindow) onUploadPhoto(kind string) {
 		mw.outText.AppendText(crlf("✗ 照片超过 5MB，请压缩后再传。\n"))
 		return
 	}
+	// 选图预览：确认没选错照片（GDI+ 解码；webp 不支持时留空，不影响上传）
+	if bmp, bmpErr := walk.NewBitmapFromFile(path); bmpErr == nil {
+		if mw.lastPhotoBmp != nil {
+			mw.lastPhotoBmp.Dispose()
+		}
+		mw.lastPhotoBmp = bmp
+		mw.photoView.SetImage(bmp)
+	}
 	mw.hostPhotoBtn.SetEnabled(false)
 	mw.monPhotoBtn.SetEnabled(false)
 	mw.outText.AppendText(crlf("正在上传" + kindCN + "照片到 " + assetNo + " ……\n"))
@@ -1848,11 +1862,25 @@ func (mw *mainWindow) onUploadPhoto(kind string) {
 	}()
 }
 
+// photoMime 现场照片扩展名 → MIME（显式写入分部头，服务端按它存 OSS 元数据）
+var photoMime = map[string]string{
+	".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
+}
+
 // apiUploadPhoto multipart 上传一张现场照片到 /api/device-register/photo
 func apiUploadPhoto(cfg *appConfig, assetNo, kind, fileName string, data []byte) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	fw, err := w.CreateFormFile("file", fileName)
+	// 不能用 CreateFormFile：它固定发 application/octet-stream，服务端会拒收
+	ext := strings.ToLower(filepath.Ext(fileName))
+	ct := photoMime[ext]
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, fileName))
+	h.Set("Content-Type", ct)
+	fw, err := w.CreatePart(h)
 	if err != nil {
 		return wrap("构造上传请求失败", err)
 	}

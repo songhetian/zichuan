@@ -29,6 +29,25 @@ const MIME_EXT: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
 };
+const EXT_MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
+
+/**
+ * 解析上传图片的真实类型：优先请求方的 Content-Type；
+ * Go 工具端 CreateFormFile 固定发 application/octet-stream，
+ * 此时回退按文件名扩展名判断（.jpg/.jpeg/.png/.webp）。
+ */
+function resolveImage(file: File): { ext: string; mime: string } | null {
+  const byType = MIME_EXT[file.type];
+  if (byType) return { ext: byType, mime: file.type };
+  const m = /\.(jpe?g|png|webp)$/i.exec(file.name.trim());
+  if (!m) return null;
+  const ext = m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+  return { ext, mime: EXT_MIME[ext] };
+}
 
 export async function POST(req: NextRequest) {
   const expected = process.env.DEVICE_CHECK_TOKEN?.trim();
@@ -70,8 +89,8 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ error: "照片不能超过 5MB" }, { status: 400 });
   }
-  const ext = MIME_EXT[file.type];
-  if (!ext) {
+  const img = resolveImage(file);
+  if (!img) {
     return NextResponse.json(
       { error: "仅支持 JPG / PNG / WebP 格式" },
       { status: 400 }
@@ -99,8 +118,9 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const key = ossAssetKey(asset.assetNo, ext, kind);
-    await putOssObject(key, buffer, file.type);
+    // MIME 按解析结果写入 OSS 元数据：octet-stream 会导致浏览器打开签名 URL 时下载而非预览
+    const key = ossAssetKey(asset.assetNo, img.ext, kind);
+    await putOssObject(key, buffer, img.mime);
 
     keys.push(key);
     await prisma.asset.update({ where: { id: asset.id }, data: { photos: keys } });
