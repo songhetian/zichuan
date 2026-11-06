@@ -1795,12 +1795,19 @@ func (mw *mainWindow) onUploadPhoto(kind string) {
 	}
 	kindCN := "主机"
 	assetNo := mw.lastHostAssetNo
+	if assetNo == "" {
+		// 还没点过登记：直接用编号框里填的已有编号（填了编号就能传照片，不必先登记）
+		assetNo = strings.ToUpper(strings.TrimSpace(mw.hostNoEdit.Text()))
+	}
 	if kind == "monitor" {
 		kindCN = "显示器"
 		assetNo = mw.lastMonAssetNo
+		if assetNo == "" {
+			assetNo = strings.ToUpper(strings.TrimSpace(mw.monNoEdit.Text()))
+		}
 	}
 	if assetNo == "" {
-		mw.setOut("还没有可挂照片的" + kindCN + "——请先「登记入库」成功（主机可在编号框填已有编号登记）。\n")
+		mw.setOut("还没有可挂照片的" + kindCN + "——先「登记入库」成功，或在" + kindCN + "编号框里填已有编号。\n")
 		return
 	}
 	dlg := walk.FileDialog{
