@@ -1460,28 +1460,36 @@ func hostname() string {
 
 type mainWindow struct {
 	*walk.MainWindow
-	infoText     *walk.TextEdit
-	outText      *walk.TextEdit
-	deptEdit     *walk.LineEdit
-	nameEdit     *walk.LineEdit
-	modelEdit    *walk.LineEdit
-	hostNoEdit   *walk.LineEdit
-	monCombo     *walk.ComboBox
-	monNoEdit    *walk.LineEdit
-	statusLabel  *walk.Label
-	regBtn       *walk.PushButton
-	testBtn      *walk.PushButton
-	copyBtn      *walk.PushButton
-	hostPhotoBtn *walk.PushButton
-	monPhotoBtn  *walk.PushButton
-	photoView    *walk.ImageView
-	lastPhotoBmp *walk.Bitmap
+	infoText       *walk.TextEdit
+	outText        *walk.TextEdit
+	deptEdit       *walk.LineEdit
+	nameEdit       *walk.LineEdit
+	modelEdit      *walk.LineEdit
+	hostNoEdit     *walk.LineEdit
+	monCombo       *walk.ComboBox
+	monNoEdit      *walk.LineEdit
+	statusLabel    *walk.Label
+	regBtn         *walk.PushButton
+	testBtn        *walk.PushButton
+	copyBtn        *walk.PushButton
+	hostPhotoBtn   *walk.PushButton // 选主机照片
+	monPhotoBtn    *walk.PushButton // 选显示器照片
+	uploadPhotoBtn *walk.PushButton // 仅上传照片（不重新登记）
+	hostPhotoView  *walk.ImageView
+	monPhotoView   *walk.ImageView
+	hostPhotoLabel *walk.Label
+	monPhotoLabel  *walk.Label
+	hostPhotoBmp   *walk.Bitmap
+	monPhotoBmp    *walk.Bitmap
 
 	hw              *hwInfo
 	detErr          error
 	lastCodes       string // 最近一次登记成功的设备编号（供「复制编号」）
-	lastHostAssetNo string // 最近登记成功的主机编号（供「主机照片」）
-	lastMonAssetNo  string // 最近登记成功的显示器编号（供「显示器照片」）
+	lastHostAssetNo string // 最近登记成功的主机编号（供照片挂载）
+	lastMonAssetNo  string // 最近登记成功的显示器编号（供照片挂载）
+	hostPhotoPath   string // 已选待传的主机照片（和登记一起提交）
+	monPhotoPath    string // 已选待传的显示器照片
+	photoBusy       bool   // 照片上传进行中（防止并发重复提交）
 	monItems        []monitorInfo
 	cfg             *appConfig
 }
@@ -1545,18 +1553,32 @@ func runGUI(cfg *appConfig) {
 				PushButton{AssignTo: &mw.copyBtn, Text: "复制编号", MinSize: Size{Height: 34}, OnClicked: mw.onCopyCodes},
 				HSpacer{},
 			}},
-			// 照片走服务器转存 OSS，直连数据库模式没有这个通道，只在接口模式显示
-			Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Visible: cfg.apiMode(), Children: []Widget{
-				Composite{Layout: VBox{MarginsZero: true, Spacing: 6}, Children: []Widget{
-					Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Children: []Widget{
-						PushButton{AssignTo: &mw.hostPhotoBtn, Text: "主机照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("host") }},
-						PushButton{AssignTo: &mw.monPhotoBtn, Text: "显示器照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onUploadPhoto("monitor") }},
-						Label{Text: "选一张现场照片，标记是主机还是显示器；点预览图可放大核对", TextColor: walk.RGB(120, 120, 120)},
-					}},
-					// 选图后在这里预览（变大方便核对），点图片可放大确认没选错
-					ImageView{AssignTo: &mw.photoView, Mode: ImageViewModeZoom, MinSize: Size{Width: 260, Height: 172}},
+			// 照片走服务器转存 OSS，直连数据库模式没有这个通道，只在接口模式显示。
+			// 流程：先选好照片 → 点「登记入库」自动一起提交；已有设备（填编号）照片挂到原设备；
+			// 不想重新登记就点「仅上传照片」。
+			Composite{Layout: VBox{MarginsZero: true, Spacing: 6}, Visible: cfg.apiMode(), Children: []Widget{
+				Composite{Layout: HBox{MarginsZero: true, Spacing: 10}, Children: []Widget{
+					PushButton{AssignTo: &mw.hostPhotoBtn, Text: "选主机照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onPickPhoto("host") }},
+					PushButton{AssignTo: &mw.monPhotoBtn, Text: "选显示器照片", MinSize: Size{Height: 34}, OnClicked: func() { mw.onPickPhoto("monitor") }},
+					PushButton{AssignTo: &mw.uploadPhotoBtn, Text: "仅上传照片", MinSize: Size{Height: 34}, OnClicked: mw.onUploadPendingPhotos},
 				}},
-				VSpacer{},
+				Composite{Layout: HBox{MarginsZero: true, Spacing: 16}, Children: []Widget{
+					Composite{Layout: VBox{MarginsZero: true, Spacing: 2}, Children: []Widget{
+						ImageView{AssignTo: &mw.hostPhotoView, Mode: ImageViewModeZoom, MinSize: Size{Width: 150, Height: 100}},
+						Label{AssignTo: &mw.hostPhotoLabel, Text: "主机照片未选", TextColor: walk.RGB(120, 120, 120)},
+					}},
+					Composite{Layout: VBox{MarginsZero: true, Spacing: 2}, Children: []Widget{
+						ImageView{AssignTo: &mw.monPhotoView, Mode: ImageViewModeZoom, MinSize: Size{Width: 150, Height: 100}},
+						Label{AssignTo: &mw.monPhotoLabel, Text: "显示器照片未选", TextColor: walk.RGB(120, 120, 120)},
+					}},
+					Composite{Layout: VBox{MarginsZero: true, Spacing: 2}, Children: []Widget{
+						Label{Text: "选好照片点「登记入库」一起提交；", TextColor: walk.RGB(120, 120, 120)},
+						Label{Text: "已有设备（填编号再登记）会挂到原设备；", TextColor: walk.RGB(120, 120, 120)},
+						Label{Text: "不重新登记就点「仅上传照片」。", TextColor: walk.RGB(120, 120, 120)},
+						Label{Text: "点缩略图可放大核对。", TextColor: walk.RGB(120, 120, 120)},
+					}},
+					HSpacer{},
+				}},
 			}},
 			GroupBox{Title: "结果", Layout: VBox{
 				Margins: Margins{Left: 10, Top: 6, Right: 10, Bottom: 8},
@@ -1566,11 +1588,17 @@ func runGUI(cfg *appConfig) {
 		},
 	}.Create()
 
-	// 预览图可点击：弹出大图核对照片归属（webp 因系统解码不支持时不显示，也不弹）
-	mw.photoView.SetCursor(walk.CursorHand())
-	mw.photoView.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
+	// 预览缩略图可点击放大核对（webp 因系统解码不支持时不显示缩略图，仍可上传）
+	mw.hostPhotoView.SetCursor(walk.CursorHand())
+	mw.hostPhotoView.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
 		if button == walk.LeftButton {
-			mw.showPhotoZoom()
+			mw.showPhotoZoom(mw.hostPhotoBmp, "主机照片放大预览")
+		}
+	})
+	mw.monPhotoView.SetCursor(walk.CursorHand())
+	mw.monPhotoView.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
+		if button == walk.LeftButton {
+			mw.showPhotoZoom(mw.monPhotoBmp, "显示器照片放大预览")
 		}
 	})
 
@@ -1774,10 +1802,13 @@ func (mw *mainWindow) onRegister() {
 				}
 			}
 			if out.OK && mw.cfg.apiMode() {
-				if mw.lastHostAssetNo != "" && mw.lastMonAssetNo != "" {
-					b.WriteString("  现场有拍照的话，分别点「主机照片」「显示器照片」挂到对应设备\n")
-				} else if mw.lastHostAssetNo != "" {
-					b.WriteString("  现场有拍照的话，点「主机照片」挂到 " + mw.lastHostAssetNo + "\n")
+				// 已选好的照片自动随登记挂到对应设备——照片和配置一次提交
+				autoHost, autoMon := mw.lastHostAssetNo, mw.lastMonAssetNo
+				mw.autoUploadPendingPhotos(autoHost, autoMon)
+				if autoHost == "" && autoMon != "" {
+					b.WriteString("  主机照片可点「选主机照片」后「仅上传照片」补挂\n")
+				} else if autoMon == "" && autoHost != "" {
+					b.WriteString("  显示器照片可点「选显示器照片」后「仅上传照片」补挂\n")
 				}
 			}
 			mw.setOut(b.String())
@@ -1793,8 +1824,8 @@ func (mw *mainWindow) setOut(s string) { mw.outText.SetText(crlf(s)) }
 func crlf(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
 
 // showPhotoZoom 点击预览缩略图后弹出的大图窗口，图片按窗口缩放显示
-func (mw *mainWindow) showPhotoZoom() {
-	if mw.lastPhotoBmp == nil {
+func (mw *mainWindow) showPhotoZoom(bmp *walk.Bitmap, title string) {
+	if bmp == nil {
 		return
 	}
 	var dlgWalk *walk.Dialog
@@ -1808,11 +1839,11 @@ func (mw *mainWindow) showPhotoZoom() {
 	}
 	dlg := Dialog{
 		AssignTo: &dlgWalk,
-		Title:    "照片放大预览（点「关闭」或窗口 × 返回）",
+		Title:    title + "（点「关闭」或窗口 × 返回）",
 		MinSize:  Size{Width: w, Height: h},
 		Layout:   VBox{Margins: Margins{Left: 10, Top: 10, Right: 10, Bottom: 10}},
 		Children: []Widget{
-			ImageView{Image: mw.lastPhotoBmp, Mode: ImageViewModeZoom},
+			ImageView{Image: bmp, Mode: ImageViewModeZoom},
 			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
 				HSpacer{},
 				PushButton{Text: "关闭", OnClicked: func() { dlgWalk.Cancel() }},
@@ -1840,34 +1871,43 @@ func (mw *mainWindow) onCopyCodes() {
 }
 
 // ────────────── 照片上传（仅接口模式；服务端转存 OSS 并挂到资产） ──────────────
+//
+// 流程：先点「选主机照片 / 选显示器照片」选好照片（带缩略图预览），
+// 点「登记入库」后登记成功会自动把照片挂到对应设备——所以照片和配置是一次提交的；
+// 编号框里填了已有设备编号再登记，照片就挂到原设备上（等于修改）；
+// 不想重新登记时点「仅上传照片」补传。
 
-// onUploadPhoto 选一张现场照片上传，kind 标记是主机还是显示器的照片。
-// 照片 key 会带 host-/monitor- 前缀，网页端照片墙据此显示归属角标。
-// 用 AppendText 追加结果，不覆盖上方登记结果里的设备编号。
-func (mw *mainWindow) onUploadPhoto(kind string) {
+// resolveAssetNo 照片要挂的设备编号：优先用最近一次登记成功的，其次用编号框里填的已有编号
+func (mw *mainWindow) resolveAssetNo(kind string) string {
+	if kind == "monitor" {
+		if mw.lastMonAssetNo != "" {
+			return mw.lastMonAssetNo
+		}
+		return strings.ToUpper(strings.TrimSpace(mw.monNoEdit.Text()))
+	}
+	if mw.lastHostAssetNo != "" {
+		return mw.lastHostAssetNo
+	}
+	return strings.ToUpper(strings.TrimSpace(mw.hostNoEdit.Text()))
+}
+
+// onPickPhoto 选一张现场照片（只选不传），缩略图预览，等登记时一起提交或点「仅上传照片」
+func (mw *mainWindow) onPickPhoto(kind string) {
 	if !mw.cfg.apiMode() {
 		return
 	}
-	kindCN := "主机"
-	assetNo := mw.lastHostAssetNo
-	if assetNo == "" {
-		// 还没点过登记：直接用编号框里填的已有编号（填了编号就能传照片，不必先登记）
-		assetNo = strings.ToUpper(strings.TrimSpace(mw.hostNoEdit.Text()))
-	}
-	if kind == "monitor" {
-		kindCN = "显示器"
-		assetNo = mw.lastMonAssetNo
-		if assetNo == "" {
-			assetNo = strings.ToUpper(strings.TrimSpace(mw.monNoEdit.Text()))
-		}
-	}
-	if assetNo == "" {
-		mw.setOut("还没有可挂照片的" + kindCN + "——先「登记入库」成功，或在" + kindCN + "编号框里填已有编号。\n")
+	if mw.photoBusy {
+		mw.setOut("照片正在上传，请等当前上传结束再选。\n")
 		return
 	}
+	kindCN := "主机"
 	dlg := walk.FileDialog{
 		Title:  "选择" + kindCN + "的现场照片",
 		Filter: "图片文件 (*.jpg;*.jpeg;*.png;*.webp)|*.jpg;*.jpeg;*.png;*.webp",
+	}
+	if kind == "monitor" {
+		kindCN = "显示器"
+		dlg.Title = "选择" + kindCN + "的现场照片"
 	}
 	ok, err := dlg.ShowOpen(mw.MainWindow)
 	if err != nil || !ok { // 用户取消
@@ -1877,37 +1917,161 @@ func (mw *mainWindow) onUploadPhoto(kind string) {
 	if path == "" {
 		return
 	}
+	// 选图时就校验大小，别等到登记后才发现传不了
 	data, err := os.ReadFile(path)
 	if err != nil {
-		mw.outText.AppendText(crlf("✗ 读取照片失败：" + shortErr(err) + "\n"))
+		mw.setOut("✗ 读取照片失败：" + shortErr(err) + "\n")
 		return
 	}
 	if len(data) > 5*1024*1024 {
-		mw.outText.AppendText(crlf("✗ 照片超过 5MB，请压缩后再传。\n"))
+		mw.setOut("✗ 照片超过 5MB，请压缩后再选。\n")
 		return
 	}
-	// 选图预览：确认没选错照片（GDI+ 解码；webp 不支持时留空，不影响上传）
-	if bmp, bmpErr := walk.NewBitmapFromFile(path); bmpErr == nil {
-		if mw.lastPhotoBmp != nil {
-			mw.lastPhotoBmp.Dispose()
-		}
-		mw.lastPhotoBmp = bmp
-		mw.photoView.SetImage(bmp)
-	}
-	mw.hostPhotoBtn.SetEnabled(false)
-	mw.monPhotoBtn.SetEnabled(false)
-	mw.outText.AppendText(crlf("正在上传" + kindCN + "照片到 " + assetNo + " ……\n"))
-	go func() {
-		errUp := apiUploadPhoto(mw.cfg, assetNo, kind, filepath.Base(path), data)
-		mw.Synchronize(func() {
-			mw.hostPhotoBtn.SetEnabled(true)
-			mw.monPhotoBtn.SetEnabled(true)
-			if errUp != nil {
-				mw.outText.AppendText(crlf("✗ " + kindCN + "照片上传失败：" + shortErr(errUp) + "\n"))
-				return
+	// 缩略图预览（GDI+ 解码；webp 不支持时不显示，但不影响上传）
+	bmp, bmpErr := walk.NewBitmapFromFile(path)
+	name := filepath.Base(path)
+	if kind == "host" {
+		mw.hostPhotoPath = path
+		if bmpErr == nil {
+			if mw.hostPhotoBmp != nil {
+				mw.hostPhotoBmp.Dispose()
 			}
-			mw.outText.AppendText(crlf("✓ " + kindCN + "照片已挂到 " + assetNo + "（网页端该设备详情页可查看）\n"))
-		})
+			mw.hostPhotoBmp = bmp
+			mw.hostPhotoView.SetImage(bmp)
+			mw.hostPhotoLabel.SetText("✓ 已选 " + name)
+		} else {
+			mw.hostPhotoLabel.SetText("✓ 已选 " + name + "（无缩略图）")
+		}
+	} else {
+		mw.monPhotoPath = path
+		if bmpErr == nil {
+			if mw.monPhotoBmp != nil {
+				mw.monPhotoBmp.Dispose()
+			}
+			mw.monPhotoBmp = bmp
+			mw.monPhotoView.SetImage(bmp)
+			mw.monPhotoLabel.SetText("✓ 已选 " + name)
+		} else {
+			mw.monPhotoLabel.SetText("✓ 已选 " + name + "（无缩略图）")
+		}
+	}
+	mw.setOut("已选" + kindCN + "照片 " + name + "。点「登记入库」一起提交；不重新登记就点「仅上传照片」。\n")
+}
+
+// setPhotoBusy 上传期间锁住照片按钮，防并发重复提交
+func (mw *mainWindow) setPhotoBusy(busy bool) {
+	mw.hostPhotoBtn.SetEnabled(!busy)
+	mw.monPhotoBtn.SetEnabled(!busy)
+	mw.uploadPhotoBtn.SetEnabled(!busy)
+}
+
+// uploadOnePhoto 同步上传一张照片（在 goroutine 里调用），返回上传错误
+func (mw *mainWindow) uploadOnePhoto(path, assetNo, kind string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取照片失败: %w", err)
+	}
+	return apiUploadPhoto(mw.cfg, assetNo, kind, filepath.Base(path), data)
+}
+
+// autoUploadPendingPhotos 登记成功后自动把已选照片挂到对应设备（照片和配置一次提交）。
+// hostNo/monNo 是本次登记结果里的设备编号。
+func (mw *mainWindow) autoUploadPendingPhotos(hostNo, monNo string) {
+	hostPath, monPath := mw.hostPhotoPath, mw.monPhotoPath
+	if hostPath == "" && monPath == "" {
+		return
+	}
+	mw.setPhotoBusy(true)
+	go func() {
+		if hostPath != "" {
+			if hostNo == "" {
+				mw.Synchronize(func() { mw.outText.AppendText(crlf("⚠ 已选的主机照片没有可挂的编号，未上传。\n")) })
+			} else {
+				err := mw.uploadOnePhoto(hostPath, hostNo, "host")
+				mw.Synchronize(func() {
+					if err == nil {
+						mw.hostPhotoPath = ""
+						mw.hostPhotoLabel.SetText("✓ 已挂到 " + hostNo)
+						mw.outText.AppendText(crlf("✓ 主机照片已随登记挂到 " + hostNo + "（网页端该设备详情页可查看）\n"))
+					} else {
+						mw.outText.AppendText(crlf("✗ 主机照片随登记上传失败：" + shortErr(err) + "（可点「仅上传照片」重试）\n"))
+					}
+				})
+			}
+		}
+		// 显示器串行跟传：避免并发写同一资产 photos 竞态
+		if monPath != "" {
+			if monNo == "" {
+				mw.Synchronize(func() {
+					mw.outText.AppendText(crlf("⚠ 已选的显示器照片没有可挂的编号，未上传。\n"))
+				})
+			} else {
+				err := mw.uploadOnePhoto(monPath, monNo, "monitor")
+				mw.Synchronize(func() {
+					if err == nil {
+						mw.monPhotoPath = ""
+						mw.monPhotoLabel.SetText("✓ 已挂到 " + monNo)
+						mw.outText.AppendText(crlf("✓ 显示器照片已随登记挂到 " + monNo + "（网页端该设备详情页可查看）\n"))
+					} else {
+						mw.outText.AppendText(crlf("✗ 显示器照片随登记上传失败：" + shortErr(err) + "（可点「仅上传照片」重试）\n"))
+					}
+				})
+			}
+		}
+		mw.Synchronize(func() { mw.setPhotoBusy(false) })
+	}()
+}
+
+// onUploadPendingPhotos 「仅上传照片」：不重新登记，把已选照片挂到编号对应设备上
+func (mw *mainWindow) onUploadPendingPhotos() {
+	if !mw.cfg.apiMode() {
+		return
+	}
+	if mw.photoBusy {
+		mw.setOut("照片正在上传，请稍候。\n")
+		return
+	}
+	hostPath, monPath := mw.hostPhotoPath, mw.monPhotoPath
+	if hostPath == "" && monPath == "" {
+		mw.setOut("先点「选主机照片 / 选显示器照片」选好照片。\n")
+		return
+	}
+	hostNo, monNo := mw.resolveAssetNo("host"), mw.resolveAssetNo("monitor")
+	if hostPath != "" && hostNo == "" {
+		mw.setOut("主机照片没有可挂的编号——在「主机编号」框填已有编号，或先「登记入库」成功。\n")
+		return
+	}
+	if monPath != "" && monNo == "" {
+		mw.setOut("显示器照片没有可挂的编号——在「显示器编号」框填已有编号，或先「登记入库」成功。\n")
+		return
+	}
+	mw.setPhotoBusy(true)
+	go func() {
+		if hostPath != "" {
+			err := mw.uploadOnePhoto(hostPath, hostNo, "host")
+			mw.Synchronize(func() {
+				if err == nil {
+					mw.hostPhotoPath = ""
+					mw.hostPhotoLabel.SetText("✓ 已挂到 " + hostNo)
+					mw.outText.AppendText(crlf("✓ 主机照片已挂到 " + hostNo + "（网页端该设备详情页可查看）\n"))
+				} else {
+					mw.outText.AppendText(crlf("✗ 主机照片上传失败：" + shortErr(err) + "\n"))
+				}
+			})
+		}
+		if monPath != "" {
+			err := mw.uploadOnePhoto(monPath, monNo, "monitor")
+			mw.Synchronize(func() {
+				if err == nil {
+					mw.monPhotoPath = ""
+					mw.monPhotoLabel.SetText("✓ 已挂到 " + monNo)
+					mw.outText.AppendText(crlf("✓ 显示器照片已挂到 " + monNo + "（网页端该设备详情页可查看）\n"))
+				} else {
+					mw.outText.AppendText(crlf("✗ 显示器照片上传失败：" + shortErr(err) + "\n"))
+				}
+			})
+		}
+		mw.Synchronize(func() { mw.setPhotoBusy(false) })
 	}()
 }
 
