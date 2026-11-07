@@ -1368,7 +1368,8 @@ func registerOne(q queryer, a registerOneArgs) (*itemResult, error) {
 			res.Action = "已存在"
 			res.AssetNo = assetNo.String
 			if modelMatches(model.String, a.model) {
-				res.Message = fmt.Sprintf("序列号已登记（%s，%s），型号一致，未重复建档", catName.String, holder.String)
+				res.Message = fmt.Sprintf("序列号相同 = 同一台设备，编号终身不变（沿用 %s，%s/%s），未重复建档；换新设备才会生成新编号",
+					assetNo.String, catName.String, holder.String)
 			} else {
 				res.Message = fmt.Sprintf("序列号已登记（%s，%s），但型号不一致：台账 %s", catName.String, holder.String, model.String)
 			}
@@ -2012,6 +2013,12 @@ func (mw *mainWindow) onRegister() {
 			for _, it := range out.Items {
 				fmt.Fprintf(&b, "  %-4s %-12s %s    %s\n", it.Kind, it.AssetNo, it.Model, it.Action)
 				fmt.Fprintf(&b, "        %s\n", it.Message)
+			}
+			for _, it := range out.Items {
+				if it.Action == "已存在" {
+					b.WriteString("  注：「已存在」= 序列号相同，识别为同一台设备，编号终身不变；只有换新设备才会生成新编号\n")
+					break
+				}
 			}
 			b.WriteString("\n")
 			if out.OK {

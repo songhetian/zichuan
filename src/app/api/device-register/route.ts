@@ -343,7 +343,10 @@ export async function POST(req: NextRequest) {
               kind: a.kind, action: "EXISTS", assetNo: dup.assetNo, model: dup.model,
               verdict: modelMatches(dup.model, a.model) ? "MATCH" : "MISMATCH",
               holder: dup.employee?.name ?? null,
-              message: `已登记过（${dup.template.category.name}），本次未重复建档`,
+              message:
+                `序列号相同 = 同一台设备，编号终身不变（沿用 ${dup.assetNo}` +
+                (dup.employee?.name ? `，持有人 ${dup.employee.name}` : "") +
+                `），本次未重复建档；换一台新显示器（序列号不同）才会生成新编号`,
             };
           }
         }
