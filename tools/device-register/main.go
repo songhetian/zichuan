@@ -551,6 +551,103 @@ func (h *hwInfo) summary() string {
 	return b.String()
 }
 
+// ── 配件清单：把采集到的硬件归整为「分类/型号/品牌」，服务端据此写「配件配置」 ──
+
+type partInfo struct {
+	Category string `json:"category"`
+	Name     string `json:"name"`
+	Brand    string `json:"brand"`
+}
+
+// knownBrandSet 常见配件厂商词表：型号串的首词命中才算品牌，其余留空（避免把垃圾词当品牌入库）
+var knownBrandSet = map[string]bool{
+	"intel": true, "amd": true, "nvidia": true, "kingston": true, "samsung": true,
+	"crucial": true, "micron": true, "wd": true, "western": true, "seagate": true,
+	"toshiba": true, "kioxia": true, "hynix": true, "sk": true, "dahua": true,
+	"hikvision": true, "lenovo": true, "dell": true, "hp": true, "asus": true,
+	"gigabyte": true, "msi": true, "asrock": true, "colorful": true, "maxsun": true,
+	"galax": true, "yeston": true, "lexar": true, "netac": true, "kingbank": true,
+	"金士顿": true, "三星": true, "希捷": true, "西数": true, "英睿达": true, "美光": true,
+	"大华": true, "海康威视": true, "七彩虹": true, "技嘉": true, "华硕": true, "微星": true,
+	"华擎": true, "铭瑄": true, "影驰": true, "盈通": true, "金百达": true, "雷克沙": true,
+	"朗科": true, "光威": true, "铠侠": true, "东芝": true, "联想": true,
+}
+
+// leadingBrand 型号串的首词命中厂商词表就返回它当品牌，否则空串
+func leadingBrand(s string) string {
+	fields := strings.Fields(strings.TrimSpace(s))
+	if len(fields) == 0 {
+		return ""
+	}
+	first := strings.Trim(fields[0], ",;()")
+	if knownBrandSet[strings.ToLower(first)] || knownBrandSet[first] {
+		return first
+	}
+	return ""
+}
+
+// parts 硬件 → 配件清单。MAC/序列号这类每台机器唯一的值不进配件（会污染共享型号库），留在备注。
+func (h *hwInfo) parts() []partInfo {
+	parts := make([]partInfo, 0, 8)
+	if m := strings.TrimSpace(h.Model); m != "" {
+		parts = append(parts, partInfo{"主板", m, strings.TrimSpace(h.Brand)})
+	}
+	if c := strings.TrimSpace(h.CPU); c != "" {
+		parts = append(parts, partInfo{"处理器", c, leadingBrand(c)})
+	}
+	if len(h.Sticks) > 0 {
+		type ramKey struct {
+			gb    int
+			maker string
+		}
+		counts := map[ramKey]int{}
+		order := []ramKey{}
+		for _, s := range h.Sticks {
+			k := ramKey{s.GB, cleanRamMaker(s.Maker)}
+			if _, seen := counts[k]; !seen {
+				order = append(order, k)
+			}
+			counts[k]++
+		}
+		for _, k := range order {
+			parts = append(parts, partInfo{"内存", fmt.Sprintf("%dGB", k.gb), k.maker})
+		}
+	} else if h.RamGB > 0 {
+		parts = append(parts, partInfo{"内存", fmt.Sprintf("%dGB", int(math.Round(h.RamGB))), ""})
+	}
+	for _, d := range h.Disks {
+		if strings.TrimSpace(d.M) == "" {
+			continue
+		}
+		parts = append(parts, partInfo{"硬盘", fmt.Sprintf("%s %dGB", strings.TrimSpace(d.M), d.GB), leadingBrand(d.M)})
+	}
+	for _, g := range h.GPUs {
+		if strings.TrimSpace(g) == "" {
+			continue
+		}
+		parts = append(parts, partInfo{"显卡", strings.TrimSpace(g), leadingBrand(g)})
+	}
+	if os := strings.TrimSpace(h.OS); os != "" {
+		parts = append(parts, partInfo{"操作系统", strings.TrimPrefix(os, "Microsoft "), leadingBrand(os)})
+	}
+	return parts
+}
+
+// identityNotes 无法归入配件的机器唯一标识（MAC/键鼠），随登记写备注而非配件库
+func (h *hwInfo) identityNotes() string {
+	var b strings.Builder
+	if h.Mac != "" {
+		fmt.Fprintf(&b, "MAC: %s\n", h.Mac)
+	}
+	if h.KB != "" {
+		fmt.Fprintf(&b, "键盘: %s\n", vendorDev(h.KBMaker, h.KB))
+	}
+	if h.Mouse != "" {
+		fmt.Fprintf(&b, "鼠标: %s\n", vendorDev(h.MouseMaker, h.Mouse))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // brief 窗口里的分项摘要（每行一项、带品牌与数量；完整配置通过 summary 写入台账备注）
 func (h *hwInfo) brief() string {
 	os := strings.TrimPrefix(h.OS, "Microsoft ")
@@ -784,7 +881,8 @@ type registerInput struct {
 	HostAssetNo  string       // 已有主机编号：填了就把配置写进该记录（不新建）
 	Monitor      *monitorInfo // nil = 不登记显示器
 	MonAssetNo   string       // 已有显示器编号：同上
-	Notes        string       // 主机详细配置摘要
+	Notes        string       // 无法归入配件的标识信息（MAC/键鼠），写入备注
+	Parts        []partInfo   // 硬件配件清单 → 服务端写「配件配置」
 }
 
 // monitorNotes 显示器自己的配置说明（不混入主机配置）
@@ -925,6 +1023,7 @@ func registerAll(db *sql.DB, in registerInput) (*registerOutput, error) {
 		kind: "主机", empID: empID, empName: in.EmployeeName,
 		model: in.HostModel, serial: in.HostSerial, brand: in.HostBrand,
 		cat: hostCat, tplID: hostTpl.id, notes: in.Notes, existingNo: in.HostAssetNo,
+		parts: in.Parts,
 	})
 	if err != nil {
 		return nil, err
@@ -1023,7 +1122,7 @@ func apiRegister(cfg *appConfig, in registerInput) (*registerOutput, error) {
 		"hostAssetNo":  in.HostAssetNo,
 		"host": map[string]any{
 			"model": in.HostModel, "serial": in.HostSerial, "brand": in.HostBrand,
-			"isLaptop": in.IsLaptop, "notes": in.Notes,
+			"isLaptop": in.IsLaptop, "notes": in.Notes, "parts": in.Parts,
 		},
 	}
 	if in.Monitor != nil {
@@ -1242,7 +1341,8 @@ type registerOneArgs struct {
 	cat        *categoryRow
 	tplID      int64
 	notes      string
-	existingNo string // 非空 = 已有设备编号，写入该记录而非新建
+	existingNo string     // 非空 = 已有设备编号，写入该记录而非新建
+	parts      []partInfo // 硬件配件清单（仅主机登记有值）
 }
 
 func registerOne(q queryer, a registerOneArgs) (*itemResult, error) {
@@ -1339,16 +1439,87 @@ func registerOne(q queryer, a registerOneArgs) (*itemResult, error) {
 	} else {
 		notes = fmt.Sprintf("现场登记（%s）\n%s", hostname(), notes)
 	}
-	if _, err := q.Exec(`
+	insRes, err := q.Exec(`
 		INSERT INTO Asset (assetNo, name, templateId, status, employeeId, brand, model, serialNo, notes, createdAt, updatedAt)
 		VALUES (?, ?, ?, 'IN_USE', ?, ?, ?, ?, ?, NOW(), NOW())`,
-		assetNo, name, a.tplID, a.empID, nullIfEmpty(a.brand), a.model, nullIfEmpty(a.serial), notes); err != nil {
+		assetNo, name, a.tplID, a.empID, nullIfEmpty(a.brand), a.model, nullIfEmpty(a.serial), notes)
+	if err != nil {
 		return nil, wrap("写入设备失败", err)
+	}
+	if id, e := insRes.LastInsertId(); e == nil {
+		if e := syncComponentsDB(q, id, a.parts); e != nil {
+			return nil, e
+		}
 	}
 	res.Action = "新建"
 	res.AssetNo = assetNo
 	res.Message = fmt.Sprintf("已建档并分配给 %s", a.empName)
 	return res, nil
+}
+
+// syncComponentsDB 把配件清单写入 AssetComponent（分类/型号不存在就建）。
+// 与网页端 syncAssetComponents 同口径：先清后插（重新登记 = 修正配置），同规格聚合。
+func syncComponentsDB(q queryer, assetID int64, parts []partInfo) error {
+	if len(parts) == 0 {
+		return nil
+	}
+	type compKey struct {
+		catID       int64
+		name, brand string
+	}
+	ids := map[compKey]int64{}
+	order := []compKey{}
+	for _, p := range parts {
+		name, cat := strings.TrimSpace(p.Name), strings.TrimSpace(p.Category)
+		if name == "" || cat == "" {
+			continue
+		}
+		var catID int64
+		err := q.QueryRow("SELECT id FROM ComponentCategory WHERE name = ?", cat).Scan(&catID)
+		if err == sql.ErrNoRows {
+			res, e := q.Exec("INSERT INTO ComponentCategory (name, createdAt, updatedAt) VALUES (?, NOW(), NOW())", cat)
+			if e != nil {
+				return wrap("创建配件分类失败", e)
+			}
+			catID, _ = res.LastInsertId()
+		} else if err != nil {
+			return wrap("查询配件分类失败", err)
+		}
+		key := compKey{catID, name, strings.TrimSpace(p.Brand)}
+		if _, seen := ids[key]; seen {
+			continue
+		}
+		var modelID int64
+		err = q.QueryRow(
+			"SELECT id FROM ComponentModel WHERE categoryId = ? AND name = ? AND brand = ?",
+			key.catID, key.name, key.brand).Scan(&modelID)
+		if err == sql.ErrNoRows {
+			res, e := q.Exec(
+				"INSERT INTO ComponentModel (name, brand, categoryId, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())",
+				key.name, key.brand, key.catID)
+			if e != nil {
+				return wrap("创建配件型号失败", e)
+			}
+			modelID, _ = res.LastInsertId()
+		} else if err != nil {
+			return wrap("查询配件型号失败", err)
+		}
+		ids[key] = modelID
+		order = append(order, key)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := q.Exec("DELETE FROM AssetComponent WHERE assetId = ?", assetID); err != nil {
+		return wrap("清理原配件失败", err)
+	}
+	for _, k := range order {
+		if _, err := q.Exec(
+			"INSERT INTO AssetComponent (assetId, modelId, quantity) VALUES (?, ?, 1)", assetID, ids[k]); err != nil {
+			return wrap("写入配件配置失败", err)
+		}
+	}
+	return nil
 }
 
 // writeIntoExisting 把现场检测到的配置写入已有编号的台账记录（不新建）
@@ -1382,13 +1553,13 @@ func writeIntoExisting(q queryer, a registerOneArgs) (*itemResult, error) {
 		return res, nil
 	}
 
-	// 分类核对：编号填错位置（如把显示器编号填进主机栏）给出提醒
-	var catName string
+	// 分类核对：编号填错位置（如把显示器编号填进主机栏）给出提醒；顺带取模板名供配件同步守卫
+	var catName, tplName string
 	_ = q.QueryRow(`
-		SELECT c.name FROM Asset a
+		SELECT c.name, t.name FROM Asset a
 		JOIN DeviceTemplate t ON a.templateId = t.id
 		JOIN AssetCategory c ON t.categoryId = c.id
-		WHERE a.id = ?`, id).Scan(&catName)
+		WHERE a.id = ?`, id).Scan(&catName, &tplName)
 
 	notes := a.notes
 	if notes == "" {
@@ -1405,6 +1576,11 @@ func writeIntoExisting(q queryer, a registerOneArgs) (*itemResult, error) {
 		return nil, wrap("写入配置失败", err)
 	}
 	res.Action = "已写入"
+	if tplName == DIRECT_TEMPLATE_NAME { // 网页端模板组装的设备配置在模板 BOM 里，不碰
+		if e := syncComponentsDB(q, id, a.parts); e != nil {
+			return nil, e
+		}
+	}
 	res.Message = fmt.Sprintf("配置已写入 %s（原型号: %s）", assetNo.String, curModel.String)
 	if catName != "" && catName != a.cat.name {
 		res.Message += fmt.Sprintf("；注意：该编号在台账中属于「%s」分类", catName)
@@ -1761,7 +1937,8 @@ func (mw *mainWindow) onRegister() {
 	if mw.hw != nil {
 		hostSerial, hostBrand = mw.hw.Serial, mw.hw.Brand
 		isLaptop = mw.hw.Laptop
-		in.Notes = mw.hw.summary()
+		in.Parts = mw.hw.parts()
+		in.Notes = mw.hw.identityNotes()
 	}
 	hostModel := strings.TrimSpace(mw.modelEdit.Text())
 	if hostModel == "" && hostNo == "" {
@@ -2244,7 +2421,8 @@ func runSelftest(cfg *appConfig) {
 		HostBrand:    h.Brand,
 		IsLaptop:     h.Laptop,
 		HostAssetNo:  *flagAssetNo,
-		Notes:        h.summary(),
+		Notes:        h.identityNotes(),
+		Parts:        h.parts(),
 	}
 	if len(h.Monitors) > 0 {
 		in.Monitor = &monitorInfo{Model: h.Monitors[0].Model, Serial: h.Monitors[0].Serial, Maker: h.Monitors[0].Maker}

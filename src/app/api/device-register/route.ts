@@ -56,7 +56,8 @@ interface RegisterBody {
     serial?: string;
     brand?: string;
     isLaptop?: boolean;
-    notes?: string; // 现场采集的完整配置（写入备注）
+    notes?: string; // 无法归入配件的标识信息（MAC 等），写入备注
+    parts?: RegisterPartInput[]; // 现场采集的硬件配置 → 写入配件配置（AssetComponent）
   };
   monitor?: {
     model?: string;
@@ -84,6 +85,12 @@ async function ensureCategory(tx: Parameters<Parameters<typeof prisma.$transacti
   });
 }
 
+interface RegisterPartInput {
+  category?: string; // 配件分类名（主板/处理器/内存/硬盘/显卡/键盘/鼠标/操作系统）
+  name?: string;
+  brand?: string;
+}
+
 /** 找「现场直录」模板，没有就建（不含 BOM，纯载体满足 templateId 非空） */
 async function ensureDirectTemplate(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
@@ -92,6 +99,57 @@ async function ensureDirectTemplate(
   const found = await tx.deviceTemplate.findFirst({ where: { categoryId, name: DIRECT_TEMPLATE_NAME } });
   if (found) return found;
   return tx.deviceTemplate.create({ data: { name: DIRECT_TEMPLATE_NAME, categoryId } });
+}
+
+/**
+ * 把现场采集的硬件配置写入「配件配置」（AssetComponent）。
+ * 配件分类/型号不存在就自动创建；整体替换该资产现有配件（重新登记 = 修正配置）。
+ * 只对「现场直录」模板的资产生效——网页端按模板组装的设备，配件配置在模板 BOM 里，不动。
+ */
+async function syncAssetComponents(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  assetId: number,
+  templateName: string | null,
+  parts: RegisterPartInput[] | undefined
+) {
+  if (!parts?.length || templateName !== DIRECT_TEMPLATE_NAME) return;
+  const cleaned = parts
+    .map((p) => ({
+      category: (p.category ?? "").trim().slice(0, 50),
+      name: (p.name ?? "").trim().slice(0, 120),
+      brand: (p.brand ?? "").trim().slice(0, 50),
+    }))
+    .filter((p) => p.category && p.name)
+    .slice(0, 20);
+  if (!cleaned.length) return;
+
+  // 同规格聚合（如两根同型号内存），并保证 deleteMany 后 upsert 不撞 (assetId, modelId)
+  const byKey = new Map<string, { category: string; name: string; brand: string; quantity: number }>();
+  for (const p of cleaned) {
+    const key = `${p.category}\u0000${p.name}\u0000${p.brand}`;
+    const hit = byKey.get(key);
+    if (hit) hit.quantity += 1;
+    else byKey.set(key, { ...p, quantity: 1 });
+  }
+
+  await tx.assetComponent.deleteMany({ where: { assetId } });
+  for (const p of byKey.values()) {
+    let cat = await tx.componentCategory.findUnique({ where: { name: p.category } });
+    if (!cat) cat = await tx.componentCategory.create({ data: { name: p.category } });
+    let model = await tx.componentModel.findUnique({
+      where: { categoryId_name_brand: { categoryId: cat.id, name: p.name, brand: p.brand } },
+    });
+    if (!model) {
+      model = await tx.componentModel.create({
+        data: { categoryId: cat.id, name: p.name, brand: p.brand },
+      });
+    }
+    await tx.assetComponent.upsert({
+      where: { assetId_modelId: { assetId, modelId: model.id } },
+      create: { assetId, modelId: model.id, quantity: p.quantity },
+      update: { quantity: p.quantity },
+    });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -117,6 +175,7 @@ export async function POST(req: NextRequest) {
   const hostSerial = String(body.host?.serial ?? "").trim() || null;
   const hostBrand = String(body.host?.brand ?? "").trim() || null;
   const hostNotes = String(body.host?.notes ?? "").trim();
+  const hostParts = Array.isArray(body.host?.parts) ? body.host!.parts : undefined;
   const monitorModel = String(body.monitor?.model ?? "").trim() || null;
   const monitorSerial = String(body.monitor?.serial ?? "").trim() || null;
   const monitorBrand = String(body.monitor?.brand ?? "").trim() || null;
@@ -211,6 +270,7 @@ export async function POST(req: NextRequest) {
         category: NonNullable<Awaited<ReturnType<typeof ensureCategory>>> | null;
         template: NonNullable<Awaited<ReturnType<typeof ensureDirectTemplate>>> | null;
         existingNo: string | null;
+        parts?: RegisterPartInput[];
       }): Promise<RegisterItemResult> => {
         // 4-0) 已有编号：把现场配置写入该记录（不新建、不查重）
         if (a.existingNo) {
@@ -219,7 +279,7 @@ export async function POST(req: NextRequest) {
             select: {
               id: true, assetNo: true, model: true, serialNo: true, employeeId: true,
               employee: { select: { name: true } },
-              template: { select: { category: { select: { name: true } } } },
+              template: { select: { name: true, category: { select: { name: true } } } },
             },
           });
           if (!asset) {
@@ -257,6 +317,7 @@ export async function POST(req: NextRequest) {
                 : { employeeId: emp.id, status: "IN_USE" as const }),
             },
           });
+          await syncAssetComponents(tx, asset.id, asset.template?.name ?? null, a.parts);
           return {
             kind: a.kind, action: "WRITTEN", assetNo: asset.assetNo, model: a.model,
             verdict: null, holder: asset.employee?.name ?? emp.name,
@@ -326,7 +387,7 @@ export async function POST(req: NextRequest) {
 
         // 4d) 建档：编号走分类编号规则，名字与网页端「新建即分配」口径一致
         const assetNo = await generateAssetNo(tx, a.category!.code, a.category!.numberingRule);
-        await tx.asset.create({
+        const created = await tx.asset.create({
           data: {
             assetNo,
             name: `${emp.name}的${a.category!.name}`,
@@ -338,7 +399,9 @@ export async function POST(req: NextRequest) {
             serialNo: a.serial,
             notes: `现场登记（${hostname}）\n${a.notes}`.trim(),
           },
+          select: { id: true },
         });
+        await syncAssetComponents(tx, created.id, a.template?.name ?? null, a.parts);
         return {
           kind: a.kind, action: "CREATED", assetNo, model: a.model, verdict: null,
           holder: emp.name, message: `已建档并分配给 ${emp.name}`,
@@ -350,7 +413,7 @@ export async function POST(req: NextRequest) {
         await registerOne({
           kind: "host", model: hostModel, serial: hostSerial, brand: hostBrand,
           notes: hostNotes, category: hostCategory, template: hostTemplate,
-          existingNo: hostAssetNo || null,
+          existingNo: hostAssetNo || null, parts: hostParts,
         })
       );
       if (monitorModel || monitorAssetNo) {
