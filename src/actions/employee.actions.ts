@@ -214,9 +214,10 @@ export async function createEmployeesBatch(
 
     // 工号：现有最大序号查一次，循环内本地递增（避免 N 次全表查询）。
     // 同样要避开 Admin 孤儿账号占用的号（删员工不删账号）。
+    // 新工号格式不是 EMP 开头，Admin 查询不能按前缀筛，要取全部账号名。
     const [existingNos, existingAdminNos] = await Promise.all([
       prisma.employee.findMany({ select: { employeeNo: true } }),
-      prisma.admin.findMany({ where: { username: { startsWith: "EMP" } }, select: { username: true } }),
+      prisma.admin.findMany({ select: { username: true } }),
     ]);
     const usedNos = [
       ...existingNos.map((e) => e.employeeNo),
